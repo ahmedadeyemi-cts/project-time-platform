@@ -1485,11 +1485,12 @@ public static class ContractsPrepaidManagementModule
 
         await using var transaction = await connection.BeginTransactionAsync();
         await using (var validate = new NpgsqlCommand("""
-            SELECT CASE contract_time_approval_bucket(e.status, p.project_manager_user_id IS NOT NULL)
+            SELECT CASE contract_time_approval_bucket(e.status, time_requires_project_approval(to_jsonb(e), to_jsonb(p), to_jsonb(task)))
                 WHEN 'pending' THEN 'submitted' WHEN 'approved' THEN 'consumed'
                 ELSE CASE WHEN e.status = 'draft' THEN 'entered' ELSE 'rejected' END END
                 FROM time_entries e
                 JOIN projects p ON p.project_id = e.project_id
+                LEFT JOIN project_tasks task ON task.task_id = e.task_id
                 JOIN boh_contracts c ON c.client_id = p.client_id
                 WHERE e.time_entry_id = @entry AND c.boh_contract_id = @contract
                   AND e.project_id = @project AND e.user_id = @user

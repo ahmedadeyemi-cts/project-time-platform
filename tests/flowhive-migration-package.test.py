@@ -58,11 +58,12 @@ else: raise SystemExit('Unexpected Azure call in offline fixture')
         assert marker in passed.stdout and passed.stdout.index('PRIVATE_JOB_VERIFIED')<passed.stdout.index(marker)
     for label in ('notifications','sequential','automatic'):
         subprocess.run(['sha256sum','--check','--status',f'database/flowhive-{label}.sha256'],cwd=captured,check=True)
-    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256', 'module065-notification-parity.sha256', 'module060-contract-funding.sha256', 'security-integrity-130.sha256'):
+    for manifest in ('module064-approval.sha256', 'module025-service-scope.sha256', 'module065-notification-parity.sha256', 'module060-contract-funding.sha256', 'security-integrity-130.sha256', 'time-approval-routing.sha256'):
         subprocess.run(['sha256sum','--check','--status',f'database/{manifest}'],cwd=captured,check=True)
     assert (captured/'entrypoint.sh').read_text()==inside+'\n'
     assert inside.index('/060-module-') < inside.index('/060b-module-') < inside.index('/060c-contract-')
     assert inside.index('/060c-contract-') < inside.index('/130_security_integrity_boundaries.sql') < inside.index('/verify-security-integrity-130.sql')
+    assert inside.index('/130_security_integrity_boundaries.sql') < inside.index('/131_time_approval_routing.sql')
     assert passed.stdout.index('PRIVATE_JOB_VERIFIED') < passed.stdout.index('MODULE060_CONTRACT_FUNDING=APPLIED_AND_VERIFIED')
     assert json.loads((fixture/'evidence/module060-contract-funding.json').read_text())['customerDataCreated'] is False
     parity_marker = 'MIGRATIONS_126_128_129_NOTIFICATION_PARITY=APPLIED_AND_VERIFIED'
@@ -79,7 +80,7 @@ else: raise SystemExit('Unexpected Azure call in offline fixture')
     assert 'MIGRATION_122_FLOWHIVE_AUTOMATIC_FIRST_DRAFT=APPLIED_AND_VERIFIED' not in failed.stdout
     assert 'MIGRATION_123_MODULE064_EXTERNAL_GENERATION_APPROVAL=APPLIED_AND_VERIFIED' not in failed.stdout
     assert 'MIGRATION_124_MODULE025_SERVICE_SCOPE=APPLIED_AND_VERIFIED' not in failed.stdout
-    for name in ('flowhive-sequential', 'flowhive-automatic', 'module064-approval', 'module025-service-scope', 'module065-notification-parity', 'security-integrity-130'):
+    for name in ('flowhive-sequential', 'flowhive-automatic', 'module064-approval', 'module025-service-scope', 'module065-notification-parity', 'security-integrity-130','time-approval-routing'):
         manifest=captured/f'database/{name}.sha256'
         target=captured/manifest.read_text().splitlines()[0].split()[-1]
         original=target.read_bytes(); target.chmod(0o644); target.write_bytes(original+b'\n-- changed package\n')

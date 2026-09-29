@@ -35,6 +35,7 @@ public static class ProductionApprovalWorkModule
     {
         "MANAGER",
         "PEOPLE_MANAGER",
+        "ENGINEERING_MANAGER",
         "ENGINEERING_LEAD",
         "ENGINEERING_TEAM_LEAD"
     };
@@ -42,6 +43,7 @@ public static class ProductionApprovalWorkModule
     private static readonly HashSet<string> ProjectApprovalRoles = new(StringComparer.OrdinalIgnoreCase)
     {
         "PROJECT_MANAGER",
+        "PROJECT_COORDINATOR",
         "PROJECT_MANAGEMENT",
         "PROJECT_MANAGEMENT_LEAD",
         "PROJECT_MANAGEMENT_TEAM_LEAD",
@@ -136,6 +138,15 @@ public static class ProductionApprovalWorkModule
             requestedWeek = parsedWeek;
         }
 
+        DateOnly? requestedMonth = null;
+        var monthText = context.Request.Query["monthStart"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(monthText))
+        {
+            if (!DateOnly.TryParse(monthText, out var month) || month.Day != 1 || requestedWeek.HasValue || month > DateOnly.MaxValue.AddMonths(-1))
+                return Results.BadRequest(new { status = "invalid_period", message = "Select either a Sunday week start or the first day of a month." });
+            requestedMonth = month;
+        }
+
         var page = PositiveInt(context.Request.Query["page"].FirstOrDefault(), 1);
         var pageSize = Math.Clamp(
             PositiveInt(context.Request.Query["pageSize"].FirstOrDefault(), DefaultPageSize),
@@ -192,6 +203,8 @@ public static class ProductionApprovalWorkModule
         {
             filtered = filtered.Where(item => item.WeekStart == requestedWeek.Value);
         }
+        if (requestedMonth.HasValue)
+            filtered = filtered.Where(item => item.WorkDate >= requestedMonth.Value && item.WorkDate < requestedMonth.Value.AddMonths(1));
         if (search.Length > 0)
         {
             filtered = filtered.Where(item => ItemMatchesSearch(item, search));
@@ -235,7 +248,9 @@ public static class ProductionApprovalWorkModule
             });
         }
 
-        if (!request.WeekStart.HasValue || request.WeekStart.Value.DayOfWeek != DayOfWeek.Sunday)
+        var monthly = request.MonthStart.HasValue;
+        if (monthly ? request.MonthStart!.Value.Day != 1 || request.WeekStart.HasValue || request.MonthStart.Value > DateOnly.MaxValue.AddMonths(-1)
+            : !request.WeekStart.HasValue || request.WeekStart.Value.DayOfWeek != DayOfWeek.Sunday || request.WeekStart.Value > DateOnly.MaxValue.AddDays(-6))
         {
             return Results.BadRequest(new
             {
@@ -243,6 +258,11 @@ public static class ProductionApprovalWorkModule
                 message = "Select a valid Sunday week start before completing approval work."
             });
         }
+
+        if (monthly && (request.Mode != "selected" || request.Items is null))
+            return Results.BadRequest(new { status = "selection_required", message = "Monthly approval requires explicit reviewed items." });
+        var periodStart = (request.MonthStart ?? request.WeekStart)!.Value;
+        var periodEnd = monthly ? periodStart.AddMonths(1).AddDays(-1) : periodStart.AddDays(6);
 
         if (request.Items is { Count: 0 })
         {
@@ -281,6 +301,9 @@ public static class ProductionApprovalWorkModule
             });
         }
 
+        if (mode == "selected" && request.Items!.Any(item => item is null || string.IsNullOrWhiteSpace(item.ReviewToken)))
+            return Results.BadRequest(new { status = "review_required", message = "Refresh and review the selected time before approving it." });
+
         if (mode == "week" && request.Items is not null)
         {
             return Results.BadRequest(new
@@ -311,17 +334,24 @@ public static class ProductionApprovalWorkModule
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
-        await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+        await using var transaction = await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, context.RequestAborted);
         var batchId = Guid.NewGuid();
         try
         {
+            // Reload role authority inside the same serializable snapshot as the selection.
+            access = await LoadAccessAsync(connection, context, context.RequestAborted);
+            if (access is null || access.IsViewAs || !CanCompleteStage(access, stage))
+            {
+                await transaction.RollbackAsync(context.RequestAborted);
+                return Results.Json(new { status = "access_changed", message = "Approval access changed. Refresh your session." }, statusCode: 403);
+            }
             var candidates = await LoadCandidatesAsync(
                 connection,
                 transaction,
                 access,
                 stage,
-                request.WeekStart,
-                context.RequestAborted);
+                periodStart,
+                context.RequestAborted, periodEnd);
 
             var authorizedCandidateCount = candidates.Count;
             if (mode == "selected")
@@ -333,13 +363,15 @@ public static class ProductionApprovalWorkModule
                     .Where(item => selected.Contains(ItemKey(item)))
                     .ToList();
 
-                if (candidates.Count == 0)
+                if (candidates.Count != selected.Count || candidates.Any(candidate =>
+                    request.Items!.Any(item => SelectionKey(item) == ItemKey(candidate)
+                        && !string.Equals(item.ReviewToken, candidate.ReviewToken, StringComparison.Ordinal))))
                 {
                     await transaction.RollbackAsync(context.RequestAborted);
                     return Results.Json(new
                     {
                         status = "selection_no_longer_actionable",
-                        message = "None of the selected approval items remain pending within your authorized scope."
+                        message = "The selection changed or contains items outside your authorized stage and period. Refresh and review it again; no approvals were changed."
                     }, statusCode: StatusCodes.Status409Conflict);
                 }
             }
@@ -376,7 +408,7 @@ public static class ProductionApprovalWorkModule
             var systemReason = BuildSystemApprovalReason(
                 access,
                 stage,
-                request.WeekStart.Value,
+                periodStart,
                 batchId,
                 mode);
             var completed = 0;
@@ -407,7 +439,9 @@ public static class ProductionApprovalWorkModule
                     batchId,
                     stage,
                     mode,
-                    request.WeekStart.Value,
+                    periodStart,
+                    periodEnd,
+                    monthly,
                     candidates.Count,
                     completed,
                     skipped,
@@ -425,7 +459,10 @@ public static class ProductionApprovalWorkModule
                 stageLabel = StageLabel(stage),
                 mode,
                 weekStart = request.WeekStart,
-                weekEnd = request.WeekStart.Value.AddDays(6),
+                weekEnd = monthly ? (DateOnly?)null : periodEnd,
+                monthStart = request.MonthStart,
+                periodStart,
+                periodEnd,
                 authorizedCandidateCount,
                 requestedCount = candidates.Count,
                 completedCount = completed,
@@ -433,9 +470,14 @@ public static class ProductionApprovalWorkModule
                 commentRequired = false,
                 immutableEvidenceRecorded = hasStageEvents || hasImmutablePolicyEvents,
                 message = completed > 0
-                    ? $"Completed {completed} {StageLabel(stage).ToLowerInvariant()} approval unit(s) for the selected week."
+                    ? $"Completed {completed} {StageLabel(stage).ToLowerInvariant()} approval unit(s) for the selected period."
                     : "No pending approval items remained when the request was processed."
             });
+        }
+        catch (PostgresException exception) when (exception.SqlState == "40001")
+        {
+            await transaction.RollbackAsync(context.RequestAborted);
+            return Results.Json(new { status = "approval_selection_changed", message = "Time or approval authority changed during review. Nothing was approved; refresh and review again." }, statusCode: 409);
         }
         catch (Exception exception)
         {
@@ -707,10 +749,11 @@ public static class ProductionApprovalWorkModule
         ApprovalAccess access,
         string? stage,
         DateOnly? weekStart,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateOnly? periodEnd = null)
     {
         var items = new List<ApprovalWorkItem>();
-        var weekEnd = weekStart?.AddDays(6);
+        var weekEnd = periodEnd ?? weekStart?.AddDays(6);
         await using var command = new NpgsqlCommand("""
             WITH pending_days AS (
                 SELECT
@@ -772,14 +815,17 @@ public static class ProductionApprovalWorkModule
                     (COUNT(entry.time_entry_id) > 0 AND COUNT(entry.project_id) = 0) AS non_project_only,
                     (COUNT(*) FILTER (
                         WHERE entry.time_entry_id IS NOT NULL AND entry.project_id IS NULL
-                    ) > 0) AS contains_non_project_time
+                    ) > 0) AS contains_non_project_time,
+                    md5(STRING_AGG(to_jsonb(entry)::text || COALESCE(to_jsonb(project)::text, '') || COALESCE(to_jsonb(task)::text, ''), '|' ORDER BY entry.time_entry_id) || COALESCE(MAX(submitter.manager_email), '')) AS review_token
                 FROM pending_days pending
                 JOIN timesheets timesheet ON timesheet.timesheet_id = pending.timesheet_id
                 JOIN app_users submitter ON submitter.user_id = pending.user_id
-                LEFT JOIN time_entries entry
+                JOIN time_entries entry
                   ON entry.timesheet_id = pending.timesheet_id
                  AND entry.work_date = pending.work_date
+                 AND entry.status = 'submitted'
                 LEFT JOIN projects project ON project.project_id = entry.project_id
+                LEFT JOIN project_tasks task ON task.task_id = entry.task_id
                 WHERE pending.status = 'submitted'
                   AND pending.user_id <> @effective_user_id
                   AND @can_manager_approve
@@ -822,7 +868,8 @@ public static class ProductionApprovalWorkModule
                     ('project:' || project.project_id::text)::text AS scope_key,
                     'project_scope'::text AS approval_unit_type,
                     FALSE AS non_project_only,
-                    FALSE AS contains_non_project_time
+                    FALSE AS contains_non_project_time,
+                    md5(STRING_AGG(to_jsonb(entry)::text || COALESCE(to_jsonb(project)::text, '') || COALESCE(to_jsonb(task)::text, ''), '|' ORDER BY entry.time_entry_id) || COALESCE(MAX(submitter.manager_email), '')) AS review_token
                 FROM pending_days pending
                 JOIN timesheets timesheet ON timesheet.timesheet_id = pending.timesheet_id
                 JOIN app_users submitter ON submitter.user_id = pending.user_id
@@ -831,16 +878,17 @@ public static class ProductionApprovalWorkModule
                  AND entry.work_date = pending.work_date
                  AND entry.project_id IS NOT NULL
                 JOIN projects project ON project.project_id = entry.project_id
+                LEFT JOIN project_tasks task ON task.task_id = entry.task_id
                 WHERE pending.status = 'manager_approved'
                   AND pending.user_id <> @effective_user_id
                   AND @can_project_approve
                   AND entry.status = 'manager_approved'
-                  AND project.project_manager_user_id IS NOT NULL
+                  AND time_requires_project_approval(to_jsonb(entry), to_jsonb(project), to_jsonb(task))
                   AND (
                         @organization_scope
                         OR (
                             @is_project_manager
-                            AND project.project_manager_user_id = @effective_user_id
+                            AND COALESCE(project.project_manager_user_id, project.project_coordinator_user_id) = @effective_user_id
                         )
                   )
                 GROUP BY
@@ -892,17 +940,23 @@ public static class ProductionApprovalWorkModule
                     (COUNT(entry.time_entry_id) > 0 AND COUNT(entry.project_id) = 0) AS non_project_only,
                     (COUNT(*) FILTER (
                         WHERE entry.time_entry_id IS NOT NULL AND entry.project_id IS NULL
-                    ) > 0) AS contains_non_project_time
+                    ) > 0) AS contains_non_project_time,
+                    md5(STRING_AGG(to_jsonb(entry)::text || COALESCE(to_jsonb(project)::text, '') || COALESCE(to_jsonb(task)::text, ''), '|' ORDER BY entry.time_entry_id) || COALESCE(MAX(submitter.manager_email), '')) AS review_token
                 FROM pending_days pending
                 JOIN timesheets timesheet ON timesheet.timesheet_id = pending.timesheet_id
                 JOIN app_users submitter ON submitter.user_id = pending.user_id
-                LEFT JOIN time_entries entry
+                JOIN time_entries entry
                   ON entry.timesheet_id = pending.timesheet_id
                  AND entry.work_date = pending.work_date
                 LEFT JOIN projects project ON project.project_id = entry.project_id
+                LEFT JOIN project_tasks task ON task.task_id = entry.task_id
                 WHERE pending.user_id <> @effective_user_id
                   AND @can_ptc_final_approve
                   AND @organization_scope
+                  AND NOT EXISTS (SELECT 1 FROM time_entries invalid_entry
+                      WHERE invalid_entry.timesheet_id = pending.timesheet_id
+                        AND invalid_entry.work_date = pending.work_date
+                        AND invalid_entry.status NOT IN ('manager_approved', 'pm_approved'))
                   AND (
                         pending.status = 'pm_approved'
                         OR (
@@ -914,8 +968,9 @@ public static class ProductionApprovalWorkModule
                                   AND project_entry.work_date = pending.work_date
                                   AND project_entry.status = 'manager_approved'
                                   AND EXISTS (SELECT 1 FROM projects required_project
+                                      LEFT JOIN project_tasks required_task ON required_task.task_id = project_entry.task_id
                                       WHERE required_project.project_id = project_entry.project_id
-                                        AND required_project.project_manager_user_id IS NOT NULL)
+                                        AND time_requires_project_approval(to_jsonb(project_entry), to_jsonb(required_project), to_jsonb(required_task)))
                             )
                         )
                   )
@@ -957,7 +1012,8 @@ public static class ProductionApprovalWorkModule
                 scope_key,
                 approval_unit_type,
                 non_project_only,
-                contains_non_project_time
+                contains_non_project_time,
+                review_token
             FROM candidates
             WHERE (@stage_filter = '' OR stage = @stage_filter)
             ORDER BY
@@ -1005,7 +1061,8 @@ public static class ProductionApprovalWorkModule
                 reader.GetString(16),
                 reader.GetString(17),
                 reader.GetBoolean(18),
-                reader.GetBoolean(19)));
+                reader.GetBoolean(19),
+                reader.GetString(20)));
         }
 
         return items;
@@ -1020,7 +1077,9 @@ public static class ProductionApprovalWorkModule
         Guid batchId,
         string systemReason,
         bool hasStageEvents,
-        CancellationToken cancellationToken) => stage switch
+        CancellationToken cancellationToken) =>
+        access.IsViewAs || item.UserId == access.ActualUserId || item.UserId == access.EffectiveUserId
+        || !CanCompleteStage(access, stage) ? false : stage switch
         {
             "manager" => await CompleteManagerItemAsync(
                 connection, transaction, access, item, batchId, systemReason, hasStageEvents, cancellationToken),
@@ -1126,14 +1185,16 @@ public static class ProductionApprovalWorkModule
             SELECT entry.time_entry_id
             FROM time_entries entry
             JOIN projects project ON project.project_id = entry.project_id
+            LEFT JOIN project_tasks task ON task.task_id = entry.task_id
             WHERE entry.timesheet_id = @timesheet_id
               AND entry.work_date = @work_date
               AND entry.project_id = @project_id
               AND entry.status = 'manager_approved'
-              AND project.project_manager_user_id IS NOT NULL
+              AND entry.user_id <> @effective_user_id
+              AND time_requires_project_approval(to_jsonb(entry), to_jsonb(project), to_jsonb(task))
               AND (
                     @organization_scope
-                    OR project.project_manager_user_id = @effective_user_id
+                    OR COALESCE(project.project_manager_user_id, project.project_coordinator_user_id) = @effective_user_id
               )
             ORDER BY entry.time_entry_id
             FOR UPDATE OF entry;
@@ -1192,8 +1253,9 @@ public static class ProductionApprovalWorkModule
                 WHERE entry.timesheet_id = @timesheet_id
                   AND entry.work_date = @work_date
                   AND EXISTS (SELECT 1 FROM projects required_project
+                      LEFT JOIN project_tasks required_task ON required_task.task_id = entry.task_id
                       WHERE required_project.project_id = entry.project_id
-                        AND required_project.project_manager_user_id IS NOT NULL)
+                        AND time_requires_project_approval(to_jsonb(entry), to_jsonb(required_project), to_jsonb(required_task)))
                   AND entry.status = 'manager_approved'
             );
             """, connection, transaction))
@@ -1254,8 +1316,7 @@ public static class ProductionApprovalWorkModule
         var currentStatus = await LockDayStatusAsync(
             connection, transaction, item.TimesheetId, item.WorkDate, cancellationToken);
         if (currentStatus is not ("pm_approved" or "manager_approved")) return false;
-        if (currentStatus == "manager_approved"
-            && !await HasNoOutstandingPmApprovalAsync(
+        if (!await HasNoOutstandingPmApprovalAsync(
                 connection, transaction, item.TimesheetId, item.WorkDate, cancellationToken))
         {
             return false;
@@ -1345,7 +1406,8 @@ public static class ProductionApprovalWorkModule
                 @reason
             FROM time_entries entry
             WHERE entry.timesheet_id = @timesheet_id
-              AND entry.work_date = @work_date;
+              AND entry.work_date = @work_date
+              AND entry.status = CASE WHEN @approval_stage = 'manager' THEN 'manager_approved' ELSE 'accounting_ready' END;
             """, connection, transaction);
         command.Parameters.AddWithValue("approval_stage", approvalStage);
         command.Parameters.AddWithValue("actor_user_id", actorUserId);
@@ -1455,7 +1517,9 @@ public static class ProductionApprovalWorkModule
         Guid batchId,
         string stage,
         string mode,
-        DateOnly weekStart,
+        DateOnly periodStart,
+        DateOnly periodEnd,
+        bool monthly,
         int requested,
         int completed,
         int skipped,
@@ -1487,7 +1551,9 @@ public static class ProductionApprovalWorkModule
         command.Parameters.AddWithValue("previous_state", JsonSerializer.Serialize(new
         {
             stage,
-            weekStart,
+            periodStart,
+            periodEnd,
+            periodKind = monthly ? "month" : "week",
             requestedCount = requested
         }));
         command.Parameters.AddWithValue("new_state", JsonSerializer.Serialize(new
@@ -1558,9 +1624,12 @@ public static class ProductionApprovalWorkModule
         await using var command = new NpgsqlCommand("""
             SELECT
                 COUNT(*) > 0
+                AND COUNT(*) FILTER (WHERE status NOT IN ('manager_approved', 'pm_approved')) = 0
                 AND COUNT(*) FILTER (WHERE status = 'manager_approved' AND EXISTS (
-                    SELECT 1 FROM projects p WHERE p.project_id = time_entries.project_id
-                      AND p.project_manager_user_id IS NOT NULL)) = 0
+                    SELECT 1 FROM projects p
+                    LEFT JOIN project_tasks task ON task.task_id = time_entries.task_id
+                    WHERE p.project_id = time_entries.project_id
+                      AND time_requires_project_approval(to_jsonb(time_entries), to_jsonb(p), to_jsonb(task)))) = 0
             FROM time_entries
             WHERE timesheet_id = @timesheet_id
               AND work_date = @work_date;
@@ -1683,7 +1752,10 @@ public static class ProductionApprovalWorkModule
         access.CanPtcFinalApprove,
         access.IsViewAs,
         pmApprovalGranularity = "project_scope",
-        nonProjectApprovalRoute = "manager_then_ptc"
+        nonProjectApprovalRoute = "manager",
+        accountingReleaseRoute = "ptc",
+        projectApprovalRoute = "manager_then_pm_or_coordinator",
+        ptcCanDelegateBothStages = true
     };
 
     private static bool ItemMatchesSearch(ApprovalWorkItem item, string search) =>
@@ -1762,7 +1834,7 @@ public static class ProductionApprovalWorkModule
         DateOnly weekStart,
         Guid batchId,
         string mode) =>
-        $"{StageLabel(stage)} {mode} approval completed by {access.DisplayName} for week {weekStart:yyyy-MM-dd}; batch {batchId:D}. No user-entered approval comment was required.";
+        $"{StageLabel(stage)} {mode} approval completed by {access.DisplayName} for period starting {weekStart:yyyy-MM-dd}; batch {batchId:D}. No user-entered approval comment was required.";
 
     private static string NormalizeCode(string? value)
     {
@@ -1826,14 +1898,16 @@ public static class ProductionApprovalWorkModule
         string? Stage,
         DateOnly? WeekStart,
         List<BulkApprovalSelection>? Items,
-        string? RequestId);
+        string? RequestId,
+        DateOnly? MonthStart = null);
 
     public sealed record BulkApprovalSelection(
         Guid TimesheetId,
         DateOnly WorkDate,
         string? Stage,
         Guid? ProjectId,
-        string? ScopeKey);
+        string? ScopeKey,
+        string? ReviewToken = null);
 
     public sealed record NonProjectActivityRequest(
         string? TaskCode,
@@ -1885,5 +1959,6 @@ public static class ProductionApprovalWorkModule
         string ScopeKey,
         string ApprovalUnitType,
         bool NonProjectOnly,
-        bool ContainsNonProjectTime);
+        bool ContainsNonProjectTime,
+        string ReviewToken);
 }
