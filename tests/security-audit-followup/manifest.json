@@ -1,6 +1,7 @@
 {
   "base": "9796b4cb4f090d78cfb7cd275bc45be2329eb173",
   "files": [
+    ".github/workflows/contracts-approval-funding-ci.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/pr1140-uat-recovery-ci.yml",
@@ -25,6 +26,7 @@
     "tests/validate-celar-ai-pr630-consolidated.mjs"
   ],
   "sha256": {
+    ".github/workflows/contracts-approval-funding-ci.yml": "02735d70f93ae7b9c79b85004439c8dfd69f5cde373c96b498c76621d9384d83",
     ".github/workflows/flowhive-enterprise-psa-ci.yml": "f3e3f5b895943dedf781c1a71f961ca7bf9a5662b6f36e78d3dd683eb3109758",
     ".github/workflows/flowhive-psa-release-control-ci.yml": "6657f227a5f9c88a1804b98d3055425383ec445595724438959038b15dfa0bc1",
     ".github/workflows/pr1140-uat-recovery-ci.yml": "c5d16cd263467be717f07de749608e7fc5c6e5108d32d9a097439c4678940024",
@@ -41,10 +43,10 @@
     "tests/ProjectTime.Api.AuthorizationTests/OfficeRangeBudgetTests.cs": "ee032eabc68861eaaca4167819e23342a56bccbb81cb6e1a48c9446864a30649",
     "tests/ProjectTime.Api.AuthorizationTests/Program.cs": "f84274081b3d7755407cad472e5835b050e4bada58db0ce87e16b02108482a82",
     "tests/SecurityBoundaryTests/Program.cs": "4e948a9d4a9ccd43f6da38558b86129a5f1eafba2d712151b49780de21e3ced8",
-    "tests/security-audit-followup/scope.py": "c5c8c8e32526ec9f79a7d5c02c081d1a62553d6a41fc040da7c473325e218cbb",
+    "tests/security-audit-followup/scope.py": "c00681427e3cb7b254f48a86b0be8b2409fb3144fe8ca7efb4ecb1df430980f0",
     "tests/security-audit-followup/test_scope.py": "94f1a38176c562e62b3d1e0af2b7cb791bb90d879a218509fd138cc19b51a497",
     "tests/security-release/admission_fixture.py": "1555f887a91e585b6b1cf521805e69315a0e198b6b9a250f7ad09c21dc21524a",
-    "tests/validate-celar-ai-pr630-consolidated-legacy.mjs": "f41d4dfc1e006ca42664910c6a3e9a202c5a3d612d9156fc09ff136c176cc51d",
+    "tests/validate-celar-ai-pr630-consolidated-legacy.mjs": "2baa1411051ec2984e7298471ba41739d50ef382d9dad346e72aa7188b059ca2",
     "tests/validate-celar-ai-pr630-consolidated.mjs": "314bbacc98bf275561f88ed5fa5ecf672ae035347b8a72f2b158283d9d99a214"
   }
 }

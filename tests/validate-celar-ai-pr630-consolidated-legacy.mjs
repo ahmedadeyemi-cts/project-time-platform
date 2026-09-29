@@ -185,7 +185,9 @@ const inheritedSecurityMigrations = securityRemediationScope && module025SowSell
   fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `a562371a0bbed74e881c40a4c246928dac9ec72e:${file}`], { cwd: root })));
 const unchangedUatMigrations = securityUatAcceptanceScope && requiredFiles.slice(0, 2).every((file) =>
   fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `5f9c58057a11858b17f272661b93dc890d037047:${file}`], { cwd: root })));
-requireValue(unchangedUatMigrations || inheritedSecurityMigrations || migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessorScope ? 'combined FlowHive/SOW migrations 103-106' : 'Migration 084 and guarded rollback');
+const unchangedAuditMigrations = securityAuditFollowupScope && requiredFiles.slice(0, 2).every((file) =>
+  fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `9796b4cb4f090d78cfb7cd275bc45be2329eb173:${file}`], { cwd: root })));
+requireValue(unchangedAuditMigrations || unchangedUatMigrations || inheritedSecurityMigrations || migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessorScope ? 'combined FlowHive/SOW migrations 103-106' : 'Migration 084 and guarded rollback');
 requireValue(!changed.includes('.github/workflows/celar-ai-source-snapshot-temp.yml'), 'CELAR_PR630_TEMP_SNAPSHOT_REMOVED');
 const flowHiveProxyLimit = 'deployment/containers/web/default.conf.template';
 const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope
