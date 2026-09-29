@@ -14,6 +14,8 @@ ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 ERRORS: list[str] = []
 
+RELEASE_PUBLISH_WORKFLOW_SHA256 = '77c0f0597ca855ca4cd84949bcaf651cef31fb4aa1c169744b44fae3fe01914b'
+
 ALLOWED_CONTENT_WRITE_WORKFLOWS = {
     "publish-pulse-ai-architecture-v1-1.yml",
 }
@@ -141,7 +143,10 @@ for workflow in workflows:
         ERRORS.append(f"{name}: write-all permissions are prohibited")
 
     if re.search(r"(?m)^\s*contents\s*:\s*write\s*$", body):
-        if name not in ALLOWED_CONTENT_WRITE_WORKFLOWS:
+        if name == "release.yml":
+            if hashlib.sha256(body.encode()).hexdigest() != RELEASE_PUBLISH_WORKFLOW_SHA256:
+                ERRORS.append("release.yml: reviewed publication permission boundary changed")
+        elif name not in ALLOWED_CONTENT_WRITE_WORKFLOWS:
             ERRORS.append(f"{name}: unapproved contents: write permission")
 
     if name in CRITICAL_PINNED_WORKFLOWS:

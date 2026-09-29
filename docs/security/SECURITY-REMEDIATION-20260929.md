@@ -31,7 +31,7 @@ The active protected deployment workflow and its exact registration remain uncha
 - Actual authorization resolvers and contract handlers pass 16 database-backed cases. Coverage includes delegated privilege rejection, authorized reads, View-As, revoked administrator assignments, contract-balance reads and contract usage writes.
 - Full local run:14 authority,16 privileged integration,15 identity/session,64 completion,45 route and58 existing authorization checks passed against an isolated PostgreSQL-compatible engine. Native PostgreSQL validation remains required for this latest change, especially concurrent behavior.
 - The prior pushed checkpoint passed68 of72 returned workflows at inspection; one was running and three historical registration failures are addressed in this follow-up. All121 admission tests passed locally without removing assertions. No live deployment occurred.
-- Current dispositions:37 prior source repairs,93 candidate repairs with incomplete validation,19 further remediation/review. Zero findings are closed through UAT.
+- Current dispositions:37 prior source repairs,97 candidate repairs with incomplete validation,15 further remediation/review. Zero findings are closed through UAT.
 
 ## All-finding disposition
 
@@ -45,7 +45,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 004 | Candidate repair; incomplete validation | Not established |
 | 005 | Candidate repair; incomplete validation | Not established |
 | 006 | Further remediation/review required | Not established |
-| 007 | Further remediation/review required | Not established |
+| 007 | Candidate repair; incomplete validation | Not established |
 | 008 | Candidate repair; incomplete validation | Not established |
 | 009 | Candidate repair; incomplete validation | Not established |
 | 010 | Prior source fix; UAT unverified | Not established |
@@ -100,10 +100,10 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 059 | Prior source fix; UAT unverified | Not established |
 | 060 | Prior source fix; UAT unverified | Not established |
 | 061 | Further remediation/review required | Not established |
-| 062 | Further remediation/review required | Not established |
-| 063 | Further remediation/review required | Not established |
+| 062 | Candidate repair; incomplete validation | Not established |
+| 063 | Candidate repair; incomplete validation | Not established |
 | 064 | Candidate repair; incomplete validation | Not established |
-| 065 | Further remediation/review required | Not established |
+| 065 | Candidate repair; incomplete validation | Not established |
 | 066 | Candidate repair; incomplete validation | Not established |
 | 067 | Candidate repair; incomplete validation | Not established |
 | 068 | Candidate repair; incomplete validation | Not established |
@@ -196,3 +196,12 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 - Migration130 is packaged with digest verification and content-free database postconditions. The private-network runner, workflow and approval paths are unchanged; a constrained registration test rejects unrelated builder edits. All24 migration assertions pass locally. Live migration130 execution remains pending.
 - The credential-transition utility defaults to read-only verification, validates old envelopes/fingerprints, and performs both Microsoft-store updates in one transaction. Rotation requires an explicit maintenance marker. Nine isolated tests cover successful rotation, incorrect key/maintenance rejection, rollback on partial failure, and secret-free output. Native CI is required before rotation.
 - Azure provisioning now requires separately provisioned runtime credentials; VM example guidance no longer reuses the database administrator. Live role provisioning and runtime validation remain pending.
+
+## Release and identity boundary follow-up
+
+- Release image-build dependencies no longer receive repository-content write authority. A separate fresh runner validates tag/commit/image identities before publishing the digest manifest. Four tests reject malformed tags, retagging and incorrect image identities; the publication workflow is hash-bound by the repository security gate.
+- Twenty-two additional production middleware/database checks reject non-Super-Administrator edits to protected accounts across email, profile, role, password, deactivate, delete and bulk routes, including alternate route spellings. Disabled protected accounts remain protected. Total privileged integration checks:38, passing locally.
+- Security middleware now shares canonical database connection resolution with session authority. The new protected-account fixture exposed the prior mismatch; missing configuration still fails closed.
+- The private-network credential verifier successfully decrypted and fingerprint-validated both existing Test Microsoft stores without emitting values or changing credentials. Two independent keys are staged in the Test vault; activation and rotation remain pending.
+- Proposed runtime database-role provisioning passes11 isolated privilege tests, including immutable evidence, denied TRUNCATE, no migration writes, hidden transition backups and rejection of elevated pre-existing roles. This does not establish successful application execution under that identity.
+- Fresh CI remains mandatory. All existing migration-package assertions are retained, with migration130 digest/tamper coverage added. No application source deployment has occurred.

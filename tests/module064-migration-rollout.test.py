@@ -2,6 +2,7 @@
 from pathlib import Path
 import os
 import hashlib
+import importlib.util
 import subprocess
 import tempfile
 
@@ -41,6 +42,13 @@ LAYA_RUNNER_EDITS = [(937, 937, '.sql"\nAUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE=
 
 
 def without_laya_additions(source):
+    if '# SECURITY_130_PACKAGE_BEGIN' in source:
+        spec = importlib.util.spec_from_file_location('security_completion_scope', ROOT/'tests/security-completion/scope.py')
+        scope = importlib.util.module_from_spec(spec); spec.loader.exec_module(scope)
+        prior = subprocess.check_output(['git', 'show', scope.BASE+':'+RUNNER], cwd=ROOT, text=True)
+        try: scope.verify_migration_delta(prior, source)
+        except RuntimeError as error: raise AssertionError(str(error)) from error
+        source = prior
     baseline = subprocess.check_output(['git', 'show', LAYA_BASE + ':' + RUNNER], cwd=ROOT, text=True)
     expected = baseline
     for start, end, replacement in reversed(LAYA_RUNNER_EDITS):

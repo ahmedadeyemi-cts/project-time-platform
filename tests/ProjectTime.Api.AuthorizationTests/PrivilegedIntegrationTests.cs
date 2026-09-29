@@ -1,6 +1,8 @@
 using System.Reflection;
 using System.Text.Json;
+using System.Text;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using ProjectTime.Api.Modules;
 
@@ -38,7 +40,11 @@ internal static class PrivilegedIntegrationTests
                 CREATE TABLE app_user_role_assignments(user_id uuid,app_role_id int,is_active boolean DEFAULT TRUE);
                 INSERT INTO app_roles VALUES(1,'PROJECT_TEAM_COORDINATOR'),(2,'ADMINISTRATOR'),(3,'SUPER_ADMINISTRATOR'),(4,'ENGINEERING');
                 CREATE TABLE app_users(user_id uuid PRIMARY KEY,is_active boolean DEFAULT TRUE,login_enabled boolean DEFAULT TRUE,
-                    job_title text,department_name text,department text,team_name text);
+                    job_title text,department_name text,department text,team_name text,email text);
+                INSERT INTO app_users(user_id,email) VALUES
+                    ('10000000-0000-0000-0000-000000000001','ptc@example.invalid'),
+                    ('10000000-0000-0000-0000-000000000002','admin@example.invalid'),
+                    ('10000000-0000-0000-0000-000000000003','protected@example.invalid');
                 INSERT INTO app_users(user_id,job_title,department_name,department,team_name)
                     VALUES('10000000-0000-0000-0000-000000000004','Super Administrator','Accounting','Finance','Executive');
                 INSERT INTO app_permissions VALUES(1,'SYSTEM_ADMINISTRATION'),(2,'MANAGE_ALL'),(3,'MANAGE_ENTRA_SECRET'),(4,'MANAGE_GLOBAL_MAIL_CONFIGURATION');
@@ -89,6 +95,33 @@ internal static class PrivilegedIntegrationTests
                 Check(await ResultStatus(type,"ResolveAccessAsync",args)==403,"View-As cannot activate identity profiles");
             }
             var contracts = typeof(ContractsPrepaidManagementModule);
+            // Real middleware and database guard: no endpoint is invoked for a
+            // protected account, regardless of canonical casing/trailing slash.
+            using var services = new ServiceCollection().AddLogging().AddOptions().BuildServiceProvider();
+            var invoke = typeof(SecurityHardeningModule).GetMethod("InvokeAsync",BindingFlags.Static|BindingFlags.NonPublic)!;
+            foreach(var suffix in new[]{"users/email","users/profile","users/roles","local-password","users/deactivate","users/delete","users/bulk-update"})
+            foreach(var spelling in new[]{"/api/admin/user-admin/"+suffix,"/api/admin/user-admin/"+suffix+"/",("/api/admin/user-admin/"+suffix).ToUpperInvariant()+"/"})
+            {
+                var context=Context(2);context.RequestServices=services;context.Request.Path=spelling;
+                context.Request.ContentType="application/json";
+                var payload=suffix.EndsWith("bulk-update")
+                    ? "{\"userIds\":[\"10000000-0000-0000-0000-000000000003\"]}"
+                    : "{\"userId\":\"10000000-0000-0000-0000-000000000003\"}";
+                var body=Encoding.UTF8.GetBytes(payload);context.Request.Body=new MemoryStream(body);context.Request.ContentLength=body.Length;
+                context.Response.Body=new MemoryStream();var reached=false;
+                Func<Task> next=()=>{reached=true;return Task.CompletedTask;};
+                await (Task)invoke.Invoke(null,new object[]{context,next})!;
+                Check(!reached && context.Response.StatusCode==403,"Administrator cannot modify protected account through "+spelling+" status="+context.Response.StatusCode+" response="+Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray()));
+            }
+            var target=typeof(SecurityHardeningModule).GetMethod("TargetsExistingSuperAdministratorAsync",BindingFlags.Static|BindingFlags.NonPublic)!;
+            await Sql("UPDATE app_users SET is_active=FALSE WHERE email='protected@example.invalid'");
+            await using(var connection=new NpgsqlConnection(builder.ConnectionString))
+            {
+                await connection.OpenAsync();
+                Check(await (Task<bool>)target.Invoke(null,new object[]{connection,Array.Empty<Guid>(),"PROTECTED@example.invalid"})!,
+                    "Disabled protected account remains protected when addressed by email");
+            }
+            await Sql("UPDATE app_users SET is_active=TRUE WHERE email='protected@example.invalid'");
             var eligible = contracts.GetMethod("GetEligibleAsync",BindingFlags.Static|BindingFlags.NonPublic)!;
             var engineer = Context(4); engineer.Request.Method="GET";
             engineer.Request.QueryString=new QueryString("?clientId=20000000-0000-0000-0000-000000000001");

@@ -17,9 +17,7 @@ on:
       - "v*.*.*"
 
 permissions:
-  contents: write        # create the GitHub Release
-  packages: write        # push images to GHCR
-  security-events: write # upload Trivy SARIF to the Security tab
+  contents: read
 
 concurrency:
   group: release-${{ github.ref_name }}
@@ -35,10 +33,16 @@ env:
 jobs:
   build-scan-publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
     outputs:
       version: ${{ steps.meta.outputs.version }}
       web_digest: ${{ steps.web.outputs.digest }}
       api_digest: ${{ steps.api.outputs.digest }}
+      web_image: ${{ steps.meta.outputs.web_image }}
+      api_image: ${{ steps.meta.outputs.api_image }}
     steps:
       - name: Checkout (at the tag)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -48,6 +52,11 @@ jobs:
       - name: Derive version + image refs
         id: meta
         run: |
+          python3 - <<'PY_TAG'
+          import os, re
+          if not re.fullmatch(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?', os.environ['GITHUB_REF_NAME']):
+              raise SystemExit('Invalid release tag')
+          PY_TAG
           version="${GITHUB_REF_NAME#v}"
           owner_repo="$(echo "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
@@ -116,26 +125,50 @@ jobs:
         with:
           sarif_file: .
 
-      # ---- emit the pinned digest manifest ----
-      - name: Write release digest manifest
-        id: manifest
+  publish-release:
+    needs: build-scan-publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      WEB_IMAGE: ${{ needs.build-scan-publish.outputs.web_image }}
+      API_IMAGE: ${{ needs.build-scan-publish.outputs.api_image }}
+      WEB_DIGEST: ${{ needs.build-scan-publish.outputs.web_digest }}
+      API_DIGEST: ${{ needs.build-scan-publish.outputs.api_digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # This fresh runner never checks out or executes build/source dependencies.
+      - name: Validate provenance and publish immutable digest manifest
+        shell: bash
         run: |
-          cat > release-digests.json <<EOF
-          {
-            "version": "${{ steps.meta.outputs.version }}",
-            "tag": "${GITHUB_REF_NAME}",
-            "commit": "${GITHUB_SHA}",
-            "images": {
-              "web": "${{ steps.meta.outputs.web_image }}@${{ steps.web.outputs.digest }}",
-              "api": "${{ steps.meta.outputs.api_image }}@${{ steps.api.outputs.digest }}"
-            }
-          }
-          EOF
-          cat release-digests.json
-
-      - name: Publish GitHub Release with digest manifest
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: release-digests.json
+          set -Eeuo pipefail
+          python3 - <<'PY_RELEASE'
+          import json, os, re, subprocess
+          from pathlib import Path
+          env = os.environ
+          tag, commit, repo = env['GITHUB_REF_NAME'], env['GITHUB_SHA'], env['GITHUB_REPOSITORY']
+          if not re.fullmatch(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?', tag):
+              raise SystemExit('Invalid release tag')
+          if not re.fullmatch(r'[0-9a-f]{40}', commit): raise SystemExit('Invalid source identity')
+          images = {}
+          for component in ('web', 'api'):
+              image, digest = env[component.upper()+'_IMAGE'], env[component.upper()+'_DIGEST']
+              if image != 'ghcr.io/'+repo.lower()+'/'+component or not re.fullmatch(r'sha256:[0-9a-f]{64}', digest):
+                  raise SystemExit('Invalid immutable image identity')
+              images[component] = image+'@'+digest
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', 'repos/'+repo+'/'+path]))
+          obj = api('git/ref/tags/'+tag)['object']
+          for _ in range(5):
+              if obj['type'] == 'commit': break
+              if obj['type'] != 'tag' or not re.fullmatch(r'[0-9a-f]{40}', obj['sha']):
+                  raise SystemExit('Invalid tag object')
+              obj = api('git/tags/'+obj['sha'])['object']
+          if obj['type'] != 'commit' or obj['sha'] != commit:
+              raise SystemExit('Release tag changed after the build')
+          manifest = {'version':tag[1:], 'tag':tag, 'commit':commit, 'images':images}
+          Path('release-digests.json').write_text(json.dumps(manifest, indent=2)+'\n')
+          PY_RELEASE
+          gh release create "$GITHUB_REF_NAME" release-digests.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --verify-tag \
+            --title "$GITHUB_REF_NAME" --generate-notes

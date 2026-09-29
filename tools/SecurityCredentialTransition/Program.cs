@@ -29,6 +29,7 @@ try
         var cs = new NpgsqlConnectionStringBuilder { Host=host, Database=database,
             Username=Required("PGUSER"), Password=password, Port=int.Parse(Environment.GetEnvironmentVariable("PGPORT") ?? "5432"),
             SslMode=isolatedFixture ? SslMode.Disable : SslMode.VerifyFull,
+            GssEncryptionMode=GssEncryptionMode.Disable,
             Timeout=15, CommandTimeout=30, IncludeErrorDetail=false, Pooling=false };
         await using var connection = new NpgsqlConnection(cs.ConnectionString);
         await connection.OpenAsync();
@@ -92,7 +93,8 @@ try
 }
 catch(Exception ex)
 {
-    Console.Error.WriteLine(JsonSerializer.Serialize(new { status="failed", errorType=ex.GetType().Name, credentialValuesEmitted=false }));
+    Console.Error.WriteLine(JsonSerializer.Serialize(new { status="failed", errorType=ex.GetType().Name,
+        innerType=ex.InnerException?.GetType().Name, sqlState=(ex as PostgresException)?.SqlState, credentialValuesEmitted=false }));
     Environment.ExitCode=1;
 }
 

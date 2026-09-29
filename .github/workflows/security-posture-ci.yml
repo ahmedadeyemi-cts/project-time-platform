@@ -48,6 +48,7 @@ jobs:
           set -Eeuo pipefail
           python3 tests/security-completion/ocr.test.py
           python3 tests/security-completion/gateway.test.py
+          python3 tests/security-completion/release.test.py
           python3 tests/security-completion/test_scope.py
           python3 tests/security-deployment-boundaries.test.py
           python3 tests/security-release/test_controller_registration.py
@@ -66,6 +67,7 @@ jobs:
           set -Eeuo pipefail
           npm ci --ignore-scripts --prefix tests/security-completion
           node tests/security-completion/migrations.test.mjs
+          node tests/security-completion/runtime-role.test.mjs
 
       - name: Start isolated authorization database
         shell: bash

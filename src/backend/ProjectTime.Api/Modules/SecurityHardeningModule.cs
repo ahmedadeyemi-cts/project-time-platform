@@ -1447,38 +1447,10 @@ public static class SecurityHardeningModule
 
     private static async Task<NpgsqlConnection> OpenConnectionAsync()
     {
-        var host = Environment.GetEnvironmentVariable("PTP_DB_HOST");
-        var database = Environment.GetEnvironmentVariable("PTP_DB_NAME");
-        var username = Environment.GetEnvironmentVariable("PTP_DB_USER");
-        var password = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
-
-        if (string.IsNullOrWhiteSpace(host)
-            || string.IsNullOrWhiteSpace(database)
-            || string.IsNullOrWhiteSpace(username)
-            || string.IsNullOrWhiteSpace(password))
-        {
-            throw new InvalidOperationException(
-                "Security authorization could not be evaluated because database configuration is incomplete.");
-        }
-
-        var builder = new NpgsqlConnectionStringBuilder
-        {
-            Host = host,
-            Port = int.TryParse(
-                Environment.GetEnvironmentVariable("PTP_DB_PORT"),
-                out var port)
-                ? port
-                : 5432,
-            Database = database,
-            Username = username,
-            Password = password,
-            IncludeErrorDetail = false,
-            Pooling = true,
-            MinPoolSize = 0,
-            MaxPoolSize = 10
-        };
-
-        var connection = new NpgsqlConnection(builder.ConnectionString);
+        var configured = ProjectPulseActualSessionAuthority.BuildConnectionString();
+        if (string.IsNullOrWhiteSpace(configured))
+            throw new InvalidOperationException("Security authorization database configuration is incomplete.");
+        var connection = new NpgsqlConnection(configured);
         await connection.OpenAsync();
         return connection;
     }

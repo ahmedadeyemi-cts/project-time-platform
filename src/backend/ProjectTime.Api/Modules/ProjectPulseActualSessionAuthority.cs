@@ -218,7 +218,7 @@ internal static class ProjectPulseActualSessionAuthority
         return string.Empty;
     }
 
-    private static string BuildConnectionString()
+    internal static string BuildConnectionString()
     {
         foreach (var name in new[]
                  {
