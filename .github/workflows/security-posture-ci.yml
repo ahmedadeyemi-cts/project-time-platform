@@ -68,6 +68,7 @@ jobs:
           npm ci --ignore-scripts --prefix tests/security-completion
           node tests/security-completion/migrations.test.mjs
           node tests/security-completion/runtime-role.test.mjs
+          node tests/security-completion/approval-scope.test.mjs
 
       - name: Start isolated authorization database
         shell: bash

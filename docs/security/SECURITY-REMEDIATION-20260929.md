@@ -31,7 +31,7 @@ The active protected deployment workflow and its exact registration remain uncha
 - Actual authorization resolvers and contract handlers pass 16 database-backed cases. Coverage includes delegated privilege rejection, authorized reads, View-As, revoked administrator assignments, contract-balance reads and contract usage writes.
 - Full local run:14 authority,16 privileged integration,15 identity/session,64 completion,45 route and58 existing authorization checks passed against an isolated PostgreSQL-compatible engine. Native PostgreSQL validation remains required for this latest change, especially concurrent behavior.
 - The prior pushed checkpoint passed68 of72 returned workflows at inspection; one was running and three historical registration failures are addressed in this follow-up. All121 admission tests passed locally without removing assertions. No live deployment occurred.
-- Current dispositions:37 prior source repairs,97 candidate repairs with incomplete validation,15 further remediation/review. Zero findings are closed through UAT.
+- Current dispositions:37 prior source repairs,104 candidate repairs with incomplete validation,8 further remediation/review. Zero findings are closed through UAT.
 
 ## All-finding disposition
 
@@ -68,7 +68,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 027 | Candidate repair; incomplete validation | Not established |
 | 028 | Prior source fix; UAT unverified | Not established |
 | 029 | Candidate repair; incomplete validation | Not established |
-| 030 | Further remediation/review required | Not established |
+| 030 | Candidate repair; incomplete validation | Not established |
 | 031 | Candidate repair; incomplete validation | Not established |
 | 032 | Candidate repair; incomplete validation | Not established |
 | 033 | Candidate repair; incomplete validation | Not established |
@@ -88,12 +88,12 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 047 | Candidate repair; incomplete validation | Not established |
 | 048 | Candidate repair; incomplete validation | Not established |
 | 049 | Candidate repair; incomplete validation | Not established |
-| 050 | Further remediation/review required | Not established |
+| 050 | Candidate repair; incomplete validation | Not established |
 | 051 | Candidate repair; incomplete validation | Not established |
 | 052 | Prior source fix; UAT unverified | Not established |
 | 053 | Candidate repair; incomplete validation | Not established |
-| 054 | Further remediation/review required | Not established |
-| 055 | Further remediation/review required | Not established |
+| 054 | Candidate repair; incomplete validation | Not established |
+| 055 | Candidate repair; incomplete validation | Not established |
 | 056 | Prior source fix; UAT unverified | Not established |
 | 057 | Prior source fix; UAT unverified | Not established |
 | 058 | Candidate repair; incomplete validation | Not established |
@@ -154,7 +154,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 113 | Candidate repair; incomplete validation | Not established |
 | 114 | Candidate repair; incomplete validation | Not established |
 | 115 | Candidate repair; incomplete validation | Not established |
-| 116 | Further remediation/review required | Not established |
+| 116 | Candidate repair; incomplete validation | Not established |
 | 117 | Candidate repair; incomplete validation | Not established |
 | 118 | Candidate repair; incomplete validation | Not established |
 | 119 | Candidate repair; incomplete validation | Not established |
@@ -183,9 +183,9 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 142 | Candidate repair; incomplete validation | Not established |
 | 143 | Prior source fix; UAT unverified | Not established |
 | 144 | Candidate repair; incomplete validation | Not established |
-| 145 | Further remediation/review required | Not established |
+| 145 | Candidate repair; incomplete validation | Not established |
 | 146 | Prior source fix; UAT unverified | Not established |
-| 147 | Further remediation/review required | Not established |
+| 147 | Candidate repair; incomplete validation | Not established |
 | 148 | Candidate repair; incomplete validation | Not established |
 | 149 | Candidate repair; incomplete validation | Not established |
 
@@ -205,3 +205,12 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 - The private-network credential verifier successfully decrypted and fingerprint-validated both existing Test Microsoft stores without emitting values or changing credentials. Two independent keys are staged in the Test vault; activation and rotation remain pending.
 - Proposed runtime database-role provisioning passes11 isolated privilege tests, including immutable evidence, denied TRUNCATE, no migration writes, hidden transition backups and rejection of elevated pre-existing roles. This does not establish successful application execution under that identity.
 - Fresh CI remains mandatory. All existing migration-package assertions are retained, with migration130 digest/tamper coverage added. No application source deployment has occurred.
+
+## Mixed-scope and canonical-route verification
+
+- Approval Center now filters both aggregate hours and entry details to owned projects for project-manager scope. Eight database cases verify mixed-project days, private leave, search filtering, unrelated managers and retained authorized whole-day access.
+- Actual middleware checks reject delegated system-authority secret writes and client-selected privileged import roles across normal, trailing-slash and mixed-case paths. Twelve database-backed checks reject foreign intake mutations across four GUID spellings after route-level admission succeeds.
+- Session-extension SQL rejects password-rotated and absolute-expired sessions and caps successful extension at12 hours. Identity/session database checks now total18; privileged integration checks total56.
+- Eight actual HTML/legacy-DOC parser cases complete within a five-second budget for ordinary content and2MB adversarial inputs. Canonical import, closeout and SSO middleware checks total9.
+- Runtime database roles were prepared successfully in Test after a rolled-back rehearsal. Both remain unable to log in; the API still uses its existing account. Dedicated-key activation, encrypted-secret rotation, application execution under the runtime identity and protected UAT acceptance remain pending.
+- Historical UAT artifact inventory confirmed retained evidence archives from prior successful runs. Their private review and containment remain open; no cleanup is claimed by these source tests.

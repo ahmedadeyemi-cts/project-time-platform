@@ -1,4 +1,5 @@
 using System.Reflection;
+using Microsoft.AspNetCore.Builder;
 using System.Text.Json;
 using System.Text;
 using Microsoft.AspNetCore.Http;
@@ -94,6 +95,30 @@ internal static class PrivilegedIntegrationTests
                 var args=type==typeof(MicrosoftServicesRuntimeCompatibility)?new object[]{Context(3,true)}:new object[]{Context(3,true),true};
                 Check(await ResultStatus(type,"ResolveAccessAsync",args)==403,"View-As cannot activate identity profiles");
             }
+            // Exercise the real compatibility middleware with a delegated, authenticated actor.
+            var webBuilder=WebApplication.CreateBuilder(new WebApplicationOptions {Args=Array.Empty<string>(),EnvironmentName="Test"});
+            await using(var app=webBuilder.Build())
+            {
+                app.UseCanonicalApiPaths();app.UseMicrosoftIntegrationSecurityCompatibility();
+                var reached=false;((IApplicationBuilder)app).Run(context=>{reached=true;return Task.CompletedTask;});
+                var pipeline=((IApplicationBuilder)app).Build();
+                await Sql("DELETE FROM app_role_permissions WHERE app_role_id=1 AND app_permission_id=3");
+                foreach(var route in new[]{"directory-users/import-selected","client-secret"})
+                foreach(var variant in new[]{0,1,2})
+                {
+                    var path="/api/microsoft-integration/"+route;
+                    if(variant==1)path+="/";if(variant==2)path=path.ToUpperInvariant()+"/";
+                    var context=Context(1);context.RequestServices=app.Services;context.Request.Path=path;
+                    context.Request.Method=route=="client-secret"?"PUT":"POST";
+                    context.Request.ContentType="application/json";
+                    var bytes=Encoding.UTF8.GetBytes("{\"defaultRoleCode\":\"SUPER_ADMINISTRATOR\",\"clientSecret\":\"synthetic-secret\"}");
+                    context.Request.Body=new MemoryStream(bytes);context.Request.ContentLength=bytes.Length;context.Response.Body=new MemoryStream();
+                    reached=false;await pipeline(context);
+                    Check(!reached && context.Response.StatusCode==(route=="client-secret"?403:400),
+                        "Delegated system authority cannot write secrets or select privileged import roles: "+path);
+                }
+                await Sql("INSERT INTO app_role_permissions VALUES(1,3)");
+            }
             var contracts = typeof(ContractsPrepaidManagementModule);
             // Real middleware and database guard: no endpoint is invoked for a
             // protected account, regardless of canonical casing/trailing slash.
@@ -112,6 +137,28 @@ internal static class PrivilegedIntegrationTests
                 Func<Task> next=()=>{reached=true;return Task.CompletedTask;};
                 await (Task)invoke.Invoke(null,new object[]{context,next})!;
                 Check(!reached && context.Response.StatusCode==403,"Administrator cannot modify protected account through "+spelling+" status="+context.Response.StatusCode+" response="+Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray()));
+            }
+            await Sql("""
+                INSERT INTO app_roles VALUES(5,'PROJECT_MANAGEMENT',TRUE);
+                INSERT INTO app_permissions VALUES(5,'MANAGE_PROJECT_ASSIGNMENTS');
+                INSERT INTO app_role_permissions VALUES(5,5);
+                INSERT INTO app_users(user_id,email) VALUES('10000000-0000-0000-0000-000000000005','pm@example.invalid');
+                INSERT INTO app_user_role_assignments VALUES('10000000-0000-0000-0000-000000000005',5,TRUE);
+                CREATE TABLE project_intake_requests(project_intake_request_id uuid,requested_by_user_id uuid,assigned_pm_user_id uuid,account_executive_user_id uuid,solution_architect_user_id uuid);
+                INSERT INTO project_intake_requests VALUES('90000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000004',NULL,NULL,NULL);
+                """);
+            foreach(var format in new[]{"D","N","B","P"})
+            foreach(var suffix in new[]{"post-intake","supporting-documents/upload","project-link"})
+            {
+                var context=Context(5);context.RequestServices=services;
+                context.Request.Path="/api/project-intake/"+Guid.Parse("90000000-0000-0000-0000-000000000001").ToString(format)+"/"+suffix+"/";
+                context.Request.ContentType="application/json";var bytes=Encoding.UTF8.GetBytes("{}");
+                context.Request.Body=new MemoryStream(bytes);context.Request.ContentLength=bytes.Length;context.Response.Body=new MemoryStream();
+                var reached=false;Func<Task> next=()=>{reached=true;return Task.CompletedTask;};
+                await (Task)invoke.Invoke(null,new object[]{context,next})!;
+                var response=Encoding.UTF8.GetString(((MemoryStream)context.Response.Body).ToArray());
+                Check(!reached && context.Response.StatusCode==403 && response.Contains("intake_access_denied"),
+                    "Foreign intake rejects alternate GUID spelling "+format+"/"+suffix+": "+response);
             }
             var target=typeof(SecurityHardeningModule).GetMethod("TargetsExistingSuperAdministratorAsync",BindingFlags.Static|BindingFlags.NonPublic)!;
             await Sql("UPDATE app_users SET is_active=FALSE WHERE email='protected@example.invalid'");
