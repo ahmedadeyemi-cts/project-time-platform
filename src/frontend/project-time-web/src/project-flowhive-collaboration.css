@@ -1,0 +1,36 @@
+.project-flowhive-center .flowhive-collaboration-card { display:grid;gap:1rem;padding:1.25rem;border:1px solid var(--flowhive-line);border-radius:16px;background:var(--flowhive-surface);color:var(--flowhive-ink);min-width:0; }
+.project-flowhive-center .flowhive-collaboration-card > header { display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;flex-wrap:wrap; }
+.project-flowhive-center .flowhive-collaboration-card :is(h3,h4,p) {margin:0;color:var(--flowhive-ink);}
+.project-flowhive-center .flowhive-collaboration-card p,.project-flowhive-center .flowhive-collaboration-card small {color:var(--flowhive-muted);line-height:1.5;}
+.project-flowhive-center .flowhive-collaboration-card h4 {display:flex;gap:.7rem;align-items:center;}
+.project-flowhive-center .flowhive-collaboration-card h4 span {font-size:.8rem;color:var(--flowhive-muted);font-weight:500;}
+.project-flowhive-center .flowhive-collaboration-actions {display:flex;gap:.6rem;flex-wrap:wrap;}
+.project-flowhive-center .flowhive-team-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:.7rem;}
+.project-flowhive-center .flowhive-team-grid article {display:flex;gap:.7rem;background:var(--flowhive-soft);padding:.9rem;border-radius:12px;min-width:0;}
+.project-flowhive-center .flowhive-team-grid article div {display:grid;gap:.25rem;overflow-wrap:anywhere;min-width:0;}
+.project-flowhive-center .flowhive-team-initials {display:grid;place-items:center;flex:0 0 36px;width:36px;height:36px;border-radius:50%;background:var(--flowhive-sky);color:var(--flowhive-ink);font-weight:700;}
+.project-flowhive-center .flowhive-contact-list,.project-flowhive-center .flowhive-meeting-draft-history {display:grid;gap:.65rem;}
+.project-flowhive-center .flowhive-contact-list article,.project-flowhive-center .flowhive-meeting-draft-history article {display:flex;justify-content:space-between;gap:.8rem;padding:.8rem;border:1px solid var(--flowhive-line);border-radius:10px;flex-wrap:wrap;}
+.project-flowhive-center .flowhive-contact-list article > div:first-child,.project-flowhive-center .flowhive-meeting-draft-history article > div {display:grid;gap:.25rem;overflow-wrap:anywhere;}
+.project-flowhive-center .flowhive-collaboration-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.85rem;}
+.project-flowhive-center :is(.flowhive-contact-form,.flowhive-meeting-draft-form) {display:grid;gap:.8rem;border:1px solid var(--flowhive-line);border-radius:12px;padding:1rem;background:var(--flowhive-soft);}
+.project-flowhive-center .flowhive-collaboration-card label {display:grid;gap:.4rem;min-width:0;}
+.project-flowhive-center .flowhive-collaboration-card input,.project-flowhive-center .flowhive-collaboration-card textarea {max-width:100%;}
+.project-flowhive-center .flowhive-person-option {display:flex;gap:.6rem;align-items:flex-start;padding:.35rem 0;}
+.project-flowhive-center .flowhive-person-option input[type=checkbox] {min-width:18px;width:18px;min-height:18px;height:18px;flex:0 0 18px;margin-top:.2rem;}
+.project-flowhive-center .flowhive-person-option span {display:grid;gap:.15rem;overflow-wrap:anywhere;}
+.project-flowhive-center .flowhive-person-option small {font-size:.75rem;color:var(--flowhive-muted);}
+.project-flowhive-center .flowhive-collaboration-error {border-left:4px solid #c77c13;padding:.8rem;background:var(--flowhive-soft);}
+.project-flowhive-center .flowhive-people-picker {min-width:225px;color:var(--flowhive-ink);}
+.project-flowhive-center .flowhive-people-picker summary {cursor:pointer;display:grid;gap:.2rem;font-weight:700;}
+.project-flowhive-center .flowhive-people-picker summary span {font-size:.76rem;color:var(--flowhive-muted);font-weight:400;white-space:normal;}
+.project-flowhive-center .flowhive-people-picker-content {display:grid;gap:.7rem;min-width:245px;padding:.6rem 0;}
+.project-flowhive-center .flowhive-people-picker-content > [role=group] {max-height:260px;overflow:auto;}
+.project-flowhive-center .flowhive-assignment-effort > div {display:grid;gap:.4rem;border-top:1px solid var(--flowhive-line);padding:.6rem 0;}
+.project-flowhive-center .flowhive-assignment-effort p {font-size:.78rem;white-space:normal;color:var(--flowhive-muted);}
+.project-flowhive-center .flowhive-cpm-summary {display:flex;gap:1rem;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:.9rem;border:1px solid var(--flowhive-line);border-radius:12px;background:var(--flowhive-soft);}
+.project-flowhive-center .flowhive-cpm-summary p {margin:.25rem 0 0;color:var(--flowhive-muted);}
+.project-flowhive-center .flowhive-cpm-label {display:inline-block;border:1px solid var(--flowhive-line);border-radius:5px;padding:.15rem .4rem;font-size:.73rem;color:var(--flowhive-ink);background:var(--flowhive-sky);}
+@media(max-width:600px) {.project-flowhive-center .flowhive-collaboration-fields{grid-template-columns:1fr}.project-flowhive-center .flowhive-team-grid{grid-template-columns:1fr}.project-flowhive-center .flowhive-collaboration-actions button{flex:1 1 auto}}
+
+.project-flowhive-center .flowhive-collaboration-card .flowhive-person-option { display:flex; }

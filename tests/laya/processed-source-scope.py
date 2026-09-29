@@ -115,6 +115,14 @@ if current_branch() == CURRENT_FLOWHIVE_UAT_IDEMPOTENT:
     print('LAYA_AUTOMATIC_ADMISSION_SCOPE=PASS; inherited Laya source unchanged for FlowHive protected-UAT idempotency repair')
     raise SystemExit(0)
 
+if current_branch() == 'codex/approval-routing-bulk-review':
+    subprocess.run([sys.executable, str(ROOT/'tests/combined-release/scope.py')], cwd=ROOT, check=True)
+    for path in ['database/migrations/125_automatic_document_admission_laya.sql', 'src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs', 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs', 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs']:
+        expected = subprocess.check_output(['git', '-C', str(ROOT), 'show', '5c371854343cc8f5c26f2ae26cc30c904edc35ea:'+path])
+        if (ROOT/path).read_bytes() != expected: raise SystemExit('Combined release changed inherited Laya authority: '+path)
+    print('LAYA_COMBINED_RELEASE_INHERITED_SOURCE=PASS')
+    raise SystemExit(0)
+
 # Release machinery must already be accepted in main. This application cannot
 # alter inherited controllers, migration wiring, or its persistent owner gates.
 subprocess.run([sys.executable, str(ROOT / 'tests/laya/release-registration.py'),

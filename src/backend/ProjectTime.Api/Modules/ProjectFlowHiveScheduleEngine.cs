@@ -564,6 +564,8 @@ public static partial class ProjectFlowHiveScheduleEngine
             {
                 Error(issues, "summary_assignment_not_allowed", $"{path}.taskWbs", "Assignments belong to executable child tasks, not phase summary rows.");
             }
+            if (assignment.ProjectContactId is Guid contactId && (contactId == Guid.Empty || assignment.ResourceUserId.HasValue))
+                Error(issues,"invalid_external_assignment",$"{path}.projectContactId","An external contact must not also be an internal user identity.");
             var hasModule062Identity = assignment.ResourceUserId is { } resourceUserId
                 && resourceUserId != Guid.Empty;
             var hasExplicitRolePlaceholder = assignment.ResourceUserId is null

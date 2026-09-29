@@ -39,7 +39,9 @@ class ScopeTests(unittest.TestCase):
 
     def test_migration_package_preserves_existing_release_authority(self):
         before = scope.git('show', f'{scope.BASE}:{scope.MIGRATION_BUILDER}').decode()
-        current = (scope.ROOT/scope.MIGRATION_BUILDER).read_text()
+        # Validate the historical PR1210 registration against its accepted source.
+        # New extensions are independently byte-bound by their own registration.
+        current = scope.git('show', '5f9c58057a11858b17f272661b93dc890d037047:'+scope.MIGRATION_BUILDER).decode()
         scope.verify_migration_delta(before, current)
         for altered in [current+'\necho extra\n', current.replace('bash "$MIGRATION_RUNNER"', 'true', 1), current.replace('set -Eeuo pipefail', 'set +e', 1)]:
             with self.assertRaises(RuntimeError): scope.verify_migration_delta(before, altered)

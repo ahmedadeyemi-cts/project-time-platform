@@ -129,7 +129,7 @@ internal static class EnterpriseNotificationRecipientResolver
                 break;
 
             case "timesheet_project_managers":
-                await AddTimesheetProjectManagersAsync(
+                await AddTimesheetProjectApproversAsync(
                     connection,
                     recipients,
                     notificationEvent,
@@ -285,7 +285,7 @@ internal static class EnterpriseNotificationRecipientResolver
                 await AddManagerForUserAsync(connection, recipients, notificationEvent.SubjectUserId, "to", "timesheet.current_manager", cancellationToken);
                 break;
             case "manager_approved":
-                await AddTimesheetProjectManagersAsync(connection, recipients, notificationEvent, "to", cancellationToken);
+                await AddTimesheetProjectApproversAsync(connection, recipients, notificationEvent, "to", cancellationToken);
                 break;
             case "pm_approved":
                 await AddRoleGroupAsync(connection, recipients, PtcRoles, "to", "timesheet.current_ptc", cancellationToken);
@@ -294,6 +294,32 @@ internal static class EnterpriseNotificationRecipientResolver
 
         if (recipients.Count == 0)
             await AddRoleGroupAsync(connection, recipients, PtcRoles, "to", "timesheet.approver_fallback", cancellationToken);
+    }
+
+    private static async Task AddTimesheetProjectApproversAsync(
+        NpgsqlConnection connection, List<ProjectNotificationUser> recipients,
+        EnterpriseNotificationEventRow notificationEvent, string recipientType,
+        CancellationToken cancellationToken)
+    {
+        var workDate = PayloadDate(notificationEvent.Payload, "workDate");
+        if (!notificationEvent.EntityId.HasValue || !workDate.HasValue) return;
+        await using var command = new NpgsqlCommand("""
+            SELECT DISTINCT reviewer.user_id, COALESCE(NULLIF(reviewer.display_name, ''), reviewer.email), lower(reviewer.email)
+            FROM time_entries entry
+            JOIN projects project ON project.project_id = entry.project_id
+            LEFT JOIN project_tasks task ON task.task_id = entry.task_id
+            JOIN app_users reviewer ON reviewer.user_id = COALESCE(project.project_manager_user_id, project.project_coordinator_user_id)
+                AND reviewer.is_active = TRUE
+            WHERE entry.timesheet_id = @timesheet_id AND entry.work_date = @work_date
+              AND entry.status = 'manager_approved'
+              AND time_requires_project_approval(to_jsonb(entry), to_jsonb(project), to_jsonb(task));
+            """, connection);
+        command.Parameters.AddWithValue("timesheet_id", notificationEvent.EntityId.Value);
+        command.Parameters.AddWithValue("work_date", workDate.Value);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+            recipients.Add(new(reader.GetGuid(0), reader.GetString(1), reader.GetString(2),
+                "PROJECT_REVIEWER", "time_entries.required_project_reviewer", recipientType));
     }
 
     private static async Task AddTimesheetProjectManagersAsync(

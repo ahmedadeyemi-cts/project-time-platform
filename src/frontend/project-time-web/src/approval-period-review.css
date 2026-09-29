@@ -1,0 +1,29 @@
+.approval-period-review { color: var(--pulse-text); background: var(--pulse-card-bg); border: 1px solid var(--pulse-card-border); border-radius: 16px; padding: 24px; display: grid; gap: 16px; margin-top: 24px; }
+.approval-period-review header, .approval-period-review footer { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.approval-period-review h3, .approval-period-review p { margin: 0; }
+.approval-period-review h3 { margin-bottom: 8px; }
+.approval-period-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.approval-period-filters label { display: grid; gap: 6px; font-weight: 600; }
+.approval-period-review select, .approval-period-review input:not([type='checkbox']), .approval-period-review button { font: inherit; color: var(--pulse-text); background: var(--pulse-card-bg); border: 1px solid var(--pulse-card-border); border-radius: 8px; padding: 10px 12px; min-height: 42px; }
+.approval-period-review button { cursor: pointer; font-weight: 700; }
+.approval-period-review button:disabled { cursor: not-allowed; opacity: .6; }
+.approval-period-review :focus-visible { outline: 3px solid #329dcc; outline-offset: 3px; }
+.approval-period-review input[type='checkbox'] { width: 18px; height: 18px; accent-color: #087ea4; }
+.approval-period-select { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.approval-period-table { max-height: 520px; overflow: auto; border: 1px solid var(--pulse-card-border); border-radius: 8px; }
+.approval-period-table table { width: 100%; border-collapse: collapse; text-align: left; }
+.approval-period-table caption { text-align: left; padding: 12px; font-weight: 600; }
+.approval-period-table th, .approval-period-table td { padding: 12px; border-bottom: 1px solid var(--pulse-card-border); color: var(--pulse-text); background: var(--pulse-card-bg); }
+.approval-period-table thead th { position: sticky; top: 0; z-index: 1; }
+.approval-period-table small { display: block; margin-top: 4px; }
+.approval-period-error { border-left: 4px solid #d64e4e; padding: 12px; }
+.approval-period-help { line-height: 1.5; }
+.approval-period-review footer { border-top: 1px solid var(--pulse-card-border); padding-top: 16px; }
+.approval-period-review footer button { margin: 8px 8px 0 0; }
+/* Keep the existing exception tabs readable, without a fourth competing header column. */
+.approval-center-shell .manager-approval-header { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(160px, .55fr) minmax(250px, 1fr); align-items: start; }
+[data-production-approval-authoritative='true'] .manager-approval-header::after { grid-column: 1 / -1; }
+.approval-center-shell .manager-toolbar { gap: 8px; }
+.approval-center-shell .manager-status-row { gap: 8px; }
+.approval-center-shell .manager-status-row span { padding: 6px 10px; border-radius: 8px; }
+@media (max-width: 900px) { .approval-center-shell .manager-approval-header { grid-template-columns: 1fr; } .approval-period-filters { grid-template-columns: 1fr; } .approval-period-review { padding: 16px; } }

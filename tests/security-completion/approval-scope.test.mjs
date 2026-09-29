@@ -9,12 +9,12 @@ const id=n=>`10000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
 let checks=0;
 try {
  await db.exec(`CREATE TABLE app_users(user_id uuid,display_name text,email text,manager_email text);
- CREATE TABLE projects(project_id uuid,project_manager_user_id uuid,project_code text,project_name text);
+ CREATE TABLE projects(project_id uuid,project_manager_user_id uuid,project_coordinator_user_id uuid,project_code text,project_name text);
  CREATE TABLE timesheet_day_statuses(timesheet_id uuid,user_id uuid,work_date date,status text,submitted_at timestamptz,manager_decision_comment text);
  CREATE TABLE non_project_time_categories(non_project_time_category_id uuid,category_code text,category_name text);
  CREATE TABLE time_entries(time_entry_id uuid,timesheet_id uuid,work_date date,time_type text,hours numeric,description text,project_id uuid,non_project_time_category_id uuid,created_at timestamptz);
  INSERT INTO app_users VALUES('${id(1)}','Engineer','engineer@example.invalid','manager@example.invalid');
- INSERT INTO projects VALUES('${id(10)}','${id(2)}','OWN','Owned project'),('${id(11)}','${id(3)}','OTHER','Unrelated project');
+ INSERT INTO projects VALUES('${id(10)}','${id(2)}',NULL,'OWN','Owned project'),('${id(11)}','${id(3)}',NULL,'OTHER','Unrelated project');
  INSERT INTO non_project_time_categories VALUES('${id(20)}','PTO','Private leave');
  INSERT INTO timesheet_day_statuses VALUES('${id(30)}','${id(1)}','2026-09-29','submitted',NOW(),'');
  INSERT INTO time_entries VALUES

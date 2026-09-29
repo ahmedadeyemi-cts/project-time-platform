@@ -1,3 +1,4 @@
+import ApprovalPeriodReview from './ApprovalPeriodReview.jsx';
 import {
   useCallback,
   useEffect,
@@ -24,12 +25,12 @@ const STAGES = Object.freeze({
   pm: {
     label: 'PM review',
     shortLabel: 'PM',
-    help: 'Manager-approved project scopes awaiting the assigned Project Manager.'
+    help: 'Manager-approved project scopes awaiting the assigned PM, or coordinator when no PM is assigned.'
   },
   ptc: {
-    label: 'PTC final review',
+    label: 'Accounting release',
     shortLabel: 'PTC',
-    help: 'PM-complete project time and Manager-approved non-project time awaiting PTC final review.'
+    help: 'Already-approved time awaiting the existing PTC accounting release.'
   }
 });
 
@@ -69,6 +70,7 @@ async function readResponse(response, path) {
 async function fetchPending({
   stage = '',
   weekStart = '',
+  monthStart = '',
   search = '',
   page = 1,
   pageSize = 200
@@ -79,6 +81,7 @@ async function fetchPending({
   });
   if (stage) params.set('stage', stage);
   if (weekStart) params.set('weekStart', weekStart);
+  if (monthStart) params.set('monthStart', monthStart);
   if (search) params.set('search', search);
 
   const path = `/api/approval-work/v2/pending?${params.toString()}`;
@@ -187,6 +190,7 @@ function selection(item) {
     workDate: item.workDate,
     stage: item.stage,
     projectId: item.projectId || null,
+    reviewToken: item.reviewToken,
     scopeKey: item.scopeKey || null
   };
 }
@@ -474,7 +478,7 @@ function ApprovalCenterWorkspace({
           <p className="eyebrow">ALL WEEKS · AUTHORIZED WORK ONLY</p>
           <h3>Pending approval work</h3>
           <p>
-            This is the only approval surface. Manager, project-scoped PM, and PTC decisions use one authoritative workflow. Approvals require no typed comment.
+            Review by week here, or use All unapproved time at the bottom to select a week or month. Every approval uses the same authorized workflow.
           </p>
         </div>
         <button type="button" className="secondary-action" onClick={refresh}>Refresh</button>
@@ -515,7 +519,7 @@ function ApprovalCenterWorkspace({
           onSelect={setFilterStage}
         />
         <article className="production-approval-stage total">
-          <span>Total pending</span>
+          <span>Total requiring action</span>
           <strong>{loading ? '—' : Number(data?.totalPending || 0)}</strong>
           <small>{data?.access?.scopeLabel || 'Your authorized approval scope'}</small>
         </article>
@@ -523,9 +527,9 @@ function ApprovalCenterWorkspace({
 
       <div className="production-approval-rules">
         <strong>Routing rules</strong>
-        <span>Project time: Manager → assigned PM → PTC</span>
-        <span>Non-project time: Manager → PTC; PM is never asked to approve it</span>
-        <span>Mixed days remain at PM review until every project scope is complete</span>
+        <span>Projects with a PM/coordinator: Manager → project reviewer</span>
+        <span>Service requests, internal tasks and presales: Manager only</span>
+        <span>PTCs can cover either approval stage. Assigned reviewers’ own time is approved by their Manager or PTC.</span>
       </div>
 
       <div className="production-approval-filters">
@@ -535,7 +539,7 @@ function ApprovalCenterWorkspace({
             <option value="">All assigned stages</option>
             <option value="manager">Manager review</option>
             <option value="pm">PM review</option>
-            <option value="ptc">PTC final review</option>
+            <option value="ptc">Approved · accounting release</option>
           </select>
         </label>
         <label>
@@ -587,6 +591,7 @@ function ApprovalCenterWorkspace({
 export default function ProductionApprovalWorkPortal() {
   const [dashboardHost, setDashboardHost] = useState(null);
   const [approvalHost, setApprovalHost] = useState(null);
+  const [periodHost, setPeriodHost] = useState(null);
   const [state, setState] = useState({ loading: true, data: null, error: '', authorized: true });
   const [filterStage, setFilterStage] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -717,8 +722,10 @@ export default function ProductionApprovalWorkPortal() {
         approvalCenter.dataset.productionApprovalAuthoritative = 'true';
         const summary = approvalCenter.querySelector('.approval-summary-grid');
         setApprovalHost(ensureHost('production-approval-center-host', approvalCenter, summary));
+        setPeriodHost(ensureHost('approval-period-review-host', approvalCenter));
       } else {
         setApprovalHost(null);
+        setPeriodHost(null);
       }
     };
 
@@ -931,6 +938,7 @@ export default function ProductionApprovalWorkPortal() {
 
   return (
     <>
+      {periodHost ? createPortal(<ApprovalPeriodReview fetchPending={fetchPending} completePending={completePending} readOnly={Boolean(state.data?.access?.isViewAs)} access={state.data?.access} />, periodHost) : null}
       {dashboardHost ? createPortal(
         <DashboardQueue
           data={state.data}

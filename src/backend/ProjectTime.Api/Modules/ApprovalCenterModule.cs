@@ -12,7 +12,12 @@ public static class ApprovalCenterModule
         "ADMINISTRATOR",
         "PROJECT_TEAM_COORDINATOR",
         "MANAGER",
+        "PEOPLE_MANAGER",
+        "ENGINEERING_MANAGER",
+        "ENGINEERING_LEAD",
+        "ENGINEERING_TEAM_LEAD",
         "PROJECT_MANAGER",
+        "PROJECT_COORDINATOR",
         "PROJECT_MANAGEMENT",
         "PROJECT_MANAGEMENT_LEAD",
         "PROJECT_MANAGEMENT_TEAM_LEAD",
@@ -343,7 +348,7 @@ public static class ApprovalCenterModule
                       AND detail.work_date = tds.work_date
                       AND (@can_view_all = TRUE
                         OR (@is_manager = TRUE AND lower(COALESCE(u.manager_email, '')) = lower(@actor_email))
-                        OR (@is_project_manager = TRUE AND detail_project.project_manager_user_id = @actor_user_id))
+                        OR (@is_project_manager = TRUE AND COALESCE(detail_project.project_manager_user_id, detail_project.project_coordinator_user_id) = @actor_user_id))
                 ), '[]'::jsonb)::text
             FROM timesheet_day_statuses tds
             JOIN app_users u ON u.user_id = tds.user_id
@@ -370,13 +375,13 @@ public static class ApprovalCenterModule
                         JOIN projects scope_project ON scope_project.project_id = scope_entry.project_id
                         WHERE scope_entry.timesheet_id = tds.timesheet_id
                           AND scope_entry.work_date = tds.work_date
-                          AND scope_project.project_manager_user_id = @actor_user_id
+                          AND COALESCE(scope_project.project_manager_user_id, scope_project.project_coordinator_user_id) = @actor_user_id
                     )
                  )
               )
               AND (@can_view_all = TRUE
                 OR (@is_manager = TRUE AND lower(COALESCE(u.manager_email, '')) = lower(@actor_email))
-                OR (@is_project_manager = TRUE AND p.project_manager_user_id = @actor_user_id))
+                OR (@is_project_manager = TRUE AND COALESCE(p.project_manager_user_id, p.project_coordinator_user_id) = @actor_user_id))
               AND (
                     @search = ''
                  OR COALESCE(u.display_name, '') ILIKE '%' || @search || '%'
@@ -452,7 +457,7 @@ public static class ApprovalCenterModule
                         JOIN projects scope_project ON scope_project.project_id = scope_entry.project_id
                         WHERE scope_entry.timesheet_id = tds.timesheet_id
                           AND scope_entry.work_date = tds.work_date
-                          AND scope_project.project_manager_user_id = @actor_user_id
+                          AND COALESCE(scope_project.project_manager_user_id, scope_project.project_coordinator_user_id) = @actor_user_id
                     )
                  )
               );
@@ -1030,7 +1035,11 @@ public static class ApprovalCenterModule
             || roleSet.Contains("PROJECT_MANAGEMENT_TEAM_LEAD")
             || roleSet.Contains("PM_TEAM_LEAD");
         var isManager = roleSet.Contains("MANAGER") || isProjectManagementLead;
-        var isProjectManager = roleSet.Contains("PROJECT_MANAGER")
+        isManager = isManager || roleSet.Contains("PEOPLE_MANAGER")
+            || roleSet.Contains("ENGINEERING_MANAGER") || roleSet.Contains("ENGINEERING_LEAD")
+            || roleSet.Contains("ENGINEERING_TEAM_LEAD");
+        var isProjectManager = roleSet.Contains("PROJECT_COORDINATOR")
+            || roleSet.Contains("PROJECT_MANAGER")
             || roleSet.Contains("PROJECT_MANAGEMENT")
             || isProjectManagementLead;
         var canViewAll = isSuperAdmin || isAdmin || isCoordinator;

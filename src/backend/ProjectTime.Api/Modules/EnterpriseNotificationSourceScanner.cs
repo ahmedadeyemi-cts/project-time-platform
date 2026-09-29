@@ -133,6 +133,23 @@ internal static class EnterpriseNotificationSourceScanner
         }
     }
 
+    private static async Task<bool> HasPendingProjectApprovalAsync(
+        NpgsqlConnection connection, Guid timesheetId, DateOnly workDate, CancellationToken cancellationToken)
+    {
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1 FROM time_entries entry
+                JOIN projects project ON project.project_id = entry.project_id
+                LEFT JOIN project_tasks task ON task.task_id = entry.task_id
+                WHERE entry.timesheet_id = @timesheet_id AND entry.work_date = @work_date
+                  AND entry.status = 'manager_approved'
+                  AND time_requires_project_approval(to_jsonb(entry), to_jsonb(project), to_jsonb(task)));
+            """, connection);
+        command.Parameters.AddWithValue("timesheet_id", timesheetId);
+        command.Parameters.AddWithValue("work_date", workDate);
+        return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken) ?? false);
+    }
+
     private static async Task<int> CreateTimesheetEventsAsync(
         NpgsqlConnection connection,
         TimesheetSourceRow row,
@@ -198,6 +215,7 @@ internal static class EnterpriseNotificationSourceScanner
                 break;
 
             case "manager_approved":
+                if (!await HasPendingProjectApprovalAsync(connection, row.TimesheetId, row.WorkDate, cancellationToken)) break;
                 created += await InsertAsync(
                     connection,
                     "TIME_PM_APPROVAL_REQUEST",
@@ -269,7 +287,8 @@ internal static class EnterpriseNotificationSourceScanner
                 break;
         }
 
-        if (row.Status is "submitted" or "manager_approved" or "pm_approved")
+        if (row.Status == "submitted" || (row.Status == "manager_approved"
+            && await HasPendingProjectApprovalAsync(connection, row.TimesheetId, row.WorkDate, cancellationToken)))
         {
             var ageDays = Math.Max(0, (int)Math.Floor((DateTimeOffset.UtcNow - stageTimestamp).TotalDays));
             if (ageDays >= 3)

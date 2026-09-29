@@ -9,6 +9,7 @@ await db.exec(`
 CREATE TABLE clients (client_id uuid PRIMARY KEY, client_name text);
 CREATE TABLE app_users (user_id uuid PRIMARY KEY, display_name text, email text);
 CREATE TABLE projects (project_id uuid PRIMARY KEY, client_id uuid, project_manager_user_id uuid, contract_type text);
+CREATE TABLE project_tasks (task_id uuid PRIMARY KEY);
 CREATE TABLE project_intake_requests (project_intake_request_id uuid PRIMARY KEY);
 CREATE TABLE time_entries (time_entry_id uuid PRIMARY KEY, project_id uuid, user_id uuid, work_date date, hours numeric, status text, created_at timestamptz DEFAULT now());
 CREATE TABLE client_contacts (client_id uuid, address_line1 text, address_line2 text, city text, postal_code text, is_primary boolean, display_order integer, created_at timestamptz);
@@ -16,6 +17,8 @@ CREATE TABLE client_contacts (client_id uuid, address_line1 text, address_line2 
 for (const name of ['060-module-contracts-boh-foundation.sql', '060b-module-contracts-prepaid-financial-xlsx.sql', '060c-contract-approval-funding.sql', '060c-contract-approval-funding.sql']) {
   await db.exec((await file('deployment/database/' + name)).replace('CREATE EXTENSION IF NOT EXISTS pgcrypto;', ''));
 }
+await db.exec('ALTER TABLE time_entries ADD COLUMN task_id uuid');
+await db.exec(await file('database/migrations/132_time_approval_routing.sql'));
 const ids = Array.from({ length: 8 }, (_, i) => `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`);
 const [customer, user, pm, project, contract, entry, otherCustomer, otherContract] = ids;
 await db.exec(`
@@ -26,7 +29,7 @@ INSERT INTO boh_contracts (boh_contract_id,client_id,contract_name,primary_accou
 VALUES ('${contract}','${customer}','Funding A','${user}','${user}', CURRENT_DATE - 1,CURRENT_DATE + 30,CURRENT_DATE + 30,1000),
 ('${otherContract}','${otherCustomer}','Funding B','${user}','${user}', CURRENT_DATE - 1,CURRENT_DATE + 30,CURRENT_DATE + 30,1000);
 INSERT INTO contract_project_funding VALUES ('${project}','${contract}',100,'${user}',NOW());
-INSERT INTO time_entries VALUES ('${entry}','${project}','${user}',CURRENT_DATE,2,'draft',NOW());
+INSERT INTO time_entries VALUES ('${entry}','${project}','${user}',CURRENT_DATE,2,'draft',NOW(),NULL);
 `);
 const totals = async () => (await db.query(`SELECT pending_hours::float8 AS ph, approved_hours::float8 AS ah, pending_amount::float8 AS pa, approved_amount::float8 AS aa, remaining_balance::float8 AS balance FROM vw_boh_contract_time_totals JOIN vw_boh_prepaid_balance_rows USING (boh_contract_id) WHERE boh_contract_id = '${contract}'`)).rows[0];
 let checks = 0;
@@ -89,6 +92,7 @@ await db.exec(`UPDATE time_entries SET hours=3, status='manager_approved'`);
 assert.deepEqual(await totals(), {ph:0,ah:3,pa:0,aa:300,balance:700}); checks++;
 
 await db.exec(await file('deployment/database/060c-contract-approval-funding.sql'));
+await db.exec(await file('database/migrations/132_time_approval_routing.sql'));
 assert.deepEqual(await totals(), {ph:0,ah:3,pa:0,aa:300,balance:700}); checks++;
 assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM contract_project_funding')).rows[0].n, 1); checks++;
 console.log(`PASS ${checks} contract approval/funding database cases; migration reapplies cleanly.`);

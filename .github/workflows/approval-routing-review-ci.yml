@@ -1,0 +1,36 @@
+name: Approval routing and bulk review
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/*Approval*'
+      - 'src/backend/ProjectTime.Api/Modules/EnterpriseNotification*'
+      - 'src/backend/ProjectTime.Api/Modules/ContractsPrepaidManagementModule.cs'
+      - 'src/frontend/project-time-web/src/*Approval*'
+      - 'src/frontend/project-time-web/src/approval-period-review.css'
+      - 'database/migrations/132_time_approval_routing.sql'
+      - 'tests/approval*'
+      - 'tests/approval-review/**'
+      - 'tests/ApprovalBoundaryTests/**'
+      - '.github/workflows/approval-routing-review-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  approval-regression:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - run: npm ci --prefix tests/approval-review --ignore-scripts --no-audit --no-fund
+      - run: node tests/approval-routing.test.mjs && node tests/contracts-approval-funding.test.mjs
+        env:
+          PGLITE_MODULE: './approval-review/node_modules/@electric-sql/pglite/dist/index.js'
+      - run: npm test --prefix tests/approval-review
+      - run: dotnet run --project tests/ApprovalBoundaryTests
+      - run: python3 tests/flowhive-migration-package.test.py
