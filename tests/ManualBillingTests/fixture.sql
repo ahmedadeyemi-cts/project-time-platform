@@ -23,3 +23,8 @@ CREATE TABLE crm_integration_credentials(provider_key text, credential_kind text
 CREATE TABLE customer_directory_source_authority(customer_source_authority_id int PRIMARY KEY,
  source_mode text, provider_key text, updated_at timestamptz DEFAULT now());
 INSERT INTO customer_directory_source_authority(customer_source_authority_id,source_mode,provider_key) VALUES(1,'sell','connectwise_sell');
+
+-- Current expense evidence is rechecked inside the invoice transaction.
+CREATE TABLE project_expense_uploads(project_expense_upload_id uuid PRIMARY KEY,project_id uuid,
+ is_current boolean NOT NULL DEFAULT true,deleted_at timestamptz,period_start date,period_end date,
+ uploaded_at timestamptz NOT NULL DEFAULT now(),reimbursable_amount numeric NOT NULL DEFAULT 0);

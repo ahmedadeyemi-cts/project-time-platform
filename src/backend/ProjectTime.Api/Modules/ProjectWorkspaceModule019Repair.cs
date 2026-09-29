@@ -366,6 +366,15 @@ internal static class ProjectWorkspaceModule019Repair
                     WHERE document.project_id = p.project_id
                       AND document.is_active = TRUE
                       AND COALESCE(document.upload_source, '') <> 'celar_ai_chat_attachment'
+                      AND (@is_broad_scope OR NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                          WHERE wr.work_register_document_id=document.work_register_document_id
+                            AND lower(COALESCE(wr.visibility,''))='ptc_admin_only'))
+                      AND (@is_broad_scope
+                        OR (@can_view_managed_projects AND (p.project_manager_user_id=@user_id OR intake.assigned_pm_user_id=@user_id))
+                        OR (COALESCE(document.engineering_visible,FALSE)
+                            AND NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                                WHERE wr.work_register_document_id=document.work_register_document_id
+                                  AND lower(COALESCE(wr.visibility,'')) NOT IN ('project_team','engineering_team','all'))))
                       AND (
                           @is_broad_scope = TRUE
                           OR (@can_view_managed_projects = TRUE
@@ -657,10 +666,16 @@ internal static class ProjectWorkspaceModule019Repair
                             AND lower(COALESCE(wr.visibility, '')) = 'ptc_admin_only')
                   )
                   OR (COALESCE(document.engineering_visible, FALSE) = TRUE
+                      AND NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                          WHERE wr.work_register_document_id=document.work_register_document_id
+                            AND lower(COALESCE(wr.visibility,'')) NOT IN ('project_team','engineering_team','all'))
                       AND (scope.direct_project_assignment OR scope.direct_service_request_assignment))
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE
+                      AND NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                          WHERE wr.work_register_document_id=document.work_register_document_id
+                            AND lower(COALESCE(wr.visibility,'')) NOT IN ('project_team','engineering_team','all'))
                       AND (scope.team_project_assignment OR scope.team_service_request_assignment
                            OR project.project_manager_user_id IN (SELECT user_id FROM team_members))
                   )
@@ -1083,10 +1098,16 @@ internal static class ProjectWorkspaceModule019Repair
                             AND lower(COALESCE(wr.visibility, '')) = 'ptc_admin_only')
                   )
                   OR (COALESCE(document.engineering_visible, FALSE) = TRUE
+                      AND NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                          WHERE wr.work_register_document_id=document.work_register_document_id
+                            AND lower(COALESCE(wr.visibility,'')) NOT IN ('project_team','engineering_team','all'))
                       AND (scope.direct_project_assignment OR scope.direct_service_request_assignment))
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE
+                      AND NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                          WHERE wr.work_register_document_id=document.work_register_document_id
+                            AND lower(COALESCE(wr.visibility,'')) NOT IN ('project_team','engineering_team','all'))
                       AND (scope.team_project_assignment OR scope.team_service_request_assignment
                            OR project.project_manager_user_id IN (SELECT user_id FROM team_members))
                   )

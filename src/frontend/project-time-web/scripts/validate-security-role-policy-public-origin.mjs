@@ -71,9 +71,9 @@ rejectText(publicOrigin, 'request.Headers["X-Forwarded-Host"]', 'forwarded host 
 requireText(publicOrigin, 'Public ProjectPulse environments are HTTPS-only', 'TLS termination compatibility');
 requireText(publicOrigin, '.onenecklab.com', 'test-domain allowlist');
 requireText(publicOrigin, '.ussignal.com', 'production-domain allowlist');
-requireText(publicOrigin, 'PROJECTPULSE_INTEGRATION_SECRET_ENCRYPTION_KEY', 'Module 026 secure-store compatibility');
-requireText(publicOrigin, 'ProjectPulse-CRM-ERP-Integration:', 'Module 026 encryption domain separation');
-requireText(publicOrigin, 'CryptographicOperations.ZeroMemory', 'secret-derived key cleanup');
+rejectText(publicOrigin, 'PROJECTPULSE_INTEGRATION_SECRET_ENCRYPTION_KEY', 'public-origin handling must not provision credential keys');
+rejectText(publicOrigin, 'ProjectPulse-CRM-ERP-Integration:', 'database-password-derived encryption keys');
+requireText(read(path.join(repositoryRoot, 'src/backend/ProjectTime.Api/Modules/CrmErpIntegrationModule.cs')), 'PROJECTPULSE_INTEGRATION_SECRET_ENCRYPTION_KEY', 'dedicated Module 026 key configuration');
 rejectText(publicOrigin, 'context.Request.Headers["Origin"].ToString()', 'direct browser-origin trust in global normalizer');
 
 requireText(nginx, 'map $http_x_forwarded_proto $projectpulse_forwarded_proto', 'reverse-proxy scheme preservation');

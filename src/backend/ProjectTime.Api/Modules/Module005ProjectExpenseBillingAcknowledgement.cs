@@ -167,7 +167,7 @@ public static partial class Module005ProjectExpenseUploadModule
                 await advisory.ExecuteNonQueryAsync(context.RequestAborted);
             }
 
-            await BlockStaleExpenseReadinessAsync(connection, transaction, context.RequestAborted);
+            await BlockStaleExpenseReadinessAsync(connection, transaction, context.RequestAborted, projectId);
             var snapshot = await LoadCurrentExpenseSnapshotAsync(
                 connection,
                 transaction,
@@ -370,7 +370,7 @@ public static partial class Module005ProjectExpenseUploadModule
     internal static async Task BlockStaleExpenseReadinessAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? projectId = null)
     {
         await using var command = new NpgsqlCommand("""
             UPDATE work_billing_readiness_reviews review
@@ -380,7 +380,8 @@ public static partial class Module005ProjectExpenseUploadModule
                     ELSE review.notes || E'\nAutomatically blocked because the acknowledged Module 005 expense evidence is no longer current.'
                 END,
                 updated_at = NOW()
-            WHERE review.evidence_source_type = 'expense'
+            WHERE (@project_id::uuid IS NULL OR review.project_id=@project_id)
+              AND review.evidence_source_type = 'expense'
               AND review.review_status = 'ready'
               AND review.package_type LIKE 'expense-%'
               AND (
@@ -416,6 +417,7 @@ public static partial class Module005ProjectExpenseUploadModule
                     )
               );
             """, connection, transaction);
+        command.Parameters.AddWithValue("project_id", (object?)projectId ?? DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

@@ -8,10 +8,12 @@ The active protected deployment workflow and its exact registration remain uncha
 
 ## Validation
 
-- Backend authorization suite: 14 authority, 15 database, 44 completion and 58 authorization checks pass on an isolated PostgreSQL-compatible engine. Real PostgreSQL race behavior remains unverified.
+- Backend authorization suite: 14 authority, 15 database, 48 completion and 58 authorization checks pass on an isolated PostgreSQL-compatible engine. Real PostgreSQL race behavior remains unverified.
 - Migration regression: 21 assertions; OCR: four adversarial tests; deployment boundaries:13 tests; output-security and repository posture pass.
 - Frontend source contracts and production build pass. Protected controller tests:5; installed-release resolver:35; installed-acceptance verifier:31; HTTP proxy:1, all pass locally. These are offline verifiers, not a live UAT run.
-- Required native CI, reviewed release scope and live authenticated UAT acceptance remain mandatory.
+- Native CI identified stale test fixtures and initialization catalog drift. Follow-up validation passes:305 Teams protocol assertions;19 document-preparation checks;89 sequential-planning checks;142 actual Module019 SQL access assertions;10 production-foundation checks. Malformed keys and missing AI consent are negative cases; runtime rules were not relaxed.
+- Module019 overview counts, lists and downloads now enforce document visibility consistently, including restricted bridged records.
+- Native feature/controller scope gates rejected this combined branch. Required native CI, reviewed release scope and live authenticated UAT acceptance remain mandatory.
 
 ## All-finding disposition
 

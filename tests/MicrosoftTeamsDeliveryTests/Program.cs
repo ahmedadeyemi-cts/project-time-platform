@@ -89,14 +89,21 @@ Check(profile.RecipientBoundary=="test_only","boundary retained");
 foreach(var raw in new[]{Metadata(new[]{Profile(),Profile()}),Metadata(Array.Empty<object>()),"{}",Metadata(new[]{new{environmentMode="test",key="onenecklab",tenantId=tenant,sso=new{clientId}}})}) {
  bool failed=false;try{MicrosoftTeamsServicesSnapshot.ParseMetadata(raw,"test",1);}catch{failed=true;}Check(failed,"missing ambiguous or SSO-only metadata rejected");
 }
-foreach(var configured in new[]{Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),"synthetic-key-material"}) {
- var key=Convert.TryFromBase64String(configured,new Span<byte>(new byte[32]),out var len)&&len==32?Convert.FromBase64String(configured):SHA256.HashData(Encoding.UTF8.GetBytes($"ProjectPulse-Microsoft-Integration:{configured}"));
+foreach(var configured in new[]{Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))}) {
+ var key=Convert.FromBase64String(configured);
  var nonce=RandomNumberGenerator.GetBytes(12);var plain=Encoding.UTF8.GetBytes("synthetic-stored-secret");var cipher=new byte[plain.Length];var tag=new byte[16];
  using(var aes=new AesGcm(key,16))aes.Encrypt(nonce,plain,cipher,tag,Encoding.UTF8.GetBytes("ProjectPulse:065:onenecklab"));
  Check(MicrosoftTeamsServicesSnapshot.Decrypt(cipher,nonce,tag,configured,"onenecklab")=="synthetic-stored-secret","existing credential envelope supported");
  bool failed=false;try{MicrosoftTeamsServicesSnapshot.Decrypt(cipher,nonce,tag,configured,"ussignal");}catch(CryptographicException){failed=true;}Check(failed,"cross-tenant AAD denied");
  tag[0]^=1;failed=false;try{MicrosoftTeamsServicesSnapshot.Decrypt(cipher,nonce,tag,configured,"onenecklab");}catch(CryptographicException){failed=true;}Check(failed,"tampered credential denied");
  CryptographicOperations.ZeroMemory(plain);CryptographicOperations.ZeroMemory(key);
+}
+
+foreach(var invalidKey in new[]{"synthetic-key-material",Convert.ToBase64String(new byte[16]),Convert.ToBase64String(new byte[64]),""}) {
+ bool failed=false;
+ try { MicrosoftTeamsServicesSnapshot.Decrypt(new byte[24],new byte[12],new byte[16],invalidKey,"onenecklab"); }
+ catch(InvalidDataException) { failed=true; }
+ Check(failed,"weak, malformed and missing credential keys fail closed");
 }
 
 var workflowUrl = "https://tenant.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/test/triggers/manual/paths/invoke";

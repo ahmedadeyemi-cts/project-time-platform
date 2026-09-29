@@ -93,6 +93,34 @@ internal static class SecurityCompletionTests
         Check(!await Allowed(owner,entry),"Billed time remains immutable even when status metadata is stale");
         await Exec("UPDATE billing_invoices SET invoice_status='void'");
         Check(await Allowed(owner,entry),"A void invoice releases otherwise editable evidence");
+        await Exec("""
+            CREATE TEMP TABLE work_billing_readiness_reviews(project_id uuid,evidence_source_type text,
+                review_status text,notes text,package_type text,billing_period_start date,billing_period_end date,
+                updated_at timestamptz,evidence_amount numeric);
+            CREATE TEMP TABLE project_expense_uploads(project_id uuid,is_current boolean,deleted_at timestamptz,
+                period_start date,period_end date,uploaded_at timestamptz,reimbursable_amount numeric);
+            INSERT INTO work_billing_readiness_reviews VALUES
+                ('50000000-0000-0000-0000-000000000001','expense','ready','','expense-only-pass-through','2026-09-01','2026-09-30',NOW(),100),
+                ('50000000-0000-0000-0000-000000000002','expense','ready','','expense-only-pass-through','2026-09-01','2026-09-30',NOW(),100);
+            """);
+        var invoiceProject=Guid.Parse("50000000-0000-0000-0000-000000000001");
+        async Task<string> ReviewStatus(string project)
+        {
+            await using var c=new NpgsqlCommand("SELECT review_status FROM work_billing_readiness_reviews WHERE project_id=@project",connection);
+            c.Parameters.AddWithValue("project",Guid.Parse(project));return (string)(await c.ExecuteScalarAsync())!;
+        }
+        await Module005ProjectExpenseUploadModule.BlockStaleExpenseReadinessAsync(connection,null,default,invoiceProject);
+        Check(await ReviewStatus(invoiceProject.ToString())=="blocked","Deleted expense evidence blocks readiness");
+        Check(await ReviewStatus("50000000-0000-0000-0000-000000000002")=="ready","Invoice evidence recheck does not mutate another project's readiness");
+        await Exec("""
+            INSERT INTO project_expense_uploads VALUES('50000000-0000-0000-0000-000000000001',TRUE,NULL,'2026-09-01','2026-09-30',NOW()-INTERVAL '1 minute',100);
+            UPDATE work_billing_readiness_reviews SET review_status='ready',updated_at=NOW();
+            """);
+        await Module005ProjectExpenseUploadModule.BlockStaleExpenseReadinessAsync(connection,null,default,invoiceProject);
+        Check(await ReviewStatus(invoiceProject.ToString())=="ready","Unchanged current acknowledged evidence remains ready");
+        await Exec("UPDATE project_expense_uploads SET reimbursable_amount=101");
+        await Module005ProjectExpenseUploadModule.BlockStaleExpenseReadinessAsync(connection,null,default,invoiceProject);
+        Check(await ReviewStatus(invoiceProject.ToString())=="blocked","Changed expense amount invalidates acknowledgement");
         Console.WriteLine($"SECURITY_COMPLETION_REGRESSIONS=PASS assertions={checks}");
     }
 }
