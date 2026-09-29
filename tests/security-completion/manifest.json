@@ -185,7 +185,7 @@
     "deployment/oracle-celar/maintenance-reconcile.sh": "836fb546335d2ff1d7a6437bef3ad7e949bf2c69ac556f946a638198719de18d",
     "docs/azure-migration/runbooks/CLOUD-SHELL-PRIVATE-GITHUB-AUTH.md": "bb287daeb10c26c0bc57bdefef9b981a0cb418cd308ce6829ba1fb52b666f01f",
     "docs/production-readiness/foundation/initialization-review.json": "c57b3ab5df8db286bdb19f16bc5c2626cd1836d4944d2d9c91eef5ed3fc47bc2",
-    "docs/security/SECURITY-REMEDIATION-20260929.md": "16aced95d149ce2d5a7f2b1d48a239032840ab33ff523938929c10810777cfba",
+    "docs/security/SECURITY-REMEDIATION-20260929.md": "e8d601cfc83394d96f18a06f2879ef5bc2a0189c56d541ef5c7a97f6afb6e18c",
     "ops/projectpulse/scripts/projectpulse-sync-status-export.sh": "0d309ac56427a8ce2b6afec861710f7447a8b12c301c4a3365fc041ecfe3c772",
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh": "3b8154f635695c778fe57f82974e684db2a67e6d586bd013b9b9d3e39529feab",
     "scripts/ci/validate-module030-analytics-enterprise-source-boundary.sh": "a855dc58e7b94e655a51bd8d6e4516c8ab5266aa5cc40a5b7175e9c1f83b8f00",
@@ -287,7 +287,7 @@
     "tests/ProjectTime.Api.AuthorizationTests/SecurityCompletionTests.cs": "fa5b553b155f8a86fc566bcdb2fdaa1bc4abc85940b34d8bfe31518451291382",
     "tests/ProjectTime.Api.AuthorizationTests/SecurityDatabaseTests.cs": "a78c8fd7dcef19e4b0be47b8bca6b48d6437d6f6ab51a1cf19a97c90870ea251",
     "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs": "7102babd18d535b67958202a575b265350828ade9b07a8fc4cd9dc437ed6adce",
-    "tests/SecurityCredentialTransitionTests/Program.cs": "9b6616a6ac3c7403af85a7321f79380863d39e0bc769885ec3c9fe6658e82195",
+    "tests/SecurityCredentialTransitionTests/Program.cs": "c6575a4b5a23bd28de4904196074271fce447505cbb0af08e2a3031f4f3739d1",
     "tests/SecurityCredentialTransitionTests/SecurityCredentialTransitionTests.csproj": "38db480457bddf472f965487a29628d469862726ddc2f3fd1a6b1a42dacf6b54",
     "tests/flowhive-migration-package.test.py": "87bf86b81b8962e9f74902ddab844434c07ced82d8ed1149839ead08586a42be",
     "tests/laya/processed-source-scope.py": "713084a735197b9594651fc957f313c269a2243015d47f6a9db223dec40d27ca",
@@ -308,7 +308,7 @@
     "tests/test-module019-document-access-repair-085.sh": "9cb5afe306801670b7f53cacf7f1f99cb327d8e412b576b44e09671d11901daa",
     "tests/validate-shared-project-document-planning.mjs": "f93d9411f623925eb3b5ab7563c6d77a6d98acf02f345248fb61eb46fd425892",
     "tools/SecurityCredentialTransition/Dockerfile": "9e7dd23609f6c8ea9b88c30af2e994986d7643a14e458b575d06c07bf4a650f9",
-    "tools/SecurityCredentialTransition/Program.cs": "e95e319d0a0ce3809a9cf449125212df96a05528c39dff48c896bbdf9e9ddecf",
+    "tools/SecurityCredentialTransition/Program.cs": "2428f45db8c291cb088ee7b85ce8b39f9106899225e2277e36825e4b57712455",
     "tools/SecurityCredentialTransition/SecurityCredentialTransition.csproj": "0fe429e29771b229fa0d230af8c1e53e42aa59b644211ed1a47696f8992a64c7"
   }
 }

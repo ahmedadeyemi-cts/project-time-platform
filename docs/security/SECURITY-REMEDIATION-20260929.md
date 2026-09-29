@@ -214,3 +214,5 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 - Eight actual HTML/legacy-DOC parser cases complete within a five-second budget for ordinary content and2MB adversarial inputs. Canonical import, closeout and SSO middleware checks total9.
 - Runtime database roles were prepared successfully in Test after a rolled-back rehearsal. Both remain unable to log in; the API still uses its existing account. Dedicated-key activation, encrypted-secret rotation, application execution under the runtime identity and protected UAT acceptance remain pending.
 - Historical UAT artifact inventory confirmed retained evidence archives from prior successful runs. Their private review and containment remain open; no cleanup is claimed by these source tests.
+
+- The private credential-transition utility now includes a maintenance-gated reverse transition. Fifteen isolated checks cover rotation, atomic failure, restoration to the previous key derivation and successful rotation again. Native validation is required before live use.

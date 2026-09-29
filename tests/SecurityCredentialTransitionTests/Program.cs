@@ -42,6 +42,12 @@ try
     await Run("rotate",true);
     await Run("verify",false);
     await Run("verify",true,legacy:newKey);
+    await Run("restore-legacy",false,maintenance:false);
+    await Run("restore-legacy",true);
+    await Run("verify",true);
+    await Run("verify",false,legacy:newKey);
+    await Run("rotate",true);
+    await Run("verify",true,legacy:newKey);
     Console.WriteLine($"SECURITY_CREDENTIAL_TRANSITION=PASS assertions={checks}");
 }
 finally { await Sql("DROP TABLE microsoft_integration_sso_client_secrets,microsoft_integration_client_secrets"); }

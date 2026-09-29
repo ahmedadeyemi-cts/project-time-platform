@@ -8,20 +8,20 @@ using Npgsql;
 try
 {
     var mode = args.SingleOrDefault() ?? "verify";
-    if (mode is not ("verify" or "rotate")) throw new InvalidOperationException();
+    if (mode is not ("verify" or "rotate" or "restore-legacy")) throw new InvalidOperationException();
     var host = Required("PGHOST");
     var database = Required("PGDATABASE");
     var isolatedFixture = host == "127.0.0.1" && database == "security_ci";
     if (!isolatedFixture && (host != "pg-phd-test-w3-7825cc.postgres.database.azure.com" || database != "project_health_dashboard"))
         throw new InvalidOperationException();
-    if (mode == "rotate" && Required("SECURITY_TRANSITION_MAINTENANCE_CONFIRMED") != "test-integrations-paused")
+    if (mode != "verify" && Required("SECURITY_TRANSITION_MAINTENANCE_CONFIRMED") != "test-integrations-paused")
         throw new InvalidOperationException();
     var password = Required("PGPASSWORD");
     var configured = Environment.GetEnvironmentVariable("LEGACY_MICROSOFT_KEY");
     var seed = string.IsNullOrWhiteSpace(configured) ? password : configured;
     var oldMicrosoft = LegacyKey(seed, "ProjectPulse-Microsoft-Integration:");
     var oldSso = LegacyKey(seed, "ProjectPulse-Microsoft-SSO:");
-    var newKey = mode == "rotate" ? Convert.FromBase64String(Required("NEW_MICROSOFT_KEY")) : null;
+    var newKey = mode != "verify" ? Convert.FromBase64String(Required("NEW_MICROSOFT_KEY")) : null;
     if (newKey is not null && (newKey.Length != 32 || newKey.SequenceEqual(oldMicrosoft) || newKey.SequenceEqual(oldSso)))
         throw new CryptographicException();
     try
@@ -57,23 +57,28 @@ try
                 var plaintext = new byte[entry.Cipher.Length];
                 try
                 {
-                    using (var aes = new AesGcm(sso ? oldSso : oldMicrosoft,16))
+                    var legacyKey=sso ? oldSso : oldMicrosoft;
+                    var readKey=mode=="restore-legacy" ? newKey! : legacyKey;
+                    if(mode=="restore-legacy" && entry.Source!="dedicated_environment_key")throw new InvalidOperationException();
+                    using (var aes = new AesGcm(readKey,16))
                         aes.Decrypt(entry.Nonce,entry.Cipher,entry.Tag,plaintext,aad);
                     var fingerprint = Convert.ToHexString(SHA256.HashData(plaintext)).ToLowerInvariant();
                     if (!CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(fingerprint),Encoding.UTF8.GetBytes(entry.Fingerprint)))
                         throw new CryptographicException();
                     if (newKey is null) continue;
+                    var writeKey=mode=="restore-legacy" ? legacyKey : newKey;
                     var nonce=RandomNumberGenerator.GetBytes(12); var cipher=new byte[plaintext.Length]; var tag=new byte[16];
-                    using (var aes = new AesGcm(newKey,16)) aes.Encrypt(nonce,plaintext,cipher,tag,aad);
+                    using (var aes = new AesGcm(writeKey,16)) aes.Encrypt(nonce,plaintext,cipher,tag,aad);
                     var check=new byte[plaintext.Length];
                     try
                     {
-                        using (var aes = new AesGcm(newKey,16)) aes.Decrypt(nonce,cipher,tag,check,aad);
+                        using (var aes = new AesGcm(writeKey,16)) aes.Decrypt(nonce,cipher,tag,check,aad);
                         if (!CryptographicOperations.FixedTimeEquals(check,plaintext)) throw new CryptographicException();
                     }
                     finally { CryptographicOperations.ZeroMemory(check); }
                     var idColumn=sso ? "environment_mode" : "tenant_key";
-                    await using var update=new NpgsqlCommand($"UPDATE {table} SET ciphertext=@cipher,nonce=@nonce,authentication_tag=@tag,encryption_key_source='dedicated_environment_key' WHERE {idColumn}=@id AND ciphertext=@old",connection,transaction);
+                    await using var update=new NpgsqlCommand($"UPDATE {table} SET ciphertext=@cipher,nonce=@nonce,authentication_tag=@tag,encryption_key_source=@source WHERE {idColumn}=@id AND ciphertext=@old",connection,transaction);
+                    update.Parameters.AddWithValue("source",mode=="restore-legacy" && string.IsNullOrWhiteSpace(configured) ? "database_credential_derived_key" : "dedicated_environment_key");
                     update.Parameters.AddWithValue("cipher",cipher); update.Parameters.AddWithValue("nonce",nonce); update.Parameters.AddWithValue("tag",tag);
                     update.Parameters.AddWithValue("id",entry.Id); update.Parameters.AddWithValue("old",entry.Cipher);
                     if (await update.ExecuteNonQueryAsync()!=1) throw new InvalidOperationException();
