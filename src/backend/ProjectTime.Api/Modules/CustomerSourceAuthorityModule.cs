@@ -895,7 +895,11 @@ public static class CustomerSourceAuthorityModule
         string search,
         string? sourceRecordId)
     {
-        if (string.IsNullOrWhiteSpace(template)) return null;
+        if (string.IsNullOrWhiteSpace(template)
+            || !Uri.TryCreate(provider.BaseUrl, UriKind.Absolute, out var configured)
+            || configured.Scheme != Uri.UriSchemeHttps
+            || string.IsNullOrWhiteSpace(configured.Host)
+            || !string.IsNullOrEmpty(configured.UserInfo)) return null;
         var value = template
             .Replace("{page}", page.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{pageSize}", pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
@@ -907,14 +911,14 @@ public static class CustomerSourceAuthorityModule
         {
             uri = absolute;
         }
-        else if (Uri.TryCreate(provider.BaseUrl, UriKind.Absolute, out var baseUri))
+        else
         {
-            uri = new Uri(baseUri, value);
+            uri = new Uri(configured, value);
         }
 
-        if (uri is null || uri.Scheme != Uri.UriSchemeHttps) return null;
-        if (Uri.TryCreate(provider.BaseUrl, UriKind.Absolute, out var configured)
-            && !configured.Host.Equals(uri.Host, StringComparison.OrdinalIgnoreCase)) return null;
+        if (uri is null || uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo)) return null;
+        if (!configured.Host.Equals(uri.Host, StringComparison.OrdinalIgnoreCase)
+            || configured.Port != uri.Port) return null;
         return uri;
     }
 

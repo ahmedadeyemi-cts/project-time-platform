@@ -8,6 +8,7 @@ internal static class CrmCredentialConcurrencyTests
 {
     internal static async Task RunAsync()
     {
+        VerifyCustomerDestinations();
         var value = Environment.GetEnvironmentVariable("SECURITY_TEST_DB");
         if (string.IsNullOrEmpty(value)) { Console.WriteLine("CRM_CREDENTIAL_CONCURRENCY=NOT_RUN isolated_database_not_configured"); return; }
         var builder = new NpgsqlConnectionStringBuilder(value);
@@ -81,6 +82,33 @@ internal static class CrmCredentialConcurrencyTests
             await Sql(admin, $"DROP SCHEMA {schema} CASCADE");
         }
     }
+    private static void VerifyCustomerDestinations()
+    {
+        var type = typeof(CustomerSourceAuthorityModule);
+        var record = type.GetNestedType("ProviderRecord", BindingFlags.NonPublic)!;
+        var build = type.GetMethod("BuildProviderUri", BindingFlags.Static | BindingFlags.NonPublic)!;
+        int checks = 0;
+        foreach (var (baseUrl, destination, permitted) in new[]
+        {
+            ("", "https://other.example.invalid/customers", false),
+            ("invalid", "https://other.example.invalid/customers", false),
+            ("http://crm.example.invalid", "https://crm.example.invalid/customers", false),
+            ("https://user@crm.example.invalid", "https://crm.example.invalid/customers", false),
+            ("https://crm.example.invalid", "https://other.example.invalid/customers", false),
+            ("https://crm.example.invalid", "https://crm.example.invalid:8443/customers", false),
+            ("https://crm.example.invalid", "https://crm.example.invalid/customers", true),
+            ("https://crm.example.invalid/api/", "customers?page={page}", true)
+        })
+        {
+            var provider = Activator.CreateInstance(record, "example", "Example", "crm", "api_key", baseUrl,
+                "Authorization", "Bearer", "", "{}", true, "available", true);
+            var uri = (Uri?)build.Invoke(null, [provider, destination, 1, 20, "", null]);
+            if ((uri is not null) != permitted) throw new Exception($"CRM destination boundary failed for base '{baseUrl}' and target '{destination}'");
+            checks++;
+        }
+        Console.WriteLine($"CRM_CUSTOMER_DESTINATION=PASS assertions={checks}");
+    }
+
     private static async Task Sql(NpgsqlConnection connection, string sql)
     { await using var command = new NpgsqlCommand(sql, connection); await command.ExecuteNonQueryAsync(); }
     private static async Task<object?> Invoke(string name, params object?[] args)
