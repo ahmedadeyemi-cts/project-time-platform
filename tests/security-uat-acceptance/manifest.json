@@ -19,7 +19,9 @@
     "tests/security-release/admission_fixture.py",
     "tests/security-uat-acceptance/manifest.json",
     "tests/security-uat-acceptance/scope.py",
-    "tests/security-uat-acceptance/test_scope.py"
+    "tests/security-uat-acceptance/test_scope.py",
+    "tests/validate-celar-ai-pr630-consolidated-legacy.mjs",
+    "tests/validate-celar-ai-pr630-consolidated.mjs"
   ],
   "sha256": {
     ".github/workflows/flowhive-enterprise-psa-ci.yml": "e51fc5061f8b3b1f8f26cf416d7f070cafd8c575502965000693d05c29a1fb3b",
@@ -39,6 +41,8 @@
     "tests/security-deployment-boundaries.test.py": "aeb6985a5d74215793fbcf84bb9c9aabf2e68cbc76a0be983bc7a9d34c553ac7",
     "tests/security-release/admission_fixture.py": "7b60987e067c81bc34adec8e31fd6f95d7954a30512bfcb8808ff740e5edf342",
     "tests/security-uat-acceptance/scope.py": "56832e04c86c745435b672f6390319bb4b8fbf73f1731e204b0f64225b42f733",
-    "tests/security-uat-acceptance/test_scope.py": "4e0315bf15d190f6c6816e33956e0b6cfc348a1c6158c78deb9538865e6664dc"
+    "tests/security-uat-acceptance/test_scope.py": "4e0315bf15d190f6c6816e33956e0b6cfc348a1c6158c78deb9538865e6664dc",
+    "tests/validate-celar-ai-pr630-consolidated-legacy.mjs": "c145fac99a9208740ec9a89932d31e02eb7f7b7716eb06ce1ba805dbb59bf92d",
+    "tests/validate-celar-ai-pr630-consolidated.mjs": "d2ae5c33da67424cd3061fe4a692db9826c0c2a761c5ba1fb0776a18a100138f"
   }
 }
