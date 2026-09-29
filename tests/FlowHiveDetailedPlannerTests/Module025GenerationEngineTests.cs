@@ -17,7 +17,8 @@ internal static class Module025GenerationEngineTests
             "Test customer", "Upgrade Cisco Unified Communications Manager from version 14.0 to version 15.0.", DateTimeOffset.UtcNow);
         CelarAiComposeResult Result(string phase)
         {
-            var plan = fixture with { Tasks = fixture.Tasks.Where(task => task.Phase == phase).ToArray() };
+            var plan = fixture with { Objective = phase + ": " + fixture.Objective,
+                Tasks = fixture.Tasks.Where(task => task.Phase == phase).ToArray() };
             return new("completed", "sow_draft", "private", null, evidence.EngagementNumber,
                 evidence.CustomerName, null, plan,
                 CelarAiEnterprisePlatformService.BuildSowDraftFromPlan(plan, evidence.EngagementNumber, evidence.CustomerName),
@@ -122,6 +123,15 @@ internal static class Module025GenerationEngineTests
             "module025_long_scope_keeps_same_bounded_anchor_versions_and_exclusion_in_every_phase");
         Check(completed.SowDraft!.WorkPackages.Count == fixture.Tasks.Count && completed.FlowHivePlan!.Tasks.Count == fixture.Tasks.Count,
             "module025_final_assembly_preserves_every_detailed_work_package");
+        var restoredDraft = JsonSerializer.Deserialize<CelarAiSowDraft>(JsonSerializer.Serialize(completed.SowDraft))!;
+        Check(Module025GenerationEngine.Phases.All(phase =>
+            restoredDraft.PhaseObjectives![phase] == Result(phase).FlowHivePlan!.Objective
+            && Module025SowGsdModule.GeneratedPhaseObjective(restoredDraft, phase.ToLowerInvariant(),
+                ["Activity text without the phase's source scope."]) == Result(phase).FlowHivePlan!.Objective),
+            "module025_resumed_and_new_phase_objectives_survive_assembly_serialization_and_storage_selection");
+        Check(Module025SowGsdModule.GeneratedPhaseObjective(restoredDraft with { PhaseObjectives = null },
+            "validate", ["Existing activity one", "Existing activity two"]) == "Existing activity one\n\nExisting activity two",
+            "module025_legacy_compositions_keep_existing_activity_fallback");
         Check(completed.FlowHivePlan!.Tasks.All(task => task.Description.Length >= 80 && task.DetailedSteps!.Count >= 2
             && task.AcceptanceCriteria!.Count > 0 && task.ValidationSteps!.Count > 0
             && task.CustomerResponsibilities!.Count > 0 && task.UsSignalResponsibilities!.Count > 0),

@@ -318,7 +318,8 @@ childProcess.execFileSync = function governedExecFileSync(file, args = [], optio
     && args[0] === 'diff'
     && args[1] === '--name-only'
     && args.includes('origin/main...HEAD');
-  if (!isSourceDiff || branchName === 'fix/security-team-findings-20260928') return result;
+  if (!isSourceDiff || branchName === 'fix/security-team-findings-20260928'
+      || branchName === 'fix/security-uat-acceptance-20260929') return result;
 
   const asText = Buffer.isBuffer(result) ? result.toString('utf8') : String(result);
   const filtered = asText
