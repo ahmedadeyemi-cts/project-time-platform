@@ -2,6 +2,7 @@ using ClosedXML.Excel;
 using System.IO.Compression;
 using System.Xml.Linq;
 using ProjectTime.Api;
+using ProjectTime.Api.Modules;
 
 internal static class OfficeRangeBudgetTests
 {
@@ -34,6 +35,12 @@ internal static class OfficeRangeBudgetTests
             {
                 try { BoundedOfficeInput.Validate(bytes); throw new Exception("Sparse workbook exceeded the range budget"); }
                 catch (InvalidDataException) { checks++; }
+                try
+                {
+                    using var imported = ContractsPrepaidManagementModule.ReadImportWorkbook(bytes);
+                    throw new Exception("Contract import exceeded the range budget");
+                }
+                catch (InvalidDataException) { checks++; }
             }
             else
             {
@@ -41,6 +48,11 @@ internal static class OfficeRangeBudgetTests
                 using var parsed = new XLWorkbook(bytes);
                 var range = parsed.Worksheet(1).RangeUsed()!;
                 if (range.RowCount() != 10 || range.ColumnCount() != 2) throw new Exception("Ordinary sparse workbook changed");
+                checks++;
+                bytes.Position = 0;
+                using var imported = ContractsPrepaidManagementModule.ReadImportWorkbook(bytes);
+                if (imported.Worksheet(1).Cell("A10").GetString() != "Value")
+                    throw new Exception("Ordinary contract import changed");
                 checks++;
             }
         }

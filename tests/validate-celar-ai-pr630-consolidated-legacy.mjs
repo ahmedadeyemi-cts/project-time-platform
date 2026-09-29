@@ -160,6 +160,8 @@ const branchName = process.env.GITHUB_HEAD_REF || (() => {
     return '';
   }
 })();
+const securityAuditFollowupScope = branchName === 'fix/security-audit-followup-20260929';
+if (securityAuditFollowupScope) execFileSync('python3', ['tests/security-audit-followup/scope.py'], { cwd: root, stdio: 'inherit' });
 const securityUatAcceptanceScope = branchName === 'fix/security-uat-acceptance-20260929';
 if (securityUatAcceptanceScope) execFileSync('python3', ['tests/security-uat-acceptance/scope.py'], { cwd: root, stdio: 'inherit' });
 const securityRemediationScope = branchName === 'fix/security-team-findings-20260928';
@@ -172,7 +174,7 @@ const unexpected = changed.filter((file) => {
   }
   return !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix));
 });
-requireValue(securityUatAcceptanceScope || securityRemediationScope || enterpriseCompletionScope || unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
+requireValue(securityAuditFollowupScope || securityUatAcceptanceScope || securityRemediationScope || enterpriseCompletionScope || unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
 const migrationScope = flowHiveSowSuccessorScope
   ? changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql')
     && changed.includes('database/migrations/104_flowhive_bounded_ai_execution.sql')
