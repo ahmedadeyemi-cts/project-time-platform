@@ -2,6 +2,7 @@
   "base": "5f9c58057a11858b17f272661b93dc890d037047",
   "files": [
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/pr1140-uat-recovery-ci.yml",
     ".github/workflows/pr1151-uat-supersession-ci.yml",
     ".github/workflows/security-posture-ci.yml",
@@ -25,6 +26,7 @@
   ],
   "sha256": {
     ".github/workflows/flowhive-enterprise-psa-ci.yml": "e51fc5061f8b3b1f8f26cf416d7f070cafd8c575502965000693d05c29a1fb3b",
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "b8e20f1c25105e682b0ff0308a7a9054830f97e05fae343108ef5488aa46e559",
     ".github/workflows/pr1140-uat-recovery-ci.yml": "5b3dd134df2d68c310754014d0ad35dacc3fc0cce810d75143830ea8a341a92c",
     ".github/workflows/pr1151-uat-supersession-ci.yml": "38782a68f6569428d8ff7bd3d64c17547a7aba2ba7e55f27d669728231fd9510",
     ".github/workflows/security-posture-ci.yml": "b83076e38c17b393a9918e40614772d8e69c05243e85dc5b03639400ffe46d34",
