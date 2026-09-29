@@ -71,6 +71,14 @@ RECEIPTS = {
         "expectedImage": IMAGE, "observedImage": IMAGE},
 }
 
+# A failed/interrupted revision check is diagnostic evidence, not proof that a
+# revision converged. Keep only its content-free summary/hash in that case.
+# Unknown phases still fail the strict receipt validator below.
+INCOMPLETE_REVISION_PHASES = {
+    "observed", "ready_for_reconciliation", "activation_requested",
+    "terminal_revision_failure", "timed_out",
+}
+
 
 def valid(value, rule):
     if rule is bool:
@@ -99,7 +107,12 @@ def publish(source, destination):
     outputs = {"security-safe-uat-summary.json": summary}
     for name in RECEIPTS:
         if name in summary["reports"]:
-            outputs[name] = project_receipt(name, json.loads((source / name).read_bytes()))
+            receipt = json.loads((source / name).read_bytes())
+            if (name == "module001b-revision-reconcile.json"
+                    and isinstance(receipt.get("phase"), str)
+                    and receipt.get("phase") in INCOMPLETE_REVISION_PHASES):
+                continue
+            outputs[name] = project_receipt(name, receipt)
     destination.mkdir(mode=0o700, parents=False)
     for name, data in outputs.items():
         fd = os.open(destination / name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)

@@ -85,7 +85,13 @@ internal static class Module025GenerationEngine
         var assembled = results[^1] with
         {
             FlowHivePlan = plan,
-            SowDraft = CelarAiEnterprisePlatformService.BuildSowDraftFromPlan(plan, evidence.EngagementNumber, evidence.CustomerName),
+            SowDraft = CelarAiEnterprisePlatformService.BuildSowDraftFromPlan(plan, evidence.EngagementNumber, evidence.CustomerName) with
+            {
+                // Assembly keeps one document objective. Preserve each independently
+                // validated phase objective as well, including resumed checkpoints.
+                PhaseObjectives = results.Select((result, index) => new KeyValuePair<string, string>(
+                    Phases[index], result.FlowHivePlan!.Objective)).ToDictionary()
+            },
             AttemptedTargets = results.SelectMany(result => result.AttemptedTargets ?? []).Distinct().ToArray(),
             SkippedTargets = results.SelectMany(result => result.SkippedTargets ?? []).Distinct().ToArray(),
             TargetDecisions = results.SelectMany(result => result.TargetDecisions ?? []).Distinct().ToArray()

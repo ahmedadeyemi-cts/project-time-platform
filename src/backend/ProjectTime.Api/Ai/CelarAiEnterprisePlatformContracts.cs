@@ -178,7 +178,8 @@ public sealed record CelarAiSowDraft(
     IReadOnlyList<int> CitationIds,
     bool ReviewRequired,
     bool ContractuallyBinding,
-    IReadOnlyList<CelarAiSowWorkPackage>? WorkPackages = null);
+    IReadOnlyList<CelarAiSowWorkPackage>? WorkPackages = null,
+    IReadOnlyDictionary<string, string>? PhaseObjectives = null);
 
 public sealed record CelarAiExternalReasoningRequest(
     string Mode,
