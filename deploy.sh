@@ -23,6 +23,7 @@ COMPOSE="docker compose -f .verity/deploy.compose.yml --env-file .verity/deploy.
 [ -f .verity/release.env ] || { echo "Missing .verity/release.env — run scripts/verity/pin-digests.sh first"; exit 1; }
 # Operator-owned configuration is trusted. Downloaded release metadata is not.
 set -a; . .verity/deploy.env; set +a
+python3 scripts/verity/validate-runtime-config.py
 RELEASE_DATA="$(python3 scripts/verity/release-config.py env .verity/release.env)"
 while IFS='=' read -r key value; do
   case "$key" in
@@ -121,6 +122,50 @@ for f in $(ls database/migrations/*.sql | sort); do
   applied=$((applied+1))
 done
 echo "  ${applied} forward migration(s) applied${BASELINE_MARKER:+ (baseline: ${BASELINE_MARKER})}"
+
+# Reconcile application grants after migrations, using the separate provisioning
+# identity. This rejects pre-existing ownership or elevated role memberships.
+echo "== Provision restricted application database identity =="
+psql_db < scripts/security/provision-runtime-database-role.sql
+# Never place a password in command arguments or public deployment output.
+export SECURITY_RUNTIME_PASSWORD="$RUNTIME_DB_PASSWORD"
+runtime_log="$(mktemp)"
+chmod 0600 "$runtime_log"
+if ! $COMPOSE exec -T -e SECURITY_RUNTIME_PASSWORD db psql -X -q -v ON_ERROR_STOP=1 \
+    -U "${POSTGRES_USER:-projectpulse}" -d "${POSTGRES_DB:-ProjectPulse}" >"$runtime_log" 2>&1 <<'SQL'
+\getenv runtime_password SECURITY_RUNTIME_PASSWORD
+ALTER ROLE ptp_runtime LOGIN PASSWORD :'runtime_password';
+SQL
+then
+  rm -f "$runtime_log"
+  unset SECURITY_RUNTIME_PASSWORD
+  echo "Runtime database credential activation failed; deployment stopped." >&2
+  exit 1
+fi
+rm -f "$runtime_log"
+unset SECURITY_RUNTIME_PASSWORD
+export PGPASSWORD="$RUNTIME_DB_PASSWORD"
+if ! $COMPOSE exec -T -e PGPASSWORD db psql -X -q -v ON_ERROR_STOP=1 \
+    -h 127.0.0.1 -U ptp_runtime -d "${POSTGRES_DB:-ProjectPulse}" >/dev/null 2>&1 <<'SQL'
+BEGIN READ ONLY;
+DO $$ BEGIN
+  IF current_user <> 'ptp_runtime'
+     OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user
+       AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls))
+     OR has_schema_privilege(current_user,'public','CREATE')
+     OR has_database_privilege(current_user,current_database(),'CREATE')
+     OR has_table_privilege(current_user,'public.verity_schema_migrations','INSERT,UPDATE,DELETE,TRUNCATE') THEN
+    RAISE EXCEPTION 'Runtime authority verification failed';
+  END IF;
+END $$;
+COMMIT;
+SQL
+then
+  unset PGPASSWORD
+  echo "Runtime database authentication or authority validation failed; deployment stopped." >&2
+  exit 1
+fi
+unset PGPASSWORD
 
 # --- up ---
 echo "== Up (web + api on pinned digests) =="

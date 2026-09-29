@@ -49,6 +49,7 @@ jobs:
           python3 tests/security-completion/ocr.test.py
           python3 tests/security-completion/gateway.test.py
           python3 tests/security-completion/release.test.py
+          python3 tests/security-completion/runtime-config.test.py
           python3 tests/security-completion/test_scope.py
           python3 tests/security-deployment-boundaries.test.py
           python3 tests/security-release/test_controller_registration.py

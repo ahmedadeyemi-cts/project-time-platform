@@ -31,7 +31,12 @@ The active protected deployment workflow and its exact registration remain uncha
 - Actual authorization resolvers and contract handlers pass 16 database-backed cases. Coverage includes delegated privilege rejection, authorized reads, View-As, revoked administrator assignments, contract-balance reads and contract usage writes.
 - Full local run:14 authority,16 privileged integration,15 identity/session,64 completion,45 route and58 existing authorization checks passed against an isolated PostgreSQL-compatible engine. Native PostgreSQL validation remains required for this latest change, especially concurrent behavior.
 - The prior pushed checkpoint passed68 of72 returned workflows at inspection; one was running and three historical registration failures are addressed in this follow-up. All121 admission tests passed locally without removing assertions. No live deployment occurred.
-- Current dispositions:37 prior source repairs,109 candidate repairs with incomplete validation,3 further remediation/review. Zero findings are closed through UAT.
+- Current dispositions:37 prior source repairs,110 candidate repairs with incomplete validation,2 further remediation/review. Zero findings are closed through UAT.
+
+## Latest database identity verification
+
+- The VM compose API identity is fixed to the restricted runtime role. Deployment rejects credential reuse and connection-option injection, reconciles application grants after migration, and verifies runtime authentication/authority before starting the API. Actual VM installed acceptance remains required.
+- The latest application checkpoint passes 72 privileged integration checks locally. A new native validation run is required for this follow-up. Protected source deployment remains outstanding.
 
 ## All-finding disposition
 
@@ -107,7 +112,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 066 | Candidate repair; incomplete validation | Not established |
 | 067 | Candidate repair; incomplete validation | Not established |
 | 068 | Candidate repair; incomplete validation | Not established |
-| 069 | Further remediation/review required | Not established |
+| 069 | Candidate repair; incomplete validation | Not established |
 | 070 | Prior source fix; UAT unverified | Not established |
 | 071 | Candidate repair; incomplete validation | Not established |
 | 072 | Candidate repair; incomplete validation | Not established |
