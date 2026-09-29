@@ -9,6 +9,12 @@ HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
   [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
 fi
+if [[ "$HEAD_BRANCH" == 'fix/security-uat-acceptance-20260929' ]]; then
+  python3 tests/security-uat-acceptance/scope.py
+  python3 tests/security-uat-acceptance/test_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  exit 0
+fi
 if [[ "$HEAD_BRANCH" == 'fix/security-uat-followup-20260929' ]]; then
   python3 tests/security-uat-followup/scope.py
   python3 tests/security-uat-followup/test_scope.py

@@ -30,6 +30,24 @@ ACTIVE=''
 TRAFFIC_WEIGHT=''
 ACTIVE_REVISION_NAMES_JSON='[]'
 
+# Azure can return a transient 503 after the revision itself is healthy. Retry
+# only the two read operations that previously terminated reconciliation early;
+# successful reads must still pass every identity and convergence guard below.
+read_reconcile_state() {
+  local read_attempt result
+  for read_attempt in 1 2 3; do
+    if result="$(az "$@")"; then
+      printf '%s' "$result"
+      return 0
+    fi
+    if (( read_attempt < 3 )); then
+      echo "REVISION_RECONCILE_READ_RETRY attempt=$read_attempt" >&2
+      sleep "$SLEEP_SECONDS"
+    fi
+  done
+  return 1
+}
+
 write_module001b_reconcile_evidence() {
   local phase="$1"
   [[ "$MODULE001B_PROTECTED_TEST_RECONCILE" == true && -n "${EVIDENCE_DIR:-}" ]] || return 0
@@ -99,7 +117,7 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
       exit 0
     fi
 
-    APP_JSON="$(az containerapp show \
+    APP_JSON="$(read_reconcile_state containerapp show \
       --resource-group "$RESOURCE_GROUP" \
       --name "$APP_NAME" \
       --output json --only-show-errors)" \
@@ -118,7 +136,7 @@ for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
     # The ready revision must be activated before stale cleanup. In the prior controller,
     # requiring ACTIVE=true here creates a circular wait when Single mode keeps the old
     # revision active while the exact newly-ready revision is still inactive.
-    REVISIONS_JSON="$(az containerapp revision list \
+    REVISIONS_JSON="$(read_reconcile_state containerapp revision list \
       --resource-group "$RESOURCE_GROUP" \
       --name "$APP_NAME" \
       --output json --only-show-errors)" \

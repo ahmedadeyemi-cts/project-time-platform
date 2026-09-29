@@ -160,6 +160,8 @@ const branchName = process.env.GITHUB_HEAD_REF || (() => {
     return '';
   }
 })();
+const securityUatAcceptanceScope = branchName === 'fix/security-uat-acceptance-20260929';
+if (securityUatAcceptanceScope) execFileSync('python3', ['tests/security-uat-acceptance/scope.py'], { cwd: root, stdio: 'inherit' });
 const securityRemediationScope = branchName === 'fix/security-team-findings-20260928';
 if (securityRemediationScope) execFileSync('python3', ['tests/security-release/scope.py'], { cwd: root, stdio: 'inherit' });
 const enterpriseCompletionScope = branchName === 'fix/enterprise-completion-20260919';
@@ -170,7 +172,7 @@ const unexpected = changed.filter((file) => {
   }
   return !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix));
 });
-requireValue(securityRemediationScope || enterpriseCompletionScope || unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
+requireValue(securityUatAcceptanceScope || securityRemediationScope || enterpriseCompletionScope || unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
 const migrationScope = flowHiveSowSuccessorScope
   ? changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql')
     && changed.includes('database/migrations/104_flowhive_bounded_ai_execution.sql')
@@ -179,7 +181,9 @@ const migrationScope = flowHiveSowSuccessorScope
   : changed.includes(requiredFiles[0]) && changed.includes(requiredFiles[1]);
 const inheritedSecurityMigrations = securityRemediationScope && module025SowSellBaselinePaths.every((file) =>
   fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `a562371a0bbed74e881c40a4c246928dac9ec72e:${file}`], { cwd: root })));
-requireValue(inheritedSecurityMigrations || migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessorScope ? 'combined FlowHive/SOW migrations 103-106' : 'Migration 084 and guarded rollback');
+const unchangedUatMigrations = securityUatAcceptanceScope && requiredFiles.slice(0, 2).every((file) =>
+  fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `5f9c58057a11858b17f272661b93dc890d037047:${file}`], { cwd: root })));
+requireValue(unchangedUatMigrations || inheritedSecurityMigrations || migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessorScope ? 'combined FlowHive/SOW migrations 103-106' : 'Migration 084 and guarded rollback');
 requireValue(!changed.includes('.github/workflows/celar-ai-source-snapshot-temp.yml'), 'CELAR_PR630_TEMP_SNAPSHOT_REMOVED');
 const flowHiveProxyLimit = 'deployment/containers/web/default.conf.template';
 const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope

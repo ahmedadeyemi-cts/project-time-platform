@@ -1222,7 +1222,7 @@ public static class Module025SowGsdModule
             foreach (var phaseCode in PhaseCodes)
             {
                 var phase = generated[phaseCode];
-                var objective = string.Join("\n\n", phase.DetailedActivities);
+                var objective = GeneratedPhaseObjective(composition.SowDraft, phaseCode, phase.DetailedActivities);
                 var rationale = BuildGeneratedEffortRationale(JsonArray(JsonSerializer.SerializeToElement(composition.SowDraft), "WorkPackages"), phaseCode);
                 var existingPhase = current.Phases.FirstOrDefault(item => item.PhaseCode == phaseCode);
                 var phaseTasks = workingTasks[phaseCode];
@@ -1694,6 +1694,17 @@ public static class Module025SowGsdModule
         }
         parts.Add("These are proposed labor hours, not elapsed duration or a customer commitment. Validate the work-package estimates and unresolved inputs before approving final hours.");
         return string.Join("\n\n", parts);
+    }
+
+    internal static string GeneratedPhaseObjective(CelarAiSowDraft draft, string phaseCode, IReadOnlyList<string> activities)
+    {
+        // Older compositions have no phase objectives. Their existing activity
+        // fallback remains readable; new generation retains the validated prose.
+        return draft.PhaseObjectives is not null
+            && draft.PhaseObjectives.TryGetValue(PhaseLabel(phaseCode), out var objective)
+            && !string.IsNullOrWhiteSpace(objective)
+                ? objective
+                : string.Join("\n\n", activities);
     }
 
     private static async Task SaveGeneratedPhaseAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid engagementId, GeneratedPhase phase, string objective, string rationale, decimal finalHours, CancellationToken cancellationToken)
