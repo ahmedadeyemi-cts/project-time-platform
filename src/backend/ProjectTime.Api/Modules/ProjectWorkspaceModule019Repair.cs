@@ -177,7 +177,7 @@ internal static class ProjectWorkspaceModule019Repair
             {
                 "Project Workspace records are filtered by backend role and assignment scope.",
                 "Engineers see only projects or service requests assigned directly to them.",
-                "A direct active assignment grants access to all documents related to that assigned project or service request.",
+                "A direct active assignment grants access only to documents approved for engineering visibility.",
                 "Broader manager and engineering-lead scopes continue to require engineering-visible documents.",
                 "Document listing and document download use the same authorization predicates.",
                 "Closed, completed, cancelled, and archived projects are removed from assigned engineering workspaces.",
@@ -629,11 +629,7 @@ internal static class ProjectWorkspaceModule019Repair
                 document.original_file_name,
                 document.content_type,
                 COALESCE(document.size_bytes, 0)::bigint AS size_bytes,
-                (
-                    COALESCE(document.engineering_visible, FALSE)
-                    OR scope.direct_project_assignment
-                    OR scope.direct_service_request_assignment
-                ) AS engineering_visible,
+                COALESCE(document.engineering_visible, FALSE) AS engineering_visible,
                 COALESCE(document.ai_timesheet_context_enabled, FALSE) AS ai_timesheet_context_enabled,
                 COALESCE(document.extraction_status, 'not_started') AS extraction_status,
                 COALESCE(document.upload_source, 'manual') AS upload_source,
@@ -656,9 +652,12 @@ internal static class ProjectWorkspaceModule019Repair
                   OR (
                       @can_view_managed_projects = TRUE
                       AND (project.project_manager_user_id = @user_id OR request.assigned_pm_user_id = @user_id)
+                      AND NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                          WHERE wr.work_register_document_id = document.work_register_document_id
+                            AND lower(COALESCE(wr.visibility, '')) = 'ptc_admin_only')
                   )
-                  OR scope.direct_project_assignment
-                  OR scope.direct_service_request_assignment
+                  OR (COALESCE(document.engineering_visible, FALSE) = TRUE
+                      AND (scope.direct_project_assignment OR scope.direct_service_request_assignment))
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE
@@ -1079,9 +1078,12 @@ internal static class ProjectWorkspaceModule019Repair
                   OR (
                       @can_view_managed_projects = TRUE
                       AND (project.project_manager_user_id = @user_id OR request.assigned_pm_user_id = @user_id)
+                      AND NOT EXISTS (SELECT 1 FROM work_register_documents wr
+                          WHERE wr.work_register_document_id = document.work_register_document_id
+                            AND lower(COALESCE(wr.visibility, '')) = 'ptc_admin_only')
                   )
-                  OR scope.direct_project_assignment
-                  OR scope.direct_service_request_assignment
+                  OR (COALESCE(document.engineering_visible, FALSE) = TRUE
+                      AND (scope.direct_project_assignment OR scope.direct_service_request_assignment))
                   OR (
                       @can_view_team_scope = TRUE
                       AND COALESCE(document.engineering_visible, FALSE) = TRUE

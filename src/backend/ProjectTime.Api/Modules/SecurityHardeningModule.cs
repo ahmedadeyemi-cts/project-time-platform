@@ -21,19 +21,19 @@ public static class SecurityHardeningModule
 
     private static readonly Regex WorkRegisterDetailsPath = new(
         @"^/api/work-register/projects/(?<id>[0-9a-fA-F-]{36})/details$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly Regex WorkRegisterDocumentDownloadPath = new(
         @"^/api/work-register/projects/documents/(?<id>[0-9a-fA-F-]{36})/download$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly Regex IntakeDocumentDownloadPath = new(
         @"^/api/project-intake/documents/(?<id>[0-9a-fA-F-]{36})/download$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly Regex IntakeRequestMutationPath = new(
-        @"^/api/project-intake/(?:requests/)?(?<id>[0-9a-fA-F-]{36})/(?:documents|supporting-documents/upload|post-intake|project-link)$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        @"^/api/project-intake/(?:requests/)?(?<id>[0-9a-fA-F-]{36})/(?:documents|supporting-documents/upload|post-intake|project-link|signed-handoff)$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
     private static readonly HashSet<string> SafeDocumentTypes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -64,6 +64,15 @@ public static class SecurityHardeningModule
 
         var path = CanonicalApiPaths.Normalize(context.Request.Path.Value ?? string.Empty);
         var method = context.Request.Method.ToUpperInvariant();
+        if (path.Equals("/api/reports/030/preview", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/reports/030/filter-options", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/project-closeout/email/audit", StringComparison.OrdinalIgnoreCase))
+        {
+            await WriteErrorAsync(context, StatusCodes.Status410Gone, "legacy_endpoint_retired",
+                "Use the scoped Analytics or Project Notifications workspace for this information.");
+            return;
+        }
+
 
         if (await TryHandleGenericLocalLoginRouteAsync(context, path, method))
         {
@@ -204,7 +213,9 @@ public static class SecurityHardeningModule
 
         try
         {
-            var actorUserId = ResolveActualUserId(context);
+            var actorUserId = ProjectPulseActualSessionAuthority.IsViewAs(context)
+                ? ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseEffectiveUserId")
+                : ResolveActualUserId(context);
             var policy = RequiredPolicy(path, method);
 
             AccessContext? access = null;
@@ -709,7 +720,8 @@ public static class SecurityHardeningModule
 
     private static bool IsDocumentUploadPath(string path)
     {
-        return path.Contains("/project-intake/", StringComparison.OrdinalIgnoreCase)
+        return path.Equals("/api/work-register/projects/documents/upload", StringComparison.OrdinalIgnoreCase)
+               || path.Contains("/project-intake/", StringComparison.OrdinalIgnoreCase)
                && path.Contains("document", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -746,6 +758,13 @@ public static class SecurityHardeningModule
 
         foreach (var file in form.Files)
         {
+            if (!SafeDocumentMedia.IsAllowed(file.FileName)
+                || file.ContentType.Split(';')[0].Trim().ToLowerInvariant() is "text/html" or "image/svg+xml")
+            {
+                await WriteErrorAsync(context, StatusCodes.Status400BadRequest,
+                    "unsupported_document_format", "Upload a PDF, Word, Excel, or CSV document.");
+                return false;
+            }
             if (!string.Equals(file.FileName, Path.GetFileName(file.FileName), StringComparison.Ordinal)
                 || file.FileName.Contains('/')
                 || file.FileName.Contains('\\')
@@ -765,6 +784,15 @@ public static class SecurityHardeningModule
 
     private static SecurityPolicy RequiredPolicy(string path, string method)
     {
+        if (path.Equals("/api/customers/overview", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Customers;
+        if (path.Equals("/api/reporting/executive-dashboard", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Executive;
+        if (path.Equals("/api/expenses/summary", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/invoicing/summary", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Finance;
+        if (path.StartsWith("/api/reminders/", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.HolidayAdministration;
+        if (path.StartsWith("/api/role-policy/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/runtime/role-policy/", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/runtime/v2/role-policy/", StringComparison.OrdinalIgnoreCase)
+            || path.Equals("/api/scoped-authorization/evaluate", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Administrator;
         if (path.Equals("/api/admin/users", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/admin/users/roles", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/api/auth/local-accounts", StringComparison.OrdinalIgnoreCase)
@@ -801,7 +829,7 @@ public static class SecurityHardeningModule
                 return SecurityPolicy.ProjectAssignment;
             }
 
-            if (path.Equals("/api/project-intake/overview", StringComparison.OrdinalIgnoreCase)
+            if ((path.Equals("/api/project-intake/overview", StringComparison.OrdinalIgnoreCase) || path.Equals("/api/project-intake/summary", StringComparison.OrdinalIgnoreCase))
                 || IsUnsafeMethod(method))
             {
                 return SecurityPolicy.ProjectIntake;
@@ -827,6 +855,11 @@ public static class SecurityHardeningModule
             SecurityPolicy.None => true,
             SecurityPolicy.Administrator => access.IsAdministrator,
             SecurityPolicy.Reporting => access.CanViewReporting,
+            SecurityPolicy.Customers => access.IsAdministrator || access.Roles.Contains("PROJECT_TEAM_COORDINATOR")
+                || access.Permissions.Overlaps(new[] { "VIEW_CUSTOMERS", "MANAGE_CUSTOMERS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL" }),
+            SecurityPolicy.Executive => access.IsAdministrator || access.Roles.Overlaps(new[] { "PROJECT_TEAM_COORDINATOR", "EXECUTIVE" })
+                || access.Permissions.Overlaps(new[] { "VIEW_EXECUTIVE_REPORTING", "SYSTEM_ADMINISTRATION", "MANAGE_ALL" }),
+            SecurityPolicy.Finance => access.IsAdministrator || access.Roles.Overlaps(new[] { "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE", "PROJECT_TEAM_COORDINATOR" }),
             SecurityPolicy.TimeCompliance => access.CanViewTimeCompliance,
             SecurityPolicy.HolidayAdministration => access.CanManageHolidays,
             SecurityPolicy.ProjectIntake => access.CanUseProjectIntake,
@@ -1235,7 +1268,7 @@ public static class SecurityHardeningModule
         // engineers never inherit this visibility through project membership.
         if (visibility == "ptc_admin_only")
         {
-            return access.CanManageAllWorkRegisterDocuments;
+            return access.IsAdministrator || access.Roles.Contains("PROJECT_TEAM_COORDINATOR");
         }
 
         if (access.CanManageAllWorkRegisterDocuments)
@@ -1338,7 +1371,7 @@ public static class SecurityHardeningModule
                 FROM project_intake_requests r
                 WHERE r.project_intake_request_id = @request_id
                   AND (
-                        r.requested_by_user_id = @user_id
+                        @organization_scope OR r.requested_by_user_id = @user_id
                      OR r.assigned_pm_user_id = @user_id
                      OR r.account_executive_user_id = @user_id
                      OR r.solution_architect_user_id = @user_id
@@ -1347,6 +1380,7 @@ public static class SecurityHardeningModule
             """, connection);
 
         command.Parameters.AddWithValue("request_id", requestId);
+        command.Parameters.AddWithValue("organization_scope", access.HasOrganizationIntakeScope);
         command.Parameters.AddWithValue("user_id", actorUserId);
 
         return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
@@ -1521,6 +1555,9 @@ public static class SecurityHardeningModule
     private enum SecurityPolicy
     {
         None,
+        Customers,
+        Executive,
+        Finance,
         Administrator,
         Reporting,
         TimeCompliance,
@@ -1607,27 +1644,10 @@ public static class SecurityHardeningModule
                 "MANAGE_ALL"
             });
 
-        public bool HasOrganizationIntakeScope =>
-            IsAdministrator
-            || Roles.Contains("PROJECT_TEAM_COORDINATOR")
-            || Permissions.Overlaps(new[]
-            {
-                "MANAGE_PROJECT_INTAKE",
-                "MANAGE_PROJECT_DOCUMENTS",
-                "SYSTEM_ADMINISTRATION",
-                "MANAGE_ALL"
-            });
+        public bool HasOrganizationIntakeScope => IsAdministrator || Roles.Contains("PROJECT_TEAM_COORDINATOR");
 
         public bool CanManageAllWorkRegisterDocuments =>
-            IsAdministrator
-            || Roles.Contains("PROJECT_TEAM_COORDINATOR")
-            || Permissions.Overlaps(new[]
-            {
-                "MANAGE_WORK_REGISTER",
-                "MANAGE_PROJECT_DOCUMENTS",
-                "SYSTEM_ADMINISTRATION",
-                "MANAGE_ALL"
-            });
+            IsAdministrator || Roles.Contains("PROJECT_TEAM_COORDINATOR");
 
         public bool HasOrganizationProjectScope =>
             IsAdministrator

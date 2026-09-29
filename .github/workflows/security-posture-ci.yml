@@ -35,7 +35,7 @@ jobs:
         run: python3 scripts/security/validate-repository-security-posture.py
 
       - name: Install offline regression dependencies
-        run: python3 -m pip install PyYAML==6.0.3
+        run: python3 -m pip install PyYAML==6.0.3 Pillow==11.3.0
 
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
@@ -46,6 +46,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          python3 tests/security-completion/ocr.test.py
           python3 tests/security-deployment-boundaries.test.py
           python3 tests/security-release/test_controller_registration.py
           python3 tests/security-frontend-proxy.test.py
@@ -56,6 +57,13 @@ jobs:
           dotnet run --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
           dotnet run --project tests/FlowHiveExecutablePlanTests/FlowHiveExecutablePlanTests.csproj
           bash -n deploy.sh scripts/verity/pin-digests.sh ops/projectpulse/scripts/projectpulse-backup.sh scripts/apply-admin-experience-008-009-test-migration.sh
+
+      - name: Exercise migration replay and bounded scheduling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --ignore-scripts --prefix tests/security-completion
+          node tests/security-completion/migrations.test.mjs
 
       - name: Start isolated authorization database
         shell: bash

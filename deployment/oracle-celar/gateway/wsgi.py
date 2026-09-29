@@ -217,13 +217,14 @@ def _ocr_image_to_text(path: Path, output_base: Path, deadline: float) -> str:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise subprocess.TimeoutExpired(["tesseract"], 0)
-    result = subprocess.run(
-        ["/usr/bin/tesseract", str(path), str(output_base), "-l", "eng", "--psm", "3"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        timeout=max(1, min(60, int(remaining))),
-        check=False,
-    )
+    with gateway._safe_ocr_image(path) as clean:
+        result = subprocess.run(
+            ["/usr/bin/tesseract", str(clean), str(output_base), "-l", "eng", "--psm", "3"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=max(1, min(60, int(remaining))),
+            check=False,
+        )
     if result.returncode != 0:
         raise RuntimeError("ocr_failed")
     text_path = output_base.with_suffix(".txt")

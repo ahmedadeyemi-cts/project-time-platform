@@ -362,7 +362,8 @@ public static class ProjectRiskRegisterModule
             var validation = ValidateAction(request); if (validation is not null) return validation; if (string.IsNullOrWhiteSpace(request.ChangeReason)) return Bad("CHANGE_REASON_REQUIRED", "Provide a reason for the immutable action history.");
             await using var connection = await EnterpriseGovernanceAccessResolver.OpenAsync(context.RequestAborted); var authorization = await RequireAccessAsync(context, connection, false); if (authorization.Error is not null) return authorization.Error; if (authorization.Value!.IsViewAs) return EnterpriseGovernanceResults.ViewAsReadOnly(Module);
             var identity = await LoadActionIdentityAsync(connection, authorization.Value, actionId, context.RequestAborted); if (identity is null) return EnterpriseGovernanceResults.Forbidden(Module, "The risk action is outside your project scope.");
-            var isRiskManager = authorization.Value.CanManageRiskRegister;
+            var isRiskManager = authorization.Value.CanManageRiskRegister
+                && await LoadProjectAsync(connection, authorization.Value with { RequireProjectManagementScope = true }, identity.Value.ProjectId, context.RequestAborted) is not null;
             var isAssignedOwner = authorization.Value.CanUpdateAssignedActions && identity.Value.OwnerUserId == authorization.Value.EffectiveUserId;
             if (!isRiskManager && !isAssignedOwner) return EnterpriseGovernanceResults.Forbidden(Module, "Only the assigned action owner or an authorized risk manager can update this action.");
             if (!isRiskManager && request.OwnerUserId != identity.Value.OwnerUserId) return EnterpriseGovernanceResults.Forbidden(Module, "Assigned action owners cannot reassign the action. Ask an authorized risk manager to change ownership.");
@@ -457,7 +458,7 @@ public static class ProjectRiskRegisterModule
         if (!access.CanViewRiskRegister) return (access, EnterpriseGovernanceResults.Forbidden(Module, "Your role does not have Enterprise Project Risk Register access."));
         if (manage && access.IsViewAs) return (access, EnterpriseGovernanceResults.ViewAsReadOnly(Module));
         if (manage && !access.CanManageRiskRegister) return (access, EnterpriseGovernanceResults.Forbidden(Module, "Your role has read-only project risk access."));
-        return (access, null);
+        return (access with { RequireProjectManagementScope = manage }, null);
     }
 
     private static async Task<bool> RuntimeReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)
@@ -474,7 +475,7 @@ public static class ProjectRiskRegisterModule
         return Convert.ToBoolean(await command.ExecuteScalarAsync(cancellationToken));
     }
 
-    private static string ScopedProjectsCte => "WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + ", scoped_projects AS (SELECT project.* FROM projects project WHERE " + EnterpriseGovernanceAccessResolver.ProjectScopePredicate + ") ";
+    private static string ScopedProjectsCte => "WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + ", scoped_projects AS (SELECT project.* FROM projects project WHERE " + EnterpriseGovernanceAccessResolver.ProjectScopePredicate + " AND (NOT @project_manage_scope OR @broad_scope OR project.project_manager_user_id=@user_id OR (@team_scope AND project.project_manager_user_id IN (SELECT user_id FROM scoped_team_members))) ) ";
 
     private static readonly string RiskSelect = $"""
         SELECT risk.risk_id,risk.risk_number,risk.project_id,project.project_code,project.project_name,

@@ -910,8 +910,7 @@ public static class FullFutureLoopModule
         || access.Permissions.Contains("MANAGE_FULL_FUTURE_LOOP_083"));
 
     private static bool CanManage(EnterpriseGovernanceAccess access) => !access.IsViewAs && (
-        access.CanManageOrganization
-        || access.Roles.Overlaps(ManageRoles)
+        access.Roles.Overlaps(ManageRoles)
         || access.Permissions.Contains("MANAGE_FULL_FUTURE_LOOP_083"));
 
     private static async Task<bool> RuntimeReadyAsync(NpgsqlConnection connection, CancellationToken cancellationToken)

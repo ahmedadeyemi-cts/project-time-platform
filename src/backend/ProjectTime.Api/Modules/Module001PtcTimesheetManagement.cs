@@ -34,8 +34,8 @@ public static partial class ScopedRolePolicyModule
 
     public static WebApplication MapModule001PtcTimesheetManagementEndpoints(this WebApplication app)
     {
-        app.MapGet("/api/timesheet/ptc/users", PtcUsersAsync);
-        app.MapGet("/api/timesheet/ptc/users/{targetUserId:guid}/entries", PtcUserEntriesAsync);
+        app.MapGet("/api/timesheet/ptc/users", (Func<HttpContext, Task<IResult>>)RuntimePtcUsersAsync);
+        app.MapGet("/api/timesheet/ptc/users/{targetUserId:guid}/entries", (Func<Guid, HttpContext, Task<IResult>>)RuntimePtcWorkspaceAsync);
         app.MapPost("/api/timesheet/ptc/users/{targetUserId:guid}/weeks/{weekStart}/unsubmit", PtcUnsubmitWeekAsync);
         app.MapPatch("/api/timesheet/ptc/entries/{timeEntryId:guid}", PtcEditEntryAsync);
         app.MapPost("/api/timesheet/ptc/entries/{timeEntryId:guid}/move", PtcMoveEntryAsync);
@@ -74,6 +74,8 @@ public static partial class ScopedRolePolicyModule
     {
         var actor = await LoadActorAsync(context, connection);
         if (actor is null) return (null, null, SessionRequired());
+        if (targetUserId is Guid target && !await RuntimePtcManagedUserExistsAsync(connection,target))
+            return (actor,null,Results.Json(new { status="target_not_in_time_steward_scope" },statusCode:403));
         if (actor.IsViewAs && isWrite)
         {
             return (actor, null, Results.Json(new
@@ -457,6 +459,10 @@ public static partial class ScopedRolePolicyModule
             await transaction.RollbackAsync();
             return Results.NotFound(new { status = "timesheet_not_found", message = "The selected user does not have a timesheet for this week." });
         }
+        if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction,
+                timesheetId.Value, targetUserId))
+            return Results.Conflict(new { status = "accounting_time_locked", message = "This week contains accounting-ready, reconciled, locked or invoiced time." });
+
         if (previousStatus == "draft")
         {
             await transaction.RollbackAsync();
@@ -571,6 +577,8 @@ public static partial class ScopedRolePolicyModule
             await transaction.RollbackAsync();
             return Results.NotFound(new { status = "time_entry_not_found" });
         }
+        if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction, original.TimesheetId, request.TargetUserId, original.WorkDate, timeEntryId))
+            return Results.Conflict(new { status = "accounting_time_locked" });
         if (!PtcEntryIsEditable(original))
         {
             await transaction.RollbackAsync();
@@ -663,6 +671,8 @@ public static partial class ScopedRolePolicyModule
             await transaction.RollbackAsync();
             return Results.NotFound(new { status = "time_entry_not_found" });
         }
+        if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction, original.TimesheetId, request.TargetUserId, original.WorkDate, timeEntryId))
+            return Results.Conflict(new { status = "accounting_time_locked" });
         if (!PtcEntryIsEditable(original))
         {
             await transaction.RollbackAsync();
@@ -762,6 +772,8 @@ public static partial class ScopedRolePolicyModule
             await transaction.RollbackAsync();
             return Results.NotFound(new { status = "time_entry_not_found" });
         }
+        if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction, original.TimesheetId, request.TargetUserId, original.WorkDate, timeEntryId))
+            return Results.Conflict(new { status = "accounting_time_locked" });
         if (!PtcEntryIsEditable(original))
         {
             await transaction.RollbackAsync();
@@ -856,11 +868,7 @@ public static partial class ScopedRolePolicyModule
                 @billable, TRUE
             )
             ON CONFLICT (project_id, task_code)
-            DO UPDATE SET task_name=EXCLUDED.task_name,
-                          task_description=EXCLUDED.task_description,
-                          billable=EXCLUDED.billable,
-                          is_active=TRUE,
-                          updated_at=NOW()
+            DO NOTHING
             RETURNING task_id;
             """, connection, transaction))
         {
@@ -869,7 +877,10 @@ public static partial class ScopedRolePolicyModule
             insertTask.Parameters.AddWithValue("task_name", request.TaskName.Trim());
             insertTask.Parameters.AddWithValue("task_description", request.TaskDescription?.Trim() ?? string.Empty);
             insertTask.Parameters.AddWithValue("billable", request.Billable);
-            taskId = (Guid)(await insertTask.ExecuteScalarAsync() ?? throw new InvalidOperationException("Task creation did not return an identifier."));
+            var created = await insertTask.ExecuteScalarAsync();
+            if (created is not Guid newTaskId)
+                return Results.Conflict(new { status = "task_code_exists", message = "Choose a new task code; existing project tasks cannot be overwritten by time stewardship." });
+            taskId = newTaskId;
         }
 
         Guid assignmentId;

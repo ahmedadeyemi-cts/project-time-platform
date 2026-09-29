@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Both values must come from the operator's reviewed checkpoint, never a mutable branch.
+REVIEWED_SCRIPT_COMMIT="${PHD_REVIEWED_SCRIPT_COMMIT:?set the reviewed 40-character source commit}"
+REVIEWED_SCRIPT_SHA256="${PHD_REVIEWED_SCRIPT_SHA256:?set the reviewed canonical script SHA-256}"
+[[ "$REVIEWED_SCRIPT_COMMIT" =~ ^[0-9a-f]{40}$ && "$REVIEWED_SCRIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+  echo 'Invalid reviewed script identity' >&2; exit 1;
+}
+
 REPOSITORY="ahmedadeyemi-cts/project-time-platform"
 MIGRATION_BRANCH="azure-migration/project-health-dashboard-foundation"
 CANONICAL_PATH="deployment/azure/scripts/az08b-build-and-deploy-west-application.sh"
@@ -35,8 +42,10 @@ fi
 
 gh api \
     -H "Accept: application/vnd.github.raw+json" \
-    "repos/${REPOSITORY}/contents/${CANONICAL_PATH}?ref=${MIGRATION_BRANCH}" \
+    "repos/${REPOSITORY}/contents/${CANONICAL_PATH}?ref=${REVIEWED_SCRIPT_COMMIT}" \
     > "$CANONICAL_SCRIPT"
+    printf '%s  %s\n' "$REVIEWED_SCRIPT_SHA256" "$CANONICAL_SCRIPT" | sha256sum --check --status || { echo 'Canonical script digest mismatch' >&2; exit 1; }
+
 
 python3 - "$CANONICAL_SCRIPT" "$FIXED_SCRIPT" <<'PY'
 from pathlib import Path

@@ -75,16 +75,9 @@ public sealed record PulseAiPrivateRuntimeOptions(
         && !string.IsNullOrWhiteSpace(MalwareScanBearerToken);
 
     public bool MalwareScannerConfigured =>
-        ClamAvConfigured || HttpsMalwareScanConfigured || PreScanAttestationConfigured;
+        ClamAvConfigured || HttpsMalwareScanConfigured;
 
-    public bool PreScanAttestationConfigured =>
-        MalwareScannerMode.Equals("pre_scanned_attestation", StringComparison.OrdinalIgnoreCase)
-        && bool.TryParse(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED"),
-            out var attested)
-        && attested
-        && MalwareSignatureVersion.Length > 0
-        && PreScanAttestationApprovalReference.Length > 0;
+    public bool PreScanAttestationConfigured => false;
 
     public bool LexicalOnlyCompletionApproved =>
         AllowLexicalOnlyCompletion && LexicalOnlyApprovalReference.Length > 0;

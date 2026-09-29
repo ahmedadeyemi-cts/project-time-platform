@@ -200,7 +200,13 @@ public static partial class ScopedRolePolicyModule
                 updated_at = NOW()
             WHERE timesheet_id = @timesheet_id
               AND user_id = @user_id
-              AND status IN ('draft','manager_declined');
+              AND status IN ('draft','manager_declined')
+              AND NOT EXISTS (
+                  SELECT 1 FROM timesheet_day_statuses day
+                  WHERE day.timesheet_id=time_entries.timesheet_id
+                    AND day.work_date=time_entries.work_date
+                    AND day.status NOT IN ('draft','manager_declined')
+              );
             """, connection, transaction))
         {
             timesheet.Parameters.AddWithValue("user_id", actor.EffectiveUserId);
@@ -247,7 +253,8 @@ public static partial class ScopedRolePolicyModule
                           submitted_at = NOW(),
                           unlocked_at = NULL,
                           unlocked_by_user_id = NULL,
-                          updated_at = NOW();
+                          updated_at = NOW()
+            WHERE timesheet_day_statuses.status IN ('draft','manager_declined');
             """, connection, transaction))
         {
             dayStatuses.Parameters.AddWithValue("timesheet_id", timesheetId);

@@ -99,7 +99,22 @@ for f in $(ls database/migrations/*.sql | sort); do
   # Skip anything already covered by the baseline (lexical <=).
   if [[ -n "$BASELINE_MARKER" && ! "$base" > "$BASELINE_MARKER" ]]; then continue; fi
   already="$(psql_db -tAc "SELECT 1 FROM verity_schema_migrations WHERE filename = '${base}';")"
-  if [ "$already" = "1" ]; then continue; fi
+  # Adopt the application's authoritative ledger instead of replaying security grants.
+  migration_id="${base%.sql}"
+  [[ "$migration_id" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid migration filename" >&2; exit 1; }
+  canonical_table="$(psql_db -tAc "SELECT to_regclass('public.schema_migrations') IS NOT NULL;")"
+  canonical="0"
+  if [[ "$canonical_table" == t ]]; then
+    canonical="$(psql_db -tAc "SELECT count(*) FROM schema_migrations WHERE migration_id='${migration_id}';")"
+  fi
+  if [[ "$already" == 1 ]]; then
+    [[ "$canonical" == 1 ]] || { echo "Migration ledgers disagree for $base; reconcile before deployment." >&2; exit 1; }
+    continue
+  fi
+  if [[ "$canonical" == 1 ]]; then
+    psql_db -c "INSERT INTO verity_schema_migrations(filename) VALUES ('${base}') ON CONFLICT DO NOTHING;"
+    continue
+  fi
   echo "  applying ${base}"
   psql_db < "$f"   # additive-only; stops the deploy on error (never runs rollback/)
   psql_db -c "INSERT INTO verity_schema_migrations(filename) VALUES ('${base}');"

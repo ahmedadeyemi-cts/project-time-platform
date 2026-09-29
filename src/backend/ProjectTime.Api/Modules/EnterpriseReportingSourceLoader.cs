@@ -105,8 +105,7 @@ internal static class EnterpriseReportingSourceLoader
         {
             var spec = Specs[key];
             var required = definition.RequiredSources.Contains(key, StringComparer.OrdinalIgnoreCase);
-            if (spec.OrganizationOnly && !seed.Actor.Broad
-                && !seed.Actor.HasPermission("MANAGE_ALL", "SYSTEM_ADMINISTRATION", "VIEW_OPERATIONAL_CONTROL_REPORTS"))
+            if (spec.OrganizationOnly && !seed.Actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR"))
             {
                 data[key] = Array.Empty<JsonElement>();
                 states.Add(new EnterpriseReportSourceState(

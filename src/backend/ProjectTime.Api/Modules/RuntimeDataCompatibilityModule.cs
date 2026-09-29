@@ -19,7 +19,7 @@ public static partial class ScopedRolePolicyModule
         app.MapGet("/api/runtime/role-policy/versions", VersionsAsync);
         app.MapGet("/api/runtime/role-policy/matrix", MatrixAsync);
         app.MapGet("/api/runtime/role-policy/roles/{roleCode}", RoleDetailAsync);
-        app.MapGet("/api/runtime/timesheet/steward/users", RuntimePtcUsersAsync);
+        app.MapGet("/api/runtime/timesheet/steward/users", (Func<HttpContext, Task<IResult>>)RuntimePtcUsersAsync);
         app.MapGet("/api/runtime/timesheet/steward/users/{targetUserId:guid}/workspace", RuntimePtcWorkspaceAsync);
         return app;
     }
@@ -52,6 +52,15 @@ public static partial class ScopedRolePolicyModule
                 WHERE u.user_id=@user_id
                   AND u.is_active=TRUE
                   AND UPPER(r.role_code)=ANY(@role_codes)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM app_user_role_assignments protected_assignment
+                    JOIN app_roles protected_role ON protected_role.app_role_id=protected_assignment.app_role_id
+                    WHERE protected_assignment.user_id=u.user_id AND protected_assignment.is_active=TRUE
+                      AND protected_role.is_active=TRUE
+                      AND upper(protected_role.role_code) IN
+                        ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR','GLOBAL_ADMINISTRATOR',
+                         'GLOBALADMINISTRATOR','ADMINISTRATOR','MANAGER','EXECUTIVE')
+                  )
             );
             """, connection);
         command.Parameters.AddWithValue("user_id", userId);
@@ -88,6 +97,15 @@ public static partial class ScopedRolePolicyModule
                   ON r.app_role_id=ura.app_role_id AND r.is_active=TRUE
                 WHERE u.is_active=TRUE
                   AND UPPER(r.role_code)=ANY(@role_codes)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM app_user_role_assignments protected_assignment
+                    JOIN app_roles protected_role ON protected_role.app_role_id=protected_assignment.app_role_id
+                    WHERE protected_assignment.user_id=u.user_id AND protected_assignment.is_active=TRUE
+                      AND protected_role.is_active=TRUE
+                      AND upper(protected_role.role_code) IN
+                        ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR','GLOBAL_ADMINISTRATOR',
+                         'GLOBALADMINISTRATOR','ADMINISTRATOR','MANAGER','EXECUTIVE')
+                  )
                   AND (
                     @search=''
                     OR u.email ILIKE '%' || @search || '%'
@@ -192,6 +210,15 @@ public static partial class ScopedRolePolicyModule
               ON r.app_role_id=ura.app_role_id AND r.is_active=TRUE
             WHERE u.user_id=@user_id AND u.is_active=TRUE
               AND UPPER(r.role_code)=ANY(@role_codes)
+                  AND NOT EXISTS (
+                    SELECT 1 FROM app_user_role_assignments protected_assignment
+                    JOIN app_roles protected_role ON protected_role.app_role_id=protected_assignment.app_role_id
+                    WHERE protected_assignment.user_id=u.user_id AND protected_assignment.is_active=TRUE
+                      AND protected_role.is_active=TRUE
+                      AND upper(protected_role.role_code) IN
+                        ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR','GLOBAL_ADMINISTRATOR',
+                         'GLOBALADMINISTRATOR','ADMINISTRATOR','MANAGER','EXECUTIVE')
+                  )
             GROUP BY u.user_id, u.email, u.display_name;
             """, connection))
         {

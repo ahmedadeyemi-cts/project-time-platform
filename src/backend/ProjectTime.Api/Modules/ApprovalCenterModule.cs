@@ -905,23 +905,9 @@ public static class ApprovalCenterModule
             return true;
         }
 
-        if (!access.IsProjectManager) return false;
-
-        await using var command = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1
-                FROM time_entries te
-                JOIN projects p ON p.project_id = te.project_id
-                WHERE te.timesheet_id = @timesheet_id
-                  AND te.work_date = @work_date
-                  AND p.project_manager_user_id = @actor_user_id
-            );
-            """, connection, transaction);
-
-        command.Parameters.AddWithValue("timesheet_id", timesheetId);
-        command.Parameters.AddWithValue("work_date", workDate);
-        command.Parameters.AddWithValue("actor_user_id", access.UserId);
-        return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+        // Manager-stage actions may only be taken by the employee's manager or a broad approver.
+        // Project ownership does not grant authority over another manager's whole timesheet day.
+        return false;
     }
 
     private static async Task<int?> GetSubmittedAgeDaysAsync(

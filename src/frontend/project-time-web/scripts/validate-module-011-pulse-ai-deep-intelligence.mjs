@@ -147,7 +147,7 @@ assert(
     'project_manager_user_id = @user_id',
     'project_assignments',
     'engineering_resource_requests',
-    'project_outside_effective_user_scope'
+    'project_not_resolved'
   ]),
   'broad, PM, assignment, and resource-request project scope'
 );

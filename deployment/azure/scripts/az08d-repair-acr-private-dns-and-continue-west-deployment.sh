@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Both values must come from the operator's reviewed checkpoint, never a mutable branch.
+REVIEWED_SCRIPT_COMMIT="${PHD_REVIEWED_SCRIPT_COMMIT:?set the reviewed 40-character source commit}"
+REVIEWED_SCRIPT_SHA256="${PHD_REVIEWED_SCRIPT_SHA256:?set the reviewed canonical script SHA-256}"
+[[ "$REVIEWED_SCRIPT_COMMIT" =~ ^[0-9a-f]{40}$ && "$REVIEWED_SCRIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+  echo 'Invalid reviewed script identity' >&2; exit 1;
+}
+
 SUBSCRIPTION_ID="cd32baeb-7b71-4bc0-8ea3-9f23a50903fe"
 REPOSITORY="ahmedadeyemi-cts/project-time-platform"
 MIGRATION_BRANCH="azure-migration/project-health-dashboard-foundation"
@@ -225,8 +232,10 @@ EOF
 
     gh api \
         -H "Accept: application/vnd.github.raw+json" \
-        "repos/${REPOSITORY}/contents/${CONTINUATION_PATH}?ref=${MIGRATION_BRANCH}" \
+        "repos/${REPOSITORY}/contents/${CONTINUATION_PATH}?ref=${REVIEWED_SCRIPT_COMMIT}" \
         > "$CONTINUATION_SCRIPT"
+    printf '%s  %s\n' "$REVIEWED_SCRIPT_SHA256" "$CONTINUATION_SCRIPT" | sha256sum --check --status || { echo 'Canonical script digest mismatch' >&2; exit 1; }
+
 
     [ -s "$CONTINUATION_SCRIPT" ] || fail "The AZ-08C continuation script download failed."
     chmod +x "$CONTINUATION_SCRIPT"

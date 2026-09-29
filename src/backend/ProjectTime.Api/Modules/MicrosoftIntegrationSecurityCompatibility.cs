@@ -380,26 +380,7 @@ public static class MicrosoftIntegrationSecurityCompatibility
         }
     }
 
-    private static byte[]? ResolveEncryptionKey()
-    {
-        var configured = Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_INTEGRATION_SECRET_KEY");
-        if (string.IsNullOrWhiteSpace(configured))
-            configured = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
-        if (string.IsNullOrWhiteSpace(configured)) return null;
-
-        try
-        {
-            var decoded = Convert.FromBase64String(configured);
-            if (decoded.Length == 32) return decoded;
-            CryptographicOperations.ZeroMemory(decoded);
-        }
-        catch
-        {
-            // Non-base64 values are stretched with SHA-256.
-        }
-
-        return SHA256.HashData(Encoding.UTF8.GetBytes($"ProjectPulse-Microsoft-Integration:{configured}"));
-    }
+    private static byte[]? ResolveEncryptionKey() => IntegrationSecretKeys.Microsoft();
 
     private static string NormalizeRole(string roleCode)
     {

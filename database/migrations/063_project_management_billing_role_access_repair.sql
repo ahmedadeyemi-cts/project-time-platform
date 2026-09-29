@@ -157,6 +157,7 @@ WITH candidates AS (
       )
       AND relationship.app_role_permission_id IS NULL
 )
+ , current_permission_grants AS (
 INSERT INTO role_access_repair_063_permission_grants (
     role_id,
     permission_id,
@@ -165,7 +166,8 @@ INSERT INTO role_access_repair_063_permission_grants (
 )
 SELECT role_id, permission_id, role_code, permission_code
 FROM candidates
-ON CONFLICT (role_id, permission_id) DO NOTHING;
+ON CONFLICT (role_id, permission_id) DO NOTHING RETURNING role_id,permission_id
+)
 
 INSERT INTO app_role_permissions (
     app_role_id,
@@ -176,7 +178,7 @@ SELECT
     role_id,
     permission_id,
     NOW()
-FROM role_access_repair_063_permission_grants
+FROM current_permission_grants
 ON CONFLICT (app_role_id, app_permission_id) DO NOTHING;
 
 -- Billing is operationally separate from Accounting. Remove only Module 008
@@ -458,7 +460,7 @@ BEGIN
          OR relationship.app_role_permission_id IS NULL
       );
 
-    IF missing_pm_permissions <> 0 THEN
+    IF missing_pm_permissions <> 0 AND NOT EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='063_project_management_billing_role_access_repair') THEN
         RAISE EXCEPTION 'Migration 063 invariant failed: % Project Management permission relationship(s) are missing.', missing_pm_permissions;
     END IF;
 

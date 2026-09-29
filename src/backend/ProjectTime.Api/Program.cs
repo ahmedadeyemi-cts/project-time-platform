@@ -335,11 +335,7 @@ static string ProjectPulseSecureToken(int byteLength = 32)
 static async Task ProjectPulse043BEnsureProfileColumnsAsync(NpgsqlConnection connection)
 {
     await using var command = new NpgsqlCommand("""
-        ALTER TABLE app_users
-        ADD COLUMN IF NOT EXISTS profile_photo_data_url TEXT;
-
-        ALTER TABLE app_users
-        ADD COLUMN IF NOT EXISTS profile_photo_updated_at TIMESTAMPTZ;
+        SELECT profile_photo_data_url, profile_photo_updated_at FROM app_users LIMIT 0;
         """, connection);
 
     await command.ExecuteNonQueryAsync();
@@ -2515,6 +2511,7 @@ app.MapPost("/api/timesheets/week/draft", async (TimesheetSaveRequest request, H
         }
 
         var timesheetId = await UpsertDraftShellForEditableSaveAsync(connection, transaction, userId, start);
+
         await ReplaceEditableTimeEntriesAsync(connection, transaction, timesheetId, userId, request.Entries, "draft");
         await InsertAuditLogAsync(connection, transaction, userId, "timesheet_draft_saved", "timesheet", timesheetId);
 
@@ -2596,6 +2593,9 @@ app.MapPost("/api/timesheets/week/submit", async (TimesheetSaveRequest request, 
         }
 
         var timesheetId = await UpsertDraftTimesheetAsync(connection, transaction, userId, start);
+        if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction, timesheetId, userId, null, editableOnly: true))
+            return Results.Conflict(new { status = "time_locked", message = "This time contains approved, submitted, locked or billed entries." });
+
         await ReplaceTimeEntriesAsync(connection, transaction, timesheetId, userId, request.Entries, "submitted");
         await MarkTimesheetSubmittedAsync(connection, transaction, timesheetId);
         await InsertAuditLogAsync(connection, transaction, userId, "timesheet_submitted", "timesheet", timesheetId);
@@ -2657,6 +2657,9 @@ app.MapPost("/api/timesheets/day/submit", async (TimesheetDaySubmitRequest reque
         var userId = sessionUserId.Value;
         var weekStart = GetSundayForDate(request.WeekStart);
         var timesheetId = await UpsertDraftTimesheetAsync(connection, transaction, userId, weekStart);
+        if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction, timesheetId, userId, request.WorkDate, editableOnly: true))
+            return Results.Conflict(new { status = "time_locked", message = "This time contains approved, submitted, locked or billed entries." });
+
         var dayState = await GetTimesheetDayStatusAsync(connection, transaction, timesheetId, request.WorkDate);
 
         /* 051B_DAY_SUBMIT_IMMUTABLE_STATUS_GUARD */
@@ -3777,6 +3780,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
     string projectName;
     Guid? projectManagerUserId;
 
+    await using var transaction = await connection.BeginTransactionAsync();
     await using (var readCommand = new NpgsqlCommand("""
         SELECT
             pir.request_number,
@@ -3788,8 +3792,9 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
         FROM project_intake_requests pir
         CROSS JOIN projects p
         WHERE pir.project_intake_request_id = @intake_id
-          AND p.project_id = @project_id;
-        """, connection))
+          AND p.project_id = @project_id
+        FOR UPDATE OF pir,p;
+        """, connection, transaction))
     {
         readCommand.Parameters.AddWithValue("intake_id", intakeId);
         readCommand.Parameters.AddWithValue("project_id", projectId);
@@ -3813,17 +3818,17 @@ app.MapPost("/api/project-intake/{intakeId:guid}/project-link", async (Guid inta
     }
 
     if (!canManageAll
-        && intakePmUserId != sessionUserId.Value
-        && projectManagerUserId != sessionUserId.Value)
+        && (intakePmUserId != sessionUserId.Value
+            || projectManagerUserId != sessionUserId.Value))
     {
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Project Managers can confirm links only for intakes or projects assigned to them."
+            message = "Project Managers can confirm links only for intakes and projects both assigned to them."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
-    await using var transaction = await connection.BeginTransactionAsync();
+
 
     try
     {
@@ -5601,7 +5606,7 @@ app.MapPost("/api/project-intake/{intakeId:guid}/supporting-documents/upload", a
     });
 });
 
-app.MapGet("/api/project-intake/summary", async () =>
+app.MapGet("/api/project-intake/summary", async (HttpContext context) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -5609,15 +5614,21 @@ app.MapGet("/api/project-intake/summary", async () =>
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
+    var access = await EnterpriseGovernanceAccessResolver.ResolveAsync(context, connection, context.RequestAborted);
+    if (access is null) return Results.Unauthorized();
 
     var requests = new List<object>();
     await using (var command = new NpgsqlCommand("""
         SELECT request_number, client_name, request_title, intake_status, priority, target_start_date, target_completion_date, estimated_hours
-        FROM project_intake_requests
+        FROM project_intake_requests r
+        WHERE @broad OR r.requested_by_user_id=@actor OR r.assigned_pm_user_id=@actor
+            OR r.account_executive_user_id=@actor OR r.solution_architect_user_id=@actor
         ORDER BY created_at DESC;
         """, connection))
-    await using (var reader = await command.ExecuteReaderAsync())
     {
+        command.Parameters.AddWithValue("actor",access.EffectiveUserId);
+        command.Parameters.AddWithValue("broad",access.IsBroadScope);
+        await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
             requests.Add(new
@@ -7359,6 +7370,35 @@ app.MapPost("/api/work-register/intake/packages/{intakePackageId:guid}/review/sa
     await connection.OpenAsync();
     await using var transaction = await connection.BeginTransactionAsync();
 
+    await using (var migrationGuard = new NpgsqlCommand(
+        "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='130_security_integrity_boundaries')", connection, transaction))
+    {
+        if (await migrationGuard.ExecuteScalarAsync() is not true)
+            return Results.Json(new { status = "intake_integrity_migration_required" }, statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+    using var reviewedDocument = JsonDocument.Parse(reviewedDataJson);
+    foreach (var (field, role) in new[] {
+        ("accountExecutiveName", "ACCOUNT_EXECUTIVE"),
+        ("solutionArchitectName", "SOLUTION_ARCHITECT"),
+        ("insideSalesName", "SOLUTION_ARCHITECT_ASSOCIATE") })
+    {
+        if (!reviewedDocument.RootElement.TryGetProperty(field, out var value)) continue;
+        if (value.ValueKind != JsonValueKind.String)
+            return Results.BadRequest(new { status = "invalid_stakeholder", field });
+        var selected = value.GetString();
+        if (string.IsNullOrWhiteSpace(selected)) continue;
+        if (!Guid.TryParse(selected, out _))
+            return Results.BadRequest(new { status = "invalid_stakeholder", field, message = "Select an active role holder from the directory." });
+        await using var validateStakeholder = new NpgsqlCommand(
+            "SELECT projectpulse055d4d_get_or_create_stakeholder_user(@selected,@role,'','','',@actor)", connection, transaction);
+        validateStakeholder.Parameters.AddWithValue("selected", selected);
+        validateStakeholder.Parameters.AddWithValue("role", role);
+        validateStakeholder.Parameters.AddWithValue("actor", sessionUserId.Value);
+        try { await validateStakeholder.ExecuteScalarAsync(); }
+        catch (PostgresException ex) when (ex.SqlState == "22023")
+        { return Results.BadRequest(new { status = "invalid_stakeholder", field, message = "Select an active role holder from the directory." }); }
+    }
+
     string? savedReviewedDataJson = null;
     await using (var updateCommand = new NpgsqlCommand("""
         UPDATE work_register_intake_packages
@@ -8884,7 +8924,7 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
         uploadSource = "local_file",
         originalFileName,
         storedFilePath,
-        file.ContentType,
+        SafeDocumentMedia.DownloadContentType,
         file.Length,
         downloadReference
     });
@@ -8940,7 +8980,7 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
         insertCommand.Parameters.AddWithValue("created_by_user_id", sessionUserId.Value);
         insertCommand.Parameters.AddWithValue("original_file_name", originalFileName);
         insertCommand.Parameters.AddWithValue("stored_file_path", storedFilePath);
-        insertCommand.Parameters.AddWithValue("content_type", string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+        insertCommand.Parameters.AddWithValue("content_type", string.IsNullOrWhiteSpace(SafeDocumentMedia.DownloadContentType) ? "application/octet-stream" : SafeDocumentMedia.DownloadContentType);
         insertCommand.Parameters.AddWithValue("file_size_bytes", file.Length);
         await insertCommand.ExecuteNonQueryAsync();
     }
@@ -8996,7 +9036,7 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
         effectiveDate,
         notes,
         originalFileName,
-        contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+        contentType = string.IsNullOrWhiteSpace(SafeDocumentMedia.DownloadContentType) ? "application/octet-stream" : SafeDocumentMedia.DownloadContentType,
         fileSizeBytes = file.Length,
         downloadReference,
         downloadUrl = downloadReference,
@@ -9011,7 +9051,7 @@ app.MapPost("/api/work-register/projects/documents/upload", async (HttpContext h
             effectiveDate,
             notes,
             originalFileName,
-            contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType,
+            contentType = string.IsNullOrWhiteSpace(SafeDocumentMedia.DownloadContentType) ? "application/octet-stream" : SafeDocumentMedia.DownloadContentType,
             fileSizeBytes = file.Length,
             status = "active",
             uploadSource = "local_file",
@@ -9118,7 +9158,7 @@ app.MapGet("/api/work-register/projects/documents/{documentId:guid}/download", a
 
     return Results.File(
         path: resolvedStoredFilePath,
-        contentType: string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
+        contentType: SafeDocumentMedia.DownloadContentType,
         fileDownloadName: string.IsNullOrWhiteSpace(originalFileName) ? "document" : originalFileName,
         enableRangeProcessing: true
     );
@@ -11424,6 +11464,7 @@ app.MapGet("/api/work-register/edit-foundation", async (HttpContext httpContext)
     var canEditWorkRegister = workRegisterAccess.CanEdit;
     var canCreateWorkRegister = workRegisterAccess.CanCreate;
     var canRestoreWorkRegister = workRegisterAccess.CanEditAll;
+    if (!canEditWorkRegister && !canCreateWorkRegister) return Results.Json(new { canEdit = false, canCreate = false, canRestore = false, customers = Array.Empty<object>(), users = Array.Empty<object>() });
 
     var customers = new List<object>();
     await using (var customerCommand = new NpgsqlCommand("""
@@ -14199,6 +14240,10 @@ app.MapGet("/api/projects/cost-status", async (HttpContext httpContext) =>
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
+    if (!await RequestUserCanAccessCostAlertsAsync(httpContext, connection, requireManage: false))
+        return Results.StatusCode(StatusCodes.Status403Forbidden);
+    var scopedProjectIds = await ProjectCostReadScope.LoadAsync(httpContext, connection);
+
     var projects = new List<object>();
 
     await using var command = new NpgsqlCommand("""
@@ -14219,9 +14264,11 @@ app.MapGet("/api/projects/cost-status", async (HttpContext httpContext) =>
             over_assigned_hours,
             cost_status
         FROM project_cost_status_vw
+        WHERE project_id=ANY(@scoped_project_ids)
         ORDER BY client_name, project_code;
         """, connection);
 
+    command.Parameters.AddWithValue("scoped_project_ids", scopedProjectIds);
     await using var reader = await command.ExecuteReaderAsync();
 
     while (await reader.ReadAsync())
@@ -14275,6 +14322,7 @@ app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
         return Results.Json(new { status = "access_denied", message = "Cost alerts are available to administrators, project/team coordinators, project managers, and managers." }, statusCode: StatusCodes.Status403Forbidden);
     }
 
+    var scopedProjectIds = await ProjectCostReadScope.LoadAsync(httpContext, connection);
     var candidates = new List<object>();
     await using (var command = new NpgsqlCommand("""
         WITH current_cost AS (
@@ -14296,6 +14344,7 @@ app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
             FROM project_cost_status_vw pcs
             JOIN projects p ON p.project_id = pcs.project_id
             LEFT JOIN app_users pm ON pm.user_id = p.project_manager_user_id
+            WHERE p.project_id=ANY(@scoped_project_ids)
         ),
         candidate_alerts AS (
             SELECT
@@ -14341,6 +14390,7 @@ app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
             project_code;
         """, connection))
     {
+        command.Parameters.AddWithValue("scoped_project_ids", scopedProjectIds);
         await using var reader = await command.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -14405,6 +14455,7 @@ app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
             last_action_at,
             last_action_by_email
         FROM project_cost_alerts
+        WHERE project_id=ANY(@scoped_project_ids)
         ORDER BY
             CASE alert_status WHEN 'open' THEN 1 WHEN 'acknowledged' THEN 2 ELSE 3 END,
             CASE alert_severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
@@ -14412,6 +14463,7 @@ app.MapGet("/api/projects/cost-alerts", async (HttpContext httpContext) =>
         LIMIT 100;
         """, connection))
     {
+        command.Parameters.AddWithValue("scoped_project_ids", scopedProjectIds);
         await using var reader = await command.ExecuteReaderAsync();
 
         while (await reader.ReadAsync())
@@ -15662,6 +15714,11 @@ app.MapGet("/api/project-management/summary", async (HttpContext httpContext) =>
     {
         await using var connection = new NpgsqlConnection(config.ConnectionString);
         await connection.OpenAsync(httpContext.RequestAborted);
+        var scopedAccess = await EnterpriseGovernanceAccessResolver.ResolveAsync(httpContext, connection, httpContext.RequestAborted);
+        if (scopedAccess is null) return Results.Unauthorized();
+        if (!scopedAccess.CanViewRiskRegister) return Results.StatusCode(403);
+        var scopeSql = "WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + ", authorized_projects AS (SELECT project.project_id FROM projects project WHERE " + EnterpriseGovernanceAccessResolver.ProjectScopePredicate + ") ";
+
 
         await using (var readiness = new NpgsqlCommand("""
             SELECT
@@ -15693,14 +15750,16 @@ app.MapGet("/api/project-management/summary", async (HttpContext httpContext) =>
         }
 
         var milestones = new List<object>();
-        await using (var command = new NpgsqlCommand("""
+        await using (var command = new NpgsqlCommand(scopeSql + """
             SELECT p.project_code,pm.milestone_name,pm.milestone_status,pm.due_date,pm.display_order
             FROM project_milestones pm
             INNER JOIN projects p ON p.project_id=pm.project_id
+            JOIN authorized_projects scoped ON scoped.project_id=p.project_id
             ORDER BY p.project_code,pm.display_order,pm.due_date;
             """, connection))
-        await using (var reader = await command.ExecuteReaderAsync(httpContext.RequestAborted))
         {
+            EnterpriseGovernanceAccessResolver.AddScopeParameters(command, scopedAccess);
+            await using var reader = await command.ExecuteReaderAsync(httpContext.RequestAborted);
             while (await reader.ReadAsync(httpContext.RequestAborted))
             {
                 milestones.Add(new
@@ -15715,7 +15774,7 @@ app.MapGet("/api/project-management/summary", async (HttpContext httpContext) =>
         }
 
         var risks = new List<object>();
-        await using (var command = new NpgsqlCommand("""
+        await using (var command = new NpgsqlCommand(scopeSql + """
             SELECT
                 p.project_code,
                 pr.risk_title,
@@ -15731,10 +15790,12 @@ app.MapGet("/api/project-management/summary", async (HttpContext httpContext) =>
                 pr.risk_number
             FROM project_risks pr
             INNER JOIN projects p ON p.project_id=pr.project_id
+            JOIN authorized_projects scoped ON scoped.project_id=p.project_id
             ORDER BY p.project_code,pr.created_at DESC;
             """, connection))
-        await using (var reader = await command.ExecuteReaderAsync(httpContext.RequestAborted))
         {
+            EnterpriseGovernanceAccessResolver.AddScopeParameters(command, scopedAccess);
+            await using var reader = await command.ExecuteReaderAsync(httpContext.RequestAborted);
             while (await reader.ReadAsync(httpContext.RequestAborted))
             {
                 risks.Add(new
@@ -15789,7 +15850,7 @@ app.MapGet("/api/project-management/summary", async (HttpContext httpContext) =>
     }
 });
 
-app.MapGet("/api/resource-scheduling/capacity", async (DateOnly? weekStart) =>
+app.MapGet("/api/resource-scheduling/capacity", async (DateOnly? weekStart, HttpContext context) =>
 {
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
@@ -15800,18 +15861,22 @@ app.MapGet("/api/resource-scheduling/capacity", async (DateOnly? weekStart) =>
 
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
+    var scopedAccess = await EnterpriseGovernanceAccessResolver.ResolveAsync(context, connection, context.RequestAborted);
+    if (scopedAccess is null) return Results.Unauthorized();
 
     var rows = new List<object>();
-    await using var command = new NpgsqlCommand("""
+    await using var command = new NpgsqlCommand("WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + " " + """
         SELECT u.display_name, u.email, rcp.week_start_date, rcp.available_hours, rcp.assigned_hours, rcp.planned_utilization_percent, rcp.capacity_status
         FROM resource_capacity_plans rcp
         INNER JOIN app_users u ON u.user_id = rcp.user_id
         WHERE rcp.week_start_date BETWEEN @start AND @end
+          AND (@broad_scope OR u.user_id=@user_id OR (@team_scope AND u.user_id IN (SELECT user_id FROM scoped_team_members)))
         ORDER BY rcp.week_start_date, u.display_name;
         """, connection);
     command.Parameters.AddWithValue("start", start);
     command.Parameters.AddWithValue("end", end);
 
+    EnterpriseGovernanceAccessResolver.AddScopeParameters(command, scopedAccess);
     await using var reader = await command.ExecuteReaderAsync();
     while (await reader.ReadAsync())
     {
@@ -16056,14 +16121,14 @@ app.MapGet("/api/holidays", async (int? year) =>
     }
 });
 
-app.MapPost("/api/reminders/queue-weekly-engineer", async () =>
+app.MapPost("/api/reminders/queue-weekly-engineer", async (HttpContext context) =>
 {
-    return await QueueReminderRuleAsync("WEEKLY_ENGINEER_TIME_REMINDER");
+    return await QueueReminderRuleAsync("WEEKLY_ENGINEER_TIME_REMINDER", context);
 });
 
-app.MapPost("/api/reminders/queue-month-end-pm", async () =>
+app.MapPost("/api/reminders/queue-month-end-pm", async (HttpContext context) =>
 {
-    return await QueueReminderRuleAsync("MONTH_END_PM_REMINDER");
+    return await QueueReminderRuleAsync("MONTH_END_PM_REMINDER", context);
 });
 
 app.MapGet("/api/reminders/outbox", async (int? limit) =>
@@ -19880,6 +19945,8 @@ app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest reque
             await runCommand.ExecuteNonQueryAsync();
         }
 
+        if (request.Users.Count > 200) return Results.BadRequest(new { status="too_many_selected_users" });
+        var verifiedToken = await CalendarCapacityModule.GraphToken(httpContext.RequestAborted);
         foreach (var user in request.Users)
         {
             var email = user.Email?.Trim().ToLowerInvariant();
@@ -19891,6 +19958,19 @@ app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest reque
                 continue;
             }
 
+            var verifiedUser = await DirectoryIdentitySafety.ReadVerifiedUserAsync(user.EntraObjectId ?? string.Empty, verifiedToken, httpContext.RequestAborted);
+            var verifiedEmail = verifiedUser.TryGetProperty("mail",out var mail) && mail.ValueKind==JsonValueKind.String
+                ? mail.GetString() : verifiedUser.GetProperty("userPrincipalName").GetString();
+            if (!string.Equals(email,verifiedEmail,StringComparison.OrdinalIgnoreCase)
+                || !verifiedUser.TryGetProperty("accountEnabled",out var enabled) || enabled.ValueKind!=JsonValueKind.True)
+            { skipped++; continue; }
+            await using (var existing = new NpgsqlCommand("SELECT user_id FROM app_users WHERE lower(email)=@email",connection,transaction))
+            {
+                existing.Parameters.AddWithValue("email",email);
+                if (await existing.ExecuteScalarAsync() is Guid existingId
+                    && !await DirectoryIdentitySafety.CanRefreshAsync(connection,transaction,existingId,user.EntraObjectId ?? string.Empty,httpContext.RequestAborted))
+                { skipped++; continue; }
+            }
             var displayName = string.IsNullOrWhiteSpace(user.DisplayName)
                 ? email
                 : user.DisplayName.Trim();
@@ -19927,8 +20007,6 @@ app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest reque
                 )
                 ON CONFLICT (email) DO UPDATE
                 SET display_name = EXCLUDED.display_name,
-                    is_active = TRUE,
-                    login_enabled = TRUE,
                     source_provider = 'ENTRA_ID',
                     entra_object_id = COALESCE(EXCLUDED.entra_object_id, app_users.entra_object_id),
                     job_title = EXCLUDED.job_title,
@@ -19936,6 +20014,8 @@ app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest reque
                     office_location = EXCLUDED.office_location,
                     manager_email = EXCLUDED.manager_email,
                     last_directory_sync_at = NOW()
+                WHERE app_users.is_active AND COALESCE(app_users.login_enabled,TRUE)
+                  AND (NULLIF(btrim(app_users.entra_object_id),'') IS NULL OR app_users.entra_object_id=EXCLUDED.entra_object_id)
                 RETURNING user_id, (xmax <> 0) AS existed;
                 """, connection, transaction))
             {
@@ -19953,7 +20033,7 @@ app.MapPost("/api/admin/azure/users/import", async (AzureUserImportRequest reque
                 existed = reader.GetBoolean(1);
             }
 
-            await using (var roleCommand = new NpgsqlCommand("""
+            if (!existed) await using (var roleCommand = new NpgsqlCommand("""
                 INSERT INTO app_user_role_assignments (
                     user_id,
                     app_role_id,
@@ -26557,8 +26637,10 @@ async Task<(string ActionTaken, Guid? UserId)> ProjectPulseUpsertSelectedEntraUs
             SET is_active = FALSE,
                 login_enabled = FALSE,
                 updated_at = NOW()
-            WHERE entra_object_id = @entra_object_id
-               OR lower(email) = @email
+            WHERE entra_object_id = @entra_object_id AND lower(email) = @email
+              AND NOT EXISTS (SELECT 1 FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id
+                WHERE a.user_id=app_users.user_id AND a.is_active AND r.is_active
+                  AND upper(r.role_code) IN ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR','GLOBAL_ADMINISTRATOR','GLOBALADMINISTRATOR','ADMINISTRATOR'))
             RETURNING user_id;
             """, connection);
 
@@ -26604,8 +26686,6 @@ async Task<(string ActionTaken, Guid? UserId)> ProjectPulseUpsertSelectedEntraUs
         )
         ON CONFLICT (email) DO UPDATE
         SET display_name = EXCLUDED.display_name,
-            is_active = TRUE,
-            login_enabled = TRUE,
             source_provider = EXCLUDED.source_provider,
             entra_tenant_id = EXCLUDED.entra_tenant_id,
             entra_object_id = EXCLUDED.entra_object_id,
@@ -26615,7 +26695,12 @@ async Task<(string ActionTaken, Guid? UserId)> ProjectPulseUpsertSelectedEntraUs
             office_location = EXCLUDED.office_location,
             last_directory_sync_at = NOW(),
             updated_at = NOW()
-        RETURNING user_id;
+        WHERE app_users.is_active AND COALESCE(app_users.login_enabled,TRUE)
+          AND (NULLIF(btrim(app_users.entra_object_id),'') IS NULL OR app_users.entra_object_id=EXCLUDED.entra_object_id)
+          AND NOT EXISTS (SELECT 1 FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id
+            WHERE a.user_id=app_users.user_id AND a.is_active AND r.is_active
+              AND upper(r.role_code) IN ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR','GLOBAL_ADMINISTRATOR','GLOBALADMINISTRATOR','ADMINISTRATOR'))
+        RETURNING user_id, (xmax=0) AS inserted;
         """, connection);
 
     upsertCommand.Parameters.AddWithValue("email", user.Email);
@@ -26628,7 +26713,15 @@ async Task<(string ActionTaken, Guid? UserId)> ProjectPulseUpsertSelectedEntraUs
     upsertCommand.Parameters.AddWithValue("department_name", (object?)user.Department ?? DBNull.Value);
     upsertCommand.Parameters.AddWithValue("office_location", (object?)user.OfficeLocation ?? DBNull.Value);
 
-    var userId = (Guid)(await upsertCommand.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to upsert Entra user."));
+    Guid userId;
+    bool inserted;
+    await using (var result = await upsertCommand.ExecuteReaderAsync())
+    {
+        if (!await result.ReadAsync()) return ("existing_identity_protected", null);
+        userId = result.GetGuid(0);
+        inserted = result.GetBoolean(1);
+    }
+    if (!inserted) return ("profile_updated_roles_preserved", userId);
 
     await using var roleCommand = new NpgsqlCommand("""
         INSERT INTO app_user_role_assignments (
@@ -26644,10 +26737,7 @@ async Task<(string ActionTaken, Guid? UserId)> ProjectPulseUpsertSelectedEntraUs
         FROM app_roles r
         WHERE r.role_code = @role_code
           AND r.is_active = TRUE
-        ON CONFLICT (user_id, app_role_id) DO UPDATE
-        SET is_active = TRUE,
-            assignment_reason = EXCLUDED.assignment_reason,
-            updated_at = NOW();
+        ON CONFLICT (user_id, app_role_id) DO NOTHING;
         """, connection);
 
     roleCommand.Parameters.AddWithValue("user_id", userId);
@@ -26686,7 +26776,10 @@ async Task<int> ProjectPulseDeactivateMissingOrDisabledEntraUsersAsync(
             WHERE source_provider = @source_provider
               AND lower(split_part(email, '@', 2)) = ANY(@tenant_domains)
               AND entra_object_id = @entra_object_id
-              AND (is_active = TRUE OR login_enabled = TRUE);
+              AND (is_active = TRUE OR login_enabled = TRUE)
+              AND NOT EXISTS (SELECT 1 FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id
+                WHERE a.user_id=app_users.user_id AND a.is_active AND r.is_active
+                  AND upper(r.role_code) IN ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR','GLOBAL_ADMINISTRATOR','GLOBALADMINISTRATOR','ADMINISTRATOR'));
             """, connection);
 
         disabledCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
@@ -26718,7 +26811,10 @@ async Task<int> ProjectPulseDeactivateMissingOrDisabledEntraUsersAsync(
               AND lower(split_part(email, '@', 2)) = ANY(@tenant_domains)
               AND entra_object_id IS NOT NULL
               AND NOT (entra_object_id = ANY(@current_ids))
-              AND (is_active = TRUE OR login_enabled = TRUE);
+              AND (is_active = TRUE OR login_enabled = TRUE)
+              AND NOT EXISTS (SELECT 1 FROM app_user_role_assignments a JOIN app_roles r ON r.app_role_id=a.app_role_id
+                WHERE a.user_id=app_users.user_id AND a.is_active AND r.is_active
+                  AND upper(r.role_code) IN ('SUPER_ADMINISTRATOR','SUPERADMINISTRATOR','GLOBAL_ADMINISTRATOR','GLOBALADMINISTRATOR','ADMINISTRATOR'));
             """, connection);
 
         missingCommand.Parameters.AddWithValue("source_provider", settings.SourceProvider);
@@ -29637,12 +29733,12 @@ app.MapGet("/api/time-exports/{exportId:guid}/details", async (Guid exportId, Ht
     await connection.OpenAsync();
 
     var access = await LoadApprovalExportWorkflowAccessAsync(connection, sessionUserId.Value);
-    if (!access.CanAudit && !access.CanExport && !access.CanManageAccounting && !access.CanViewAll)
+    if (!access.CanExport && !access.CanViewAll)
     {
         return Results.Json(new
         {
             status = "access_denied",
-            message = "Export audit evidence is restricted to workflow audit, export, accounting, and administrator roles."
+            message = "Export contents require organization-wide export authority."
         }, statusCode: StatusCodes.Status403Forbidden);
     }
 
@@ -32211,6 +32307,7 @@ app.MapPost("/api/production/operations-acknowledgments", async (HttpContext htt
     }
 
     var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    if (actorUserId is null) return Results.Unauthorized();
     var actorEmail = "";
 
     if (actorUserId is not null)
@@ -32279,124 +32376,14 @@ app.MapPost("/api/production/operations-acknowledgments", async (HttpContext htt
     });
 });
 
-static async Task<Guid?> ResolveSessionUserIdForProductionAcknowledgmentAsync(HttpContext httpContext, NpgsqlConnection connection)
+static Task<Guid?> ResolveSessionUserIdForProductionAcknowledgmentAsync(HttpContext httpContext, NpgsqlConnection connection)
 {
-    var token = httpContext.Request.Headers["X-ProjectPulse-Session"].FirstOrDefault();
-    if (string.IsNullOrWhiteSpace(token))
-    {
-        return null;
-    }
-
-    static string QuoteIdentifierForProductionAcknowledgment(string identifier)
-    {
-        return "\"" + identifier.Replace("\"", "\"\"") + "\"";
-    }
-
-    static async Task<HashSet<string>> GetProductionAcknowledgmentColumnsAsync(NpgsqlConnection lookupConnection, string tableName)
-    {
-        await using var columnsCommand = new NpgsqlCommand("""
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public'
-              AND table_name = @table_name;
-            """, lookupConnection);
-
-        columnsCommand.Parameters.AddWithValue("table_name", tableName);
-
-        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        await using var reader = await columnsCommand.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            columns.Add(reader.GetString(0));
-        }
-
-        return columns;
-    }
-
-    static string? PickProductionAcknowledgmentColumn(HashSet<string> columns, params string[] candidates)
-    {
-        return candidates.FirstOrDefault(columns.Contains);
-    }
-
-    string? sessionTable;
-
-    await using (var tableCommand = new NpgsqlCommand("""
-        SELECT table_name
-        FROM information_schema.columns
-        WHERE table_schema = 'public'
-        GROUP BY table_name
-        HAVING
-            bool_or(column_name IN ('session_token', 'token'))
-            AND bool_or(column_name IN ('user_id', 'app_user_id'))
-        ORDER BY
-            CASE
-                WHEN table_name = 'auth_sessions' THEN 0
-                WHEN table_name = 'user_sessions' THEN 1
-                WHEN table_name = 'sessions' THEN 2
-                WHEN table_name ILIKE '%session%' THEN 3
-                ELSE 4
-            END,
-            table_name
-        LIMIT 1;
-        """, connection))
-    {
-        sessionTable = (await tableCommand.ExecuteScalarAsync())?.ToString();
-    }
-
-    if (string.IsNullOrWhiteSpace(sessionTable))
-    {
-        return null;
-    }
-
-    var columns = await GetProductionAcknowledgmentColumnsAsync(connection, sessionTable);
-    var tokenColumn = PickProductionAcknowledgmentColumn(columns, "session_token", "token");
-    var userIdColumn = PickProductionAcknowledgmentColumn(columns, "user_id", "app_user_id");
-    var expiresColumn = PickProductionAcknowledgmentColumn(columns, "expires_at", "expires_utc", "expires_on");
-    var revokedColumn = PickProductionAcknowledgmentColumn(columns, "revoked_at", "revoked_utc");
-    var activeColumn = PickProductionAcknowledgmentColumn(columns, "is_active", "active");
-
-    if (tokenColumn is null || userIdColumn is null)
-    {
-        return null;
-    }
-
-    var whereParts = new List<string>
-    {
-        $"{QuoteIdentifierForProductionAcknowledgment(tokenColumn)} = @session_token"
-    };
-
-    if (expiresColumn is not null)
-    {
-        whereParts.Add($"({QuoteIdentifierForProductionAcknowledgment(expiresColumn)} IS NULL OR {QuoteIdentifierForProductionAcknowledgment(expiresColumn)} > now())");
-    }
-
-    if (revokedColumn is not null)
-    {
-        whereParts.Add($"{QuoteIdentifierForProductionAcknowledgment(revokedColumn)} IS NULL");
-    }
-
-    if (activeColumn is not null)
-    {
-        whereParts.Add($"COALESCE({QuoteIdentifierForProductionAcknowledgment(activeColumn)}, TRUE) = TRUE");
-    }
-
-    await using var command = new NpgsqlCommand($"""
-        SELECT {QuoteIdentifierForProductionAcknowledgment(userIdColumn)}
-        FROM {QuoteIdentifierForProductionAcknowledgment(sessionTable)}
-        WHERE {string.Join(" AND ", whereParts)}
-        LIMIT 1;
-        """, connection);
-
-    command.Parameters.AddWithValue("session_token", token.Trim());
-
-    var value = await command.ExecuteScalarAsync();
-    if (value is null || value == DBNull.Value)
-    {
-        return null;
-    }
-
-    return value is Guid userId ? userId : Guid.Parse(value.ToString()!);
+    // Session middleware already validates the hashed token, expiry, revocation and account status.
+    if (ProjectPulseActualSessionAuthority.IsViewAs(httpContext)) return Task.FromResult<Guid?>(null);
+    if (httpContext.Items.TryGetValue("ProjectPulseSessionUserId", out var value)
+        && Guid.TryParse(value?.ToString(), out var userId) && userId != Guid.Empty)
+        return Task.FromResult<Guid?>(userId);
+    return Task.FromResult<Guid?>(null);
 }
 
 // 019M-CI Production Operations Acknowledgments + Sign-Off Evidence - END
@@ -32720,6 +32707,7 @@ app.MapPost("/api/time-compliance/email-notifications/send", async (HttpContext 
     }
 
     var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    if (actorUserId is null) return Results.Unauthorized();
     var actorEmail = "";
 
     if (actorUserId is not null)
@@ -33427,6 +33415,7 @@ app.MapPost("/api/system/email-provider/test-send", async (HttpContext httpConte
 
     var provider = GetProjectPulseSharedEmailProviderRuntime();
     var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    if (actorUserId is null) return Results.Unauthorized();
     var actorEmail = "";
 
     if (actorUserId is not null)
@@ -33801,6 +33790,7 @@ app.MapPost("/api/system/email-provider/recipient-safety/run-review", async (Htt
 
     var provider = GetProjectPulseSharedEmailProviderRuntime();
     var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    if (actorUserId is null) return Results.Unauthorized();
     var actorEmail = "";
 
     if (actorUserId is not null)
@@ -34232,6 +34222,7 @@ app.MapPost("/api/system/email-provider/recipient-safety/approve-review", async 
     }
 
     var actorUserId = await ResolveSessionUserIdForProductionAcknowledgmentAsync(httpContext, connection);
+    if (actorUserId is null) return Results.Unauthorized();
     var actorEmail = "";
 
     if (actorUserId is not null)
@@ -37757,8 +37748,10 @@ static async Task<object> LoadTimesheetPreferencesAsync(NpgsqlConnection connect
     };
 }
 
-static async Task<IResult> QueueReminderRuleAsync(string ruleCode)
+static async Task<IResult> QueueReminderRuleAsync(string ruleCode, HttpContext context)
 {
+    var actor = ProjectPulseActualSessionAuthority.ReadUserId(context, "ProjectPulseSessionUserId");
+    if (actor is null || ProjectPulseActualSessionAuthority.IsViewAs(context)) return Results.Unauthorized();
     var config = DatabaseConfig.FromEnvironment();
     var missingResult = ValidateConfig(config);
     if (missingResult is not null) return missingResult;
@@ -37766,8 +37759,14 @@ static async Task<IResult> QueueReminderRuleAsync(string ruleCode)
     await using var connection = new NpgsqlConnection(config.ConnectionString);
     await connection.OpenAsync();
 
+    await using var transaction = await connection.BeginTransactionAsync();
+    await using (var mutex = new NpgsqlCommand("SELECT pg_advisory_xact_lock(hashtext(@rule))", connection, transaction))
+    {
+        mutex.Parameters.AddWithValue("rule", ruleCode);
+        await mutex.ExecuteNonQueryAsync();
+    }
     const string sql = """
-        INSERT INTO email_notification_outbox (rule_code, recipient_email, recipient_name, subject, body, status, scheduled_for)
+        INSERT INTO email_notification_outbox (rule_code, recipient_email, recipient_name, subject, body, status, scheduled_for, queued_by_user_id)
         SELECT
             rr.rule_code,
             u.email,
@@ -37775,19 +37774,25 @@ static async Task<IResult> QueueReminderRuleAsync(string ruleCode)
             rr.subject_template,
             REPLACE(rr.body_template, '{{display_name}}', u.display_name),
             'queued',
-            NOW()
+            NOW(),
+            @actor
         FROM reminder_rules rr
         INNER JOIN notification_groups ng ON ng.group_code = rr.recipient_group_code
         INNER JOIN notification_group_members ngm ON ngm.notification_group_id = ng.notification_group_id AND ngm.is_active = TRUE
         INNER JOIN app_users u ON u.user_id = ngm.user_id AND u.is_active = TRUE
         WHERE rr.rule_code = @rule_code
           AND rr.is_active = TRUE
-          AND ng.is_active = TRUE;
+          AND ng.is_active = TRUE
+          AND NOT EXISTS (SELECT 1 FROM email_notification_outbox prior
+              WHERE prior.rule_code=rr.rule_code AND lower(prior.recipient_email)=lower(u.email)
+                AND prior.scheduled_for >= date_trunc('week',NOW()));
         """;
 
-    await using var command = new NpgsqlCommand(sql, connection);
+    await using var command = new NpgsqlCommand(sql, connection, transaction);
     command.Parameters.AddWithValue("rule_code", ruleCode);
+    command.Parameters.AddWithValue("actor", actor.Value);
     var inserted = await command.ExecuteNonQueryAsync();
+    await transaction.CommitAsync();
 
     return Results.Ok(new { status = "queued", ruleCode, queuedCount = inserted });
 }
@@ -38484,6 +38489,11 @@ static async Task<bool> ProjectPulse054BWorkflowDayHasProjectManagerScopeAsync(N
             WHERE te.timesheet_id = @timesheet_id
               AND te.work_date = @work_date
               AND p.project_manager_user_id = @actor_user_id
+        ) AND NOT EXISTS (
+            SELECT 1 FROM time_entries te
+            LEFT JOIN projects p ON p.project_id=te.project_id
+            WHERE te.timesheet_id=@timesheet_id AND te.work_date=@work_date
+              AND p.project_manager_user_id IS DISTINCT FROM @actor_user_id
         );
         """, connection);
 
@@ -38896,6 +38906,34 @@ static async Task<Guid> UpsertDraftShellForEditableSaveAsync(NpgsqlConnection co
     return (Guid)(await command.ExecuteScalarAsync() ?? throw new InvalidOperationException("Unable to create draft timesheet shell."));
 }
 
+static async Task ValidateTimeEntryAssignmentsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
+    Guid userId, IReadOnlyList<TimesheetEntryRequest> entries)
+{
+    foreach (var entry in entries.Where(entry => entry.Hours > 0))
+    {
+        if (entry.ProjectId is null && entry.TaskId is null && !entry.RowType.Equals("project", StringComparison.OrdinalIgnoreCase)) continue;
+        if (entry.ProjectId is null || entry.TaskId is null)
+            throw new InvalidOperationException("A project time entry requires a matching assigned project and task.");
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (
+                SELECT 1 FROM projects p JOIN project_tasks t ON t.project_id=p.project_id
+                JOIN project_assignments a ON a.project_id=p.project_id AND (a.task_id IS NULL OR a.task_id=t.task_id)
+                WHERE p.project_id=@project AND t.task_id=@task AND t.is_active
+                  AND lower(p.status) IN ('active','on_hold')
+                  AND COALESCE((to_jsonb(p)->>'is_archived')::boolean,FALSE)=FALSE
+                  AND a.user_id=@user_id AND a.effective_start_date<=@work_date
+                  AND (a.effective_end_date IS NULL OR a.effective_end_date>=@work_date)
+            );
+            """,connection,transaction);
+        command.Parameters.AddWithValue("project",entry.ProjectId.Value);
+        command.Parameters.AddWithValue("task",entry.TaskId.Value);
+        command.Parameters.AddWithValue("user_id",userId);
+        command.Parameters.AddWithValue("work_date",entry.WorkDate);
+        if (await command.ExecuteScalarAsync() is not true)
+            throw new InvalidOperationException("The project and task are outside this user's active time-entry assignments.");
+    }
+}
+
 static async Task ReplaceEditableTimeEntriesAsync(
     NpgsqlConnection connection,
     NpgsqlTransaction transaction,
@@ -38904,13 +38942,23 @@ static async Task ReplaceEditableTimeEntriesAsync(
     IReadOnlyList<TimesheetEntryRequest> entries,
     string status)
 {
+    await using (var locks = new NpgsqlCommand("SELECT timesheet_id FROM timesheets WHERE timesheet_id=@id FOR UPDATE; SELECT time_entry_id FROM time_entries WHERE timesheet_id=@id FOR UPDATE; SELECT timesheet_id FROM timesheet_day_statuses WHERE timesheet_id=@id FOR UPDATE",connection,transaction))
+    {
+        locks.Parameters.AddWithValue("id",timesheetId);
+        await locks.ExecuteNonQueryAsync();
+    }
+
     var protectedDates = new HashSet<DateOnly>();
 
     await using (var protectedCommand = new NpgsqlCommand("""
         SELECT work_date
         FROM timesheet_day_statuses
         WHERE timesheet_id = @timesheet_id
-          AND status IN ('submitted', 'manager_approved', 'pm_approved', 'accounting_ready', 'reconciled', 'locked');
+          AND status NOT IN ('draft','manager_declined')
+        UNION SELECT te.work_date FROM time_entries te
+        WHERE te.timesheet_id=@timesheet_id AND (te.status NOT IN ('draft','manager_declined')
+            OR EXISTS (SELECT 1 FROM billing_invoice_lines l JOIN billing_invoices i ON i.billing_invoice_id=l.billing_invoice_id
+                       WHERE l.time_entry_id=te.time_entry_id AND lower(i.invoice_status)<>'void'));
         """, connection, transaction))
     {
         protectedCommand.Parameters.AddWithValue("timesheet_id", timesheetId);
@@ -38923,17 +38971,12 @@ static async Task ReplaceEditableTimeEntriesAsync(
 
     await using (var deleteCommand = new NpgsqlCommand("""
         DELETE FROM time_entries
-        WHERE timesheet_id = @timesheet_id
-          AND NOT EXISTS (
-              SELECT 1
-              FROM timesheet_day_statuses tds
-              WHERE tds.timesheet_id = time_entries.timesheet_id
-                AND tds.work_date = time_entries.work_date
-                AND tds.status IN ('submitted', 'manager_approved', 'pm_approved', 'accounting_ready', 'reconciled', 'locked')
-          );
+        WHERE timesheet_id=@timesheet_id AND status IN ('draft','manager_declined')
+          AND NOT (work_date=ANY(@protected_dates));
         """, connection, transaction))
     {
         deleteCommand.Parameters.AddWithValue("timesheet_id", timesheetId);
+        deleteCommand.Parameters.AddWithValue("protected_dates", protectedDates.ToArray());
         await deleteCommand.ExecuteNonQueryAsync();
     }
 
@@ -38956,6 +38999,8 @@ static async Task ReplaceTimeEntriesForEditableDaysAsync(
     IReadOnlyList<TimesheetEntryRequest> entries,
     string status)
 {
+    await ValidateTimeEntryAssignmentsAsync(connection, transaction, userId, entries);
+
     foreach (var entry in entries.Where(item => item.Hours > 0))
     {
         Guid? nonProjectCategoryId = null;
@@ -39074,6 +39119,8 @@ static async Task ReplaceDayTimeEntriesAsync(
     IReadOnlyList<TimesheetEntryRequest> entries,
     string status)
 {
+    await ValidateTimeEntryAssignmentsAsync(connection, transaction, userId, entries);
+
     await using (var deleteCommand = new NpgsqlCommand("DELETE FROM time_entries WHERE timesheet_id = @timesheet_id AND work_date = @work_date;", connection, transaction))
     {
         deleteCommand.Parameters.AddWithValue("timesheet_id", timesheetId);
@@ -39198,6 +39245,8 @@ static async Task ReplaceTimeEntriesAsync(
     IReadOnlyList<TimesheetEntryRequest> entries,
     string status)
 {
+    await ValidateTimeEntryAssignmentsAsync(connection, transaction, userId, entries);
+
     await using (var deleteCommand = new NpgsqlCommand("""
         DELETE FROM time_entries
         WHERE timesheet_id = @timesheet_id

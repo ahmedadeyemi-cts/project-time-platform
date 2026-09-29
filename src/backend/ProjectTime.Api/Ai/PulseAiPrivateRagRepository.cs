@@ -187,11 +187,15 @@ public sealed class PulseAiPrivateRagRepository
                         SELECT 1 FROM project_assignments pa
                         WHERE pa.project_id = p.project_id
                           AND pa.user_id = @user_id
+                        AND pa.effective_start_date <= CURRENT_DATE
+                        AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
+                        AND COALESCE(to_jsonb(pa)->>'module001a_closeout_status', 'active') = 'active'
                     )
                     OR EXISTS (
                         SELECT 1
                         FROM engineering_resource_requests err
                         WHERE err.project_id = p.project_id
+                        AND err.request_status NOT IN ('cancelled','canceled','rejected','closed','archived')
                           AND (
                             err.fulfilled_by_user_id = @user_id
                             OR err.assigned_pm_user_id = @user_id
@@ -200,6 +204,7 @@ public sealed class PulseAiPrivateRagRepository
                                 FROM engineering_resource_request_assignments erra
                                 WHERE erra.engineering_resource_request_id = err.engineering_resource_request_id
                                   AND erra.user_id = @user_id
+                                  AND erra.assignment_status IN ('assigned','confirmed','active','in_progress')
                             )
                           )
                     )
@@ -334,11 +339,15 @@ public sealed class PulseAiPrivateRagRepository
                             SELECT 1 FROM project_assignments pa
                             WHERE pa.project_id = p.project_id
                               AND pa.user_id = @user_id
+                        AND pa.effective_start_date <= CURRENT_DATE
+                        AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
+                        AND COALESCE(to_jsonb(pa)->>'module001a_closeout_status', 'active') = 'active'
                         )
                         OR EXISTS (
                             SELECT 1
                             FROM engineering_resource_requests err
                             WHERE err.project_id = p.project_id
+                        AND err.request_status NOT IN ('cancelled','canceled','rejected','closed','archived')
                               AND (
                                 err.fulfilled_by_user_id = @user_id
                                 OR err.assigned_pm_user_id = @user_id
@@ -347,6 +356,7 @@ public sealed class PulseAiPrivateRagRepository
                                     FROM engineering_resource_request_assignments erra
                                     WHERE erra.engineering_resource_request_id = err.engineering_resource_request_id
                                       AND erra.user_id = @user_id
+                                  AND erra.assignment_status IN ('assigned','confirmed','active','in_progress')
                                 )
                               )
                         )
@@ -1086,6 +1096,9 @@ public sealed class PulseAiPrivateRagRepository
                     OR EXISTS (
                         SELECT 1 FROM project_assignments pa
                         WHERE pa.project_id = run.project_id AND pa.user_id = @user_id
+                        AND pa.effective_start_date <= CURRENT_DATE
+                        AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
+                        AND COALESCE(to_jsonb(pa)->>'module001a_closeout_status', 'active') = 'active'
                     )
                   );
                 """;

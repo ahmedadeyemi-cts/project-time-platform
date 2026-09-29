@@ -258,6 +258,22 @@ public static class CrmErpIntegrationModule
         try
         {
             await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
+            await using (var credentialBoundary = new NpgsqlCommand("""
+                WITH locked AS (
+                    SELECT * FROM crm_integration_providers WHERE provider_key=@key FOR UPDATE
+                )
+                DELETE FROM crm_integration_credentials credential USING locked provider
+                WHERE credential.provider_key=provider.provider_key
+                  AND (provider.base_url IS DISTINCT FROM @base_url
+                    OR provider.health_check_url IS DISTINCT FROM @health_url
+                    OR provider.oauth_authorization_url IS DISTINCT FROM @authorization_url
+                    OR provider.oauth_token_url IS DISTINCT FROM @token_url
+                    OR provider.oauth_client_id IS DISTINCT FROM @client_id);
+                """, connection, transaction))
+            {
+                BindProvider(credentialBoundary, providerKey, body.Value, ActualUserId(context)!.Value);
+                await credentialBoundary.ExecuteNonQueryAsync(context.RequestAborted);
+            }
             int changed;
             await using (var command = new NpgsqlCommand("""
                 UPDATE crm_integration_providers
@@ -310,7 +326,7 @@ public static class CrmErpIntegrationModule
                 status = "provider_updated",
                 providerKey,
                 secretValueReturned = false,
-                message = "Integration metadata was saved. Credential values were not changed."
+                message = "Integration metadata was saved. Credentials are cleared when the destination or OAuth identity changes; re-enter them before reconnecting."
             });
         }
         catch (Exception exception)

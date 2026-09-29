@@ -706,6 +706,9 @@ internal static class EnterpriseReportingCatalog
         FinancialOperationsActor actor,
         FinancialOperationsProject[] projects)
     {
+        if (report.Audience.Contains("control_plane")
+            && !actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR")) return false;
+
         if (actor.Broad || actor.HasPermission("MANAGE_ALL", "SYSTEM_ADMINISTRATION", "MANAGE_ENTERPRISE_REPORTING"))
             return true;
 

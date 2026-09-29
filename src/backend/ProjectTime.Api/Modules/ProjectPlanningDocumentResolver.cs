@@ -46,12 +46,11 @@ internal static class ProjectPlanningDocumentResolver
         var documents = await LoadAsync(connection, projectId, cancellationToken);
         var selection = SelectCurrent(documents);
 
-        foreach (var document in selection.SelectedDocuments)
-            await NormalizeAsync(connection, document, cancellationToken);
 
         var newlyQueued = 0;
         if (retryTerminalSow
             && selection.StatementOfWork is { } retryableSow
+            && retryableSow.EngineeringVisible && retryableSow.AiContextEnabled
             && (retryableSow.ProcessingTerminalFailure || retryableSow.ProcessingRetryWait))
         {
             newlyQueued += await QueueAsync(
@@ -145,6 +144,8 @@ internal static class ProjectPlanningDocumentResolver
     {
         var blockers = new List<string>();
         var warnings = new List<string>();
+        if (selection.SelectedDocuments.Any(document => !document.EngineeringVisible || !document.AiContextEnabled))
+            blockers.Add("A project document requires authorized visibility and AI consent review before planning.");
         var pending = selection.SelectedDocuments
             .Where(document => !document.ReadyForRetrieval && !document.ProcessingTerminalFailure)
             .ToArray();
@@ -270,7 +271,7 @@ internal static class ProjectPlanningDocumentResolver
                             OR chunk.chunk_text ILIKE '%scope of service%'
                             OR chunk.chunk_text ILIKE '%scope of work%')),
                    COALESCE(version.source_sha256,''), COALESCE(version.document_version,''),
-                   COALESCE(document.engineering_visible,FALSE)
+                   COALESCE(document.engineering_visible,FALSE), COALESCE(document.ai_timesheet_context_enabled,FALSE)
               FROM project_intake_documents document
               LEFT JOIN work_register_documents work_register
                 ON work_register.work_register_document_id=document.work_register_document_id
@@ -303,27 +304,9 @@ internal static class ProjectPlanningDocumentResolver
                 reader.GetFieldValue<DateTimeOffset>(13),
                 reader.GetFieldValue<DateTimeOffset>(14),
                 reader.GetInt32(15),
-                reader.GetInt32(16), reader.GetString(17), reader.GetString(18), reader.GetBoolean(19)));
+                reader.GetInt32(16), reader.GetString(17), reader.GetString(18), reader.GetBoolean(19), reader.GetBoolean(20)));
         }
         return rows;
-    }
-
-    private static async Task NormalizeAsync(
-        NpgsqlConnection connection,
-        ProjectPlanningDocumentEvidence evidence,
-        CancellationToken cancellationToken)
-    {
-        await using var command = new NpgsqlCommand("""
-            UPDATE project_intake_documents
-               SET document_category=@category,
-                   engineering_visible=TRUE,
-                   ai_timesheet_context_enabled=TRUE,
-                   pulse_ai_processing_updated_at=NOW()
-             WHERE project_intake_document_id=@document_id;
-            """, connection);
-        command.Parameters.AddWithValue("category", evidence.CanonicalCategory);
-        command.Parameters.AddWithValue("document_id", evidence.DocumentId);
-        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task<bool> QueueAsync(
@@ -497,7 +480,8 @@ internal sealed record ProjectPlanningDocumentEvidence(
     int ScopeCitationCount,
     string ActiveSourceSha256 = "",
     string ActiveDocumentVersion = "",
-    bool EngineeringVisible = false)
+    bool EngineeringVisible = false,
+    bool AiContextEnabled = false)
 {
     private string NormalizedCategory => ProjectPlanningDocumentResolver.NormalizeCategory(Category);
     private string NormalizedWorkRegisterType => ProjectPlanningDocumentResolver.NormalizeCategory(WorkRegisterDocumentType);
@@ -529,10 +513,10 @@ internal sealed record ProjectPlanningDocumentEvidence(
     public bool ProcessingRetryWait => ProcessingStatus.Equals("retry_wait", StringComparison.OrdinalIgnoreCase);
     public bool ProcessingTerminalFailure => ProcessingStatus.Trim().ToLowerInvariant() is
         "failed" or "rejected" or "quarantined" or "cancelled" or "canceled" or "unsupported";
-    public bool ShouldAutoQueue => !ProcessingReady && !ProcessingTerminalFailure;
+    public bool ShouldAutoQueue => EngineeringVisible && AiContextEnabled && !ProcessingReady && !ProcessingTerminalFailure;
     public bool AuthorityReady => AuthorityStatus.Trim().ToLowerInvariant() is "approved" or "canonical";
     public bool IndexReady => IndexStatus.Trim().ToLowerInvariant() is "lexical_ready" or "embedding_ready" or "ready";
-    public bool ReadyForRetrieval => ProcessingReady
+    public bool ReadyForRetrieval => EngineeringVisible && AiContextEnabled && ProcessingReady
         && ActiveVersionId.HasValue
         && IndexReady
         && CitationCount > 0;

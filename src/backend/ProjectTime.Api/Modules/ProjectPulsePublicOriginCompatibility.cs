@@ -25,7 +25,6 @@ public static class ProjectPulsePublicOriginCompatibility
 
     public static WebApplication UseProjectPulsePublicOriginCompatibility(this WebApplication app)
     {
-        EnsureCrmErpEncryptionKey();
 
         app.Use(async (context, next) =>
         {
@@ -233,36 +232,6 @@ public static class ProjectPulsePublicOriginCompatibility
         (value ?? string.Empty)
             .Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
-    private static void EnsureCrmErpEncryptionKey()
-    {
-        if (!string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPULSE_INTEGRATION_SECRET_ENCRYPTION_KEY")))
-            return;
-
-        var seed = First(
-            Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_INTEGRATION_SECRET_KEY"),
-            Environment.GetEnvironmentVariable("PTP_DB_PASSWORD"));
-        if (string.IsNullOrWhiteSpace(seed)) return;
-
-        var material = Encoding.UTF8.GetBytes($"ProjectPulse-CRM-ERP-Integration:{seed}");
-        try
-        {
-            var key = SHA256.HashData(material);
-            try
-            {
-                Environment.SetEnvironmentVariable(
-                    "PROJECTPULSE_INTEGRATION_SECRET_ENCRYPTION_KEY",
-                    Convert.ToBase64String(key));
-            }
-            finally
-            {
-                CryptographicOperations.ZeroMemory(key);
-            }
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(material);
-        }
-    }
 
     private static string First(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?.Trim() ?? string.Empty;

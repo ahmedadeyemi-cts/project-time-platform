@@ -189,6 +189,12 @@ public static class ScopedAuthorizationEvaluator
 
         if (grants.Length == 0)
         {
+            if (normalizedAction.Contains("ON_BEHALF", StringComparison.Ordinal)
+                || normalizedAction is "TIME_UNSUBMIT" or "TIME_REOPEN" or "TIME_REASSIGN"
+                || normalizedAction.StartsWith("TIME_TASK_", StringComparison.Ordinal))
+                return ScopedAuthorizationDecision.Denied(normalizedModule, normalizedAction,
+                    actor.IsViewAs, "Time stewardship requires an explicit scoped grant.");
+
             return new ScopedAuthorizationDecision(
                 true,
                 false,

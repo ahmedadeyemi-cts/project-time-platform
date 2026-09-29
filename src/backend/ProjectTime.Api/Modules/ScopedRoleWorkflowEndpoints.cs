@@ -70,9 +70,30 @@ public static partial class ScopedRolePolicyModule
               ON original_user.user_id = e.original_responsible_user_id
             LEFT JOIN app_users actor_user
               ON actor_user.user_id = e.acting_user_id
+            JOIN timesheets sheet ON sheet.timesheet_id=e.timesheet_id
+            WHERE @broad OR sheet.user_id=@user_id
+                OR EXISTS (
+                    SELECT 1 FROM reporting_relationships rel
+                    WHERE rel.employee_user_id=sheet.user_id
+                      AND (rel.manager_user_id=@user_id OR rel.team_lead_user_id=@user_id)
+                      AND rel.effective_start_date<=CURRENT_DATE
+                      AND (rel.effective_end_date IS NULL OR rel.effective_end_date>=CURRENT_DATE)
+                )
+                OR (EXISTS (
+                    SELECT 1 FROM time_entries te JOIN projects p ON p.project_id=te.project_id
+                    WHERE te.timesheet_id=e.timesheet_id AND te.work_date=e.work_date
+                      AND p.project_manager_user_id=@user_id
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM time_entries te LEFT JOIN projects p ON p.project_id=te.project_id
+                    WHERE te.timesheet_id=e.timesheet_id AND te.work_date=e.work_date
+                      AND p.project_manager_user_id IS DISTINCT FROM @user_id
+                ))
             ORDER BY e.created_at DESC
             LIMIT 250;
             """, connection);
+        command.Parameters.AddWithValue("user_id", actor.EffectiveUserId);
+        command.Parameters.AddWithValue("broad", !actor.IsViewAs && (actor.IsSuperAdministrator
+            || actor.RoleCodes.Contains("PROJECT_TEAM_COORDINATOR", StringComparer.OrdinalIgnoreCase)));
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
@@ -368,9 +389,17 @@ public static partial class ScopedRolePolicyModule
             }, statusCode: StatusCodes.Status403Forbidden);
         }
 
+        if (!await RuntimePtcManagedUserExistsAsync(connection, request.TargetUserId))
+            return Results.Json(new { status = "ineligible_time_target" }, statusCode: 403);
+
         await using var transaction = await connection.BeginTransactionAsync();
         try
         {
+            if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction,
+                    request.TimesheetId, request.TargetUserId, request.WorkDate, request.TimeEntryId,
+                    context.RequestAborted))
+                return Results.Conflict(new { status = "time_not_editable", message = "This time is outside the selected owner/day or is protected by accounting or billing." });
+
             var original = await LoadTimeCorrectionTargetAsync(
                 connection,
                 transaction,
@@ -390,21 +419,22 @@ public static partial class ScopedRolePolicyModule
             if (actionCode == "TIME_REOPEN")
             {
                 await using var reopen = new NpgsqlCommand("""
-                    UPDATE timesheet_day_statuses
+                    WITH reopened AS (UPDATE timesheet_day_statuses
                     SET status = 'draft',
                         manager_decision_comment = @reason,
                         updated_at = NOW()
                     WHERE timesheet_id = @timesheet_id
                       AND work_date = @work_date
                       AND status IN (
-                          'submitted','manager_approved','pm_approved',
-                          'accounting_ready','locked'
-                      );
+                          'submitted','manager_approved','pm_approved'
+                      ) RETURNING timesheet_id,work_date)
+
 
                     UPDATE time_entries
                     SET status = 'draft', updated_at = NOW()
                     WHERE timesheet_id = @timesheet_id
-                      AND work_date = @work_date;
+                      AND work_date = @work_date
+                      AND EXISTS (SELECT 1 FROM reopened);
                     """, connection, transaction);
                 reopen.Parameters.AddWithValue("reason", request.Reason.Trim());
                 reopen.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
@@ -416,18 +446,20 @@ public static partial class ScopedRolePolicyModule
                 await using var update = new NpgsqlCommand("""
                     UPDATE time_entries
                     SET project_id = COALESCE(@project_id, project_id),
-                        project_task_id = COALESCE(@task_id, project_task_id),
+                        task_id = COALESCE(@task_id, task_id),
                         hours = COALESCE(@hours, hours),
                         description = COALESCE(@description, description),
                         status = 'draft',
                         updated_at = NOW()
-                    WHERE time_entry_id = @time_entry_id;
+                    WHERE time_entry_id = @time_entry_id AND timesheet_id=@timesheet_id AND work_date=@work_date;
                     """, connection, transaction);
                 update.Parameters.AddWithValue("project_id", (object?)request.ProjectId ?? DBNull.Value);
                 update.Parameters.AddWithValue("task_id", (object?)request.TaskId ?? DBNull.Value);
                 update.Parameters.AddWithValue("hours", (object?)request.Hours ?? DBNull.Value);
                 update.Parameters.AddWithValue("description", (object?)request.Description ?? DBNull.Value);
                 update.Parameters.AddWithValue("time_entry_id", timeEntryId);
+                update.Parameters.AddWithValue("timesheet_id", request.TimesheetId);
+                update.Parameters.AddWithValue("work_date", request.WorkDate);
                 await update.ExecuteNonQueryAsync();
             }
 

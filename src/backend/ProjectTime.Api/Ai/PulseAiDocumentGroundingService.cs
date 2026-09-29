@@ -325,34 +325,10 @@ public sealed class PulseAiDocumentGroundingService
 
             if (!authorized)
             {
-                return new PulseAiGroundingContext(
-                    Status: "project_outside_effective_user_scope",
-                    Purpose: purpose,
-                    EffectiveUserId: effectiveUserId,
-                    ProjectId: project.ProjectId,
-                    ProjectCode: project.ProjectCode,
-                    ProjectName: project.ProjectName,
-                    CustomerName: null,
-                    ProjectStatus: null,
-                    TaskCode: null,
-                    TaskName: null,
-                    TaskDescription: null,
-                    RequestNumber: null,
-                    RequestFunction: null,
-                    RequestStatus: null,
-                    AccessScope: access.ScopeLabel,
-                    ProjectResolved: true,
-                    Authorized: false,
-                    RoleCodes: access.RoleCodes.OrderBy(value => value).ToArray(),
-                    Documents: [],
-                    ScopeThemes: [],
-                    MissingInputs: ["The project is outside the current effective user’s authorized project scope."],
-                    Conflicts: [],
-                    CoverageScore: 0,
-                    CoverageLevel: "blocked",
-                    GeneratedAt: generatedAt,
-                    PrivacyBoundary: "private_projectpulse_runtime_only",
-                    ExternalProviderPolicy: "no_context_retrieval_no_external_escalation");
+                return EmptyContext("project_not_resolved", purpose, effectiveUserId,
+                    projectCode, projectName,
+                    ["A unique ProjectPulse project could not be resolved from the supplied project code or name."],
+                    roles: access.RoleCodes, accessScope: access.ScopeLabel);
             }
 
             var task = await ResolveTaskAsync(
@@ -692,11 +668,15 @@ public sealed class PulseAiDocumentGroundingService
                           FROM project_assignments pa
                           WHERE pa.project_id = p.project_id
                             AND pa.user_id = @user_id
+                            AND pa.effective_start_date <= CURRENT_DATE
+                            AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
+                            AND COALESCE(to_jsonb(pa)->>'module001a_closeout_status','active')='active'
                       )
                       OR EXISTS (
                           SELECT 1
                           FROM engineering_resource_requests err
                           WHERE err.project_id = p.project_id
+                            AND err.request_status NOT IN ('cancelled','canceled','rejected','closed','archived')
                             AND (
                                 err.fulfilled_by_user_id = @user_id
                                 OR err.assigned_pm_user_id = @user_id
@@ -705,6 +685,7 @@ public sealed class PulseAiDocumentGroundingService
                                     FROM engineering_resource_request_assignments erra
                                     WHERE erra.engineering_resource_request_id = err.engineering_resource_request_id
                                       AND erra.user_id = @user_id
+                                      AND erra.assignment_status IN ('assigned','confirmed','active','in_progress')
                                 )
                             )
                       )
@@ -734,6 +715,9 @@ public sealed class PulseAiDocumentGroundingService
                               FROM project_assignments pa
                               WHERE pa.project_id = p.project_id
                                 AND pa.user_id = @user_id
+                            AND pa.effective_start_date <= CURRENT_DATE
+                            AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
+                            AND COALESCE(to_jsonb(pa)->>'module001a_closeout_status','active')='active'
                           )
                       )
                 );
@@ -1035,6 +1019,9 @@ public sealed class PulseAiDocumentGroundingService
                       FROM project_assignments pa
                       WHERE pa.project_id = p.project_id
                         AND pa.user_id = @user_id
+                            AND pa.effective_start_date <= CURRENT_DATE
+                            AND (pa.effective_end_date IS NULL OR pa.effective_end_date >= CURRENT_DATE)
+                            AND COALESCE(to_jsonb(pa)->>'module001a_closeout_status','active')='active'
                   )
               );
             """;

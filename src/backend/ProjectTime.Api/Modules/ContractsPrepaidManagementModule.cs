@@ -2818,12 +2818,6 @@ public static class ContractsPrepaidManagementModule
             return new AccessResult(false, false);
         }
 
-        var profile = string.Join(
-            " ",
-            Enumerable.Range(0, 4)
-                .Select(reader.GetString))
-            .ToLowerInvariant();
-
         foreach (var role in reader.GetString(4)
             .Split(
                 ',',
@@ -2834,11 +2828,7 @@ public static class ContractsPrepaidManagementModule
         }
 
         var canManage =
-            roles.Overlaps(ManageRoles)
-            || profile.Contains("administrator")
-            || profile.Contains("superadmin")
-            || profile.Contains("project team coordinator")
-            || profile.Contains("project coordinator");
+            roles.Overlaps(ManageRoles);
 
         var canView =
             canManage
@@ -2849,11 +2839,7 @@ public static class ContractsPrepaidManagementModule
                 "ACCOUNT_MANAGER",
                 "EXECUTIVE",
                 "EXECUTIVE_LEADERSHIP"
-            })
-            || profile.Contains("account executive")
-            || profile.Contains("account manager")
-            || profile.Contains("sales")
-            || profile.Contains("executive");
+            });
 
         return new AccessResult(canView, canManage);
     }

@@ -22,6 +22,13 @@ BEGIN
 END;
 $prerequisites$;
 
+CREATE TABLE IF NOT EXISTS role_access_repair_062_role_catalog (
+    role_code TEXT PRIMARY KEY, previous_is_active BOOLEAN NOT NULL, previous_is_system_role BOOLEAN NOT NULL
+);
+INSERT INTO role_access_repair_062_role_catalog(role_code,previous_is_active,previous_is_system_role)
+SELECT role_code,is_active,is_system_role FROM app_roles WHERE role_code IN ('ADMINISTRATOR','SUPER_ADMINISTRATOR')
+ON CONFLICT DO NOTHING;
+
 INSERT INTO app_roles (
     role_code,
     role_name,
@@ -59,7 +66,8 @@ SET role_name = EXCLUDED.role_name,
     is_system_role = TRUE,
     is_active = TRUE,
     display_order = EXCLUDED.display_order,
-    updated_at = NOW();
+    updated_at = NOW()
+WHERE NOT EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='062_super_administrator_permanent_full_control');
 
 CREATE TABLE IF NOT EXISTS role_access_repair_062_assignment_changes (
     user_id UUID NOT NULL REFERENCES app_users(user_id) ON DELETE RESTRICT,
@@ -120,6 +128,7 @@ legacy_administrators AS (
       ON app_user.user_id = assignment.user_id
      AND app_user.is_active = TRUE
     WHERE assignment.is_active = TRUE
+      AND EXISTS (SELECT 1 FROM app_users u WHERE u.user_id=assignment.user_id AND u.is_active)
       AND upper(role.role_code) = 'ADMINISTRATOR'
 ),
 candidates AS (
@@ -137,6 +146,7 @@ candidates AS (
     WHERE existing.app_user_role_assignment_id IS NULL
        OR existing.is_active = FALSE
 )
+ , current_assignment_changes AS (
 INSERT INTO role_access_repair_062_assignment_changes (
     user_id,
     target_role_id,
@@ -151,7 +161,8 @@ SELECT
     previous_is_active,
     previous_assignment_reason
 FROM candidates
-ON CONFLICT (user_id, target_role_id) DO NOTHING;
+ON CONFLICT (user_id, target_role_id) DO NOTHING RETURNING user_id,target_role_id
+)
 
 INSERT INTO app_user_role_assignments (
     user_id,
@@ -168,11 +179,8 @@ SELECT
     TRUE,
     NOW(),
     NOW()
-FROM role_access_repair_062_assignment_changes change
-ON CONFLICT (user_id, app_role_id) DO UPDATE
-SET is_active = TRUE,
-    assignment_reason = EXCLUDED.assignment_reason,
-    updated_at = NOW();
+FROM current_assignment_changes change
+ON CONFLICT (user_id, app_role_id) DO NOTHING;
 
 -- Super Administrator is an invariant rather than a collection of optional
 -- grants. The source authorization layer enforces that invariant. These rows
@@ -235,7 +243,7 @@ BEGIN
     WHERE assignment.is_active = TRUE
       AND upper(role.role_code) = 'SUPER_ADMINISTRATOR';
 
-    IF active_super_administrators < 1 THEN
+    IF active_super_administrators < 1 AND NOT EXISTS (SELECT 1 FROM schema_migrations WHERE migration_id='062_super_administrator_permanent_full_control') THEN
         RAISE EXCEPTION 'Migration 062 invariant failed: at least one active Super Administrator assignment is required.';
     END IF;
 

@@ -10,7 +10,7 @@ test('PROGRESSIVE_CAPABILITIES',frontend.includes("const accessBody = await requ
 test('EXPLICIT_IRESULT_EXECUTION',backend.includes('(Func<HttpContext, Task<IResult>>)GetAccessAsync')&&backend.includes('(Func<HttpContext, Task<IResult>>)GetSummaryAsync')&&!backend.includes('MapGet("/access", GetAccessAsync)')&&!backend.includes('MapGet("/summary", GetSummaryAsync)'));
 test('RUNTIME_READINESS',backend.includes('076_module_081_lab_equipment_tracker')&&backend.includes('RuntimeReadyAsync')&&backend.includes('dataReady'));
 test('BULK_IMPORT_UI',frontend.includes('accept=".csv,.xlsx"')&&frontend.includes("request('/imports/preview'")&&frontend.includes('commitImport'));
-test('ROLE_CAPABILITY_MATRIX',backend.includes('LabFullAccessRoles')&&backend.includes('LabEngineerRoles')&&backend.includes('internal bool CanImportLabEquipment => CanManageLabEquipment')&&backend.includes('"EXECUTIVE_LEADERSHIP"'));
-test('ENGINEERS_READ_ONLY',backend.includes('!Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabEngineerRoles)')&&backend.includes('"ENTERPRISE_NETWORK_ENGINEER"'));
+test('ROLE_CAPABILITY_MATRIX',backend.includes('Permissions.Contains("MANAGE_LAB_EQUIPMENT_081")')&&backend.includes('Permissions.Contains("IMPORT_LAB_EQUIPMENT_081")')&&!backend.includes('internal bool CanImportLabEquipment => CanManageLabEquipment'));
+test('UNGRANTED_ROLES_READ_ONLY',!backend.includes('Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabFullAccessRoles)')&&backend.includes('internal bool CanManageLabEquipment => !IsViewAs')&&backend.includes('internal bool CanImportLabEquipment => !IsViewAs'));
 test('LEGACY_TEAM_SCHEMA_COMPATIBILITY',backend.includes("to_jsonb(app_user)->>'team_name'")&&!backend.includes('FROM projectpulse_team_scope_assignments'));
 console.log(`MODULE_081_VALIDATION_CHECKS=${checks}`);console.log(`MODULE_081_CONTRACT=${failures?'FAILED':'PASSED'}`);process.exitCode=failures?1:0;

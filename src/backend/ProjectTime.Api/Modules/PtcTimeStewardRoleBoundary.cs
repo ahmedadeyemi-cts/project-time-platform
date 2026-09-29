@@ -22,6 +22,7 @@ public static partial class ScopedRolePolicyModule
             var path = context.Request.Path.Value ?? string.Empty;
             var protectedRoute = path.StartsWith("/api/timesheet/ptc", StringComparison.OrdinalIgnoreCase)
                 || path.StartsWith("/api/runtime/timesheet/steward", StringComparison.OrdinalIgnoreCase)
+                || path.StartsWith("/api/runtime/v2/timesheet/steward", StringComparison.OrdinalIgnoreCase)
                 || path.StartsWith("/api/scoped-time/", StringComparison.OrdinalIgnoreCase);
             if (!protectedRoute)
             {

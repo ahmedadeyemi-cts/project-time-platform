@@ -1354,16 +1354,7 @@ public static class OpportunitiesModule
             displayName = reader.GetString(0);
             email = reader.GetString(1);
 
-            roles.AddRange(new[]
-            {
-                reader.GetString(2),
-                reader.GetString(3),
-                reader.GetString(4),
-                reader.GetString(5),
-                reader.GetString(6),
-                reader.GetString(7)
-            }.Where(value =>
-                !string.IsNullOrWhiteSpace(value)));
+            if (!string.IsNullOrWhiteSpace(reader.GetString(2))) roles.Add(reader.GetString(2));
         }
 
         var normalizedRoles = roles
@@ -1390,16 +1381,11 @@ public static class OpportunitiesModule
             .Replace('-', '_')
             .Replace(' ', '_');
 
-        return normalized == "AE"
-            || normalized.Contains("ACCOUNT_EXECUTIVE")
-            || normalized.Contains("SALES")
-            || normalized.Contains("PRESALES")
-            || normalized.Contains("PRE_SALES")
-            || normalized.Contains("ENGINEER")
-            || normalized.Contains("ENGINEERING")
-            || normalized.Contains("SYSTEM_ADMIN")
-            || normalized.Contains("ADMINISTRATOR")
-            || normalized.Contains("MANAGE_ALL");
+        return normalized is "AE" or "ACCOUNT_EXECUTIVE" or "SALES_ACCOUNT_EXECUTIVE"
+            or "SALES" or "INSIDE_SALES" or "PRESALES" or "PRE_SALES"
+            or "SOLUTION_ARCHITECT" or "SOLUTIONS_ARCHITECT" or "ENGINEER" or "ENGINEERING"
+            or "ENGINEERING_LEAD" or "ENGINEERING_TEAM_LEAD" or "SYSTEM_ADMINISTRATOR"
+            or "ADMINISTRATOR" or "SUPER_ADMINISTRATOR";
     }
 
     private static async Task<string?>

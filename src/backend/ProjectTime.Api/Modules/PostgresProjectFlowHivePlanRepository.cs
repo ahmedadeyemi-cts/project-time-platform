@@ -82,8 +82,7 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
                         WHERE assignment.user_id=@actor AND assignment.is_active=TRUE
                           AND role.role_code IN (
                               'SUPER_ADMINISTRATOR','SYSTEM_ADMINISTRATOR','ADMINISTRATOR',
-                              'PROJECT_TEAM_COORDINATOR','PROJECT_COORDINATOR',
-                              'PROJECT_MANAGEMENT_LEAD','PROJECT_MANAGEMENT_TEAM_LEAD','PM_TEAM_LEAD')) AS broad_scope
+                              'PROJECT_TEAM_COORDINATOR','PROJECT_COORDINATOR')) AS broad_scope
             )
             SELECT plan.plan_id,plan.project_id,plan.plan_name,plan.plan_status,
                    plan.current_version_number,plan.baseline_version_number,

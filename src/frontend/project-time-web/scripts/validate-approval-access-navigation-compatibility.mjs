@@ -119,8 +119,9 @@ requireText(backend, [
   'app.MapGet("/api/approval-center/access"',
   'app.MapGet("/api/manager/approval-count"',
   'access = ToAccessPayload(access)',
-  'if (!access.IsProjectManager) return false;',
-  'p.project_manager_user_id = @actor_user_id'
+  'if (access.IsManager',
+  "Project ownership does not grant authority over another manager's whole timesheet day.",
+  'string.Equals(targetManagerEmail, access.Email, StringComparison.OrdinalIgnoreCase)'
 ], 'Backend-authoritative approval access');
 
 requireText(scopedRules, [

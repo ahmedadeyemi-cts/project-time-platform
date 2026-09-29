@@ -30,6 +30,22 @@ WHERE assignment.user_id = change.user_id
   AND assignment.app_role_id = change.target_role_id
   AND change.previous_assignment_existed = TRUE;
 
+DO $$
+BEGIN
+    IF to_regclass('role_access_repair_062_role_catalog') IS NOT NULL THEN
+        UPDATE app_roles r SET is_active=prior.previous_is_active,is_system_role=prior.previous_is_system_role,updated_at=NOW()
+        FROM role_access_repair_062_role_catalog prior WHERE r.role_code=prior.role_code;
+        DROP TABLE role_access_repair_062_role_catalog;
+    ELSE
+        -- Older installations did not capture role-catalog before-images.
+        -- Restore the known 030R retirement; do not invent prior SA flags.
+        UPDATE app_roles SET is_active=FALSE,updated_at=NOW()
+        WHERE role_code='ADMINISTRATOR' AND EXISTS (
+            SELECT 1 FROM schema_migrations WHERE migration_id LIKE '030R%'
+        );
+    END IF;
+END $$;
+
 DROP TABLE IF EXISTS role_access_repair_062_permission_changes;
 DROP TABLE IF EXISTS role_access_repair_062_assignment_changes;
 DROP FUNCTION IF EXISTS projectpulse_062_block_evidence_mutation();

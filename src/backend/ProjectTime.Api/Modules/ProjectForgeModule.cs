@@ -56,7 +56,7 @@ public static partial class ProjectForgeModule
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
         if (!access.CanView) return Forbidden("VIEW_PROJECT_FORGE_033");
         if (!access.CanViewFinancials || access.IsViewAs) return WriteForbidden(access);
-        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken))
+        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken, "financial"))
             return Forbidden("project_forge_project_scope");
 
         await using (var readiness = new NpgsqlCommand("""
@@ -420,9 +420,9 @@ public static partial class ProjectForgeModule
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
         if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
-        var effectiveRequest = access.CanManage ? request : RestrictNewCollaboratorPlan(request);
-        if (!await CanAccessProjectAsync(connection, access, effectiveRequest.ProjectId, null, cancellationToken))
+        if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken, "edit"))
             return Forbidden("project_forge_project_scope");
+        var effectiveRequest = access.CanManage ? request : RestrictNewCollaboratorPlan(request);
         var projectWriteError = await EnsureProjectWritableAsync(connection, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         var validation = ValidatePlan(effectiveRequest);
@@ -458,10 +458,10 @@ public static partial class ProjectForgeModule
         await connection.OpenAsync(cancellationToken);
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
         if (!access.CanEditReviewPlan || access.IsViewAs) return WriteForbidden(access);
+        if (!await CanAccessProjectAsync(connection, access, request.ProjectId, null, cancellationToken, "edit")) return Forbidden("project_forge_project_scope");
         var effectiveRequest = access.CanManage
             ? request
             : await PreserveCollaboratorRestrictedFieldsAsync(connection, planId, request, cancellationToken);
-        if (!await CanAccessProjectAsync(connection, access, effectiveRequest.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, effectiveRequest.ProjectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         var validation = ValidatePlan(effectiveRequest);
@@ -523,7 +523,7 @@ public static partial class ProjectForgeModule
         var access = await LoadAccessAsync(connection, identity.Value, context, cancellationToken);
         if (!access.CanUseAi || !access.CanManage || access.IsViewAs) return WriteForbidden(access);
         if (CandidateAiDraftMutationBlocked() is { } blocked) return blocked;
-        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken))
+        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken, "administer"))
             return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, projectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
@@ -854,7 +854,7 @@ public static partial class ProjectForgeModule
         if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
         var plan = await LoadPlanProjectAsync(connection, planId, cancellationToken);
         if (plan is null) return Results.NotFound(new { status = "plan_not_found" });
-        if (!await CanAccessProjectAsync(connection, access, plan.Value.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        if (!await CanAccessProjectAsync(connection, access, plan.Value.ProjectId, null, cancellationToken, "administer")) return Forbidden("project_forge_project_scope");
         if (!await IsEligibleEngineerReviewerAsync(connection, plan.Value.ProjectId, request.ReviewerUserId, cancellationToken))
             return Results.BadRequest(new { status = "reviewer_not_on_project", message = "Choose an active engineer already assigned to this project." });
         var reviewerName = await LoadUserNameAsync(connection, request.ReviewerUserId, cancellationToken);
@@ -1056,7 +1056,7 @@ public static partial class ProjectForgeModule
         if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
         var plan = await LoadPlanProjectAsync(connection, planId, cancellationToken);
         if (plan is null) return Results.NotFound(new { status = "plan_not_found" });
-        if (!await CanAccessProjectAsync(connection, access, plan.Value.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        if (!await CanAccessProjectAsync(connection, access, plan.Value.ProjectId, null, cancellationToken, "administer")) return Forbidden("project_forge_project_scope");
 
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         await LockProjectAsync(connection, transaction, plan.Value.ProjectId, cancellationToken);
@@ -2264,7 +2264,7 @@ public static partial class ProjectForgeModule
         ProjectForgeAccess access,
         Guid projectId,
         Guid? managerFilter,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, string requirement = "view")
     {
         if (managerFilter.HasValue)
         {
@@ -2283,7 +2283,14 @@ public static partial class ProjectForgeModule
             projectId,
             "033",
             cancellationToken);
-        return planningAccess.CanView;
+        access.ProjectAuthority = planningAccess;
+        return planningAccess.CanView && (requirement switch
+        {
+            "administer" => planningAccess.CanAdministerPlanner,
+            "edit" => planningAccess.CanEditPlanner,
+            "financial" => planningAccess.CanManageFinancials,
+            _ => true
+        });
     }
 
     private static async Task<bool> IsEligibleEngineerReviewerAsync(NpgsqlConnection connection, Guid projectId, Guid userId, CancellationToken cancellationToken)
@@ -2438,6 +2445,8 @@ public static partial class ProjectForgeModule
 
     private static async Task LockProjectAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, Guid projectId, CancellationToken cancellationToken)
     {
+        await using (var limits = new NpgsqlCommand("SET LOCAL statement_timeout='8s'; SET LOCAL lock_timeout='3s';", connection, transaction))
+            await limits.ExecuteNonQueryAsync(cancellationToken);
         await using var command = new NpgsqlCommand("SELECT pg_advisory_xact_lock(hashtextextended(@project_id::text,33))", connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -2708,14 +2717,16 @@ public static partial class ProjectForgeModule
         public bool CanView => IsActive && (IsAdministrator || IsProjectManagementLead || IsProjectManager || IsEngineer
             || IsAccountExecutive || IsSolutionArchitect
             || HasPermission("VIEW_PROJECT_FORGE_033") || HasPermission("VIEW_ASSOCIATED_PROJECT_FORGE_033"));
-        public bool CanManage => IsAdministrator || IsProjectManagementLead || IsProjectManager || HasPermission("MANAGE_PROJECT_FORGE_033");
+        public ProjectPlanningAccess? ProjectAuthority { get; set; }
+        public bool CanManage => (IsAdministrator || IsProjectManagementLead || IsProjectManager || HasPermission("MANAGE_PROJECT_FORGE_033"))
+            && (ProjectAuthority is null || ProjectAuthority.CanAdministerPlanner);
         public bool CanReviewPlan => CanView && (CanManage || HasPermission("REVIEW_PROJECT_FORGE_PLAN_033"));
-        public bool CanEditReviewPlan => CanView && (CanManage || HasPermission("EDIT_PROJECT_FORGE_REVIEW_PLAN_033"));
+        public bool CanEditReviewPlan => CanView && (CanManage || HasPermission("EDIT_PROJECT_FORGE_REVIEW_PLAN_033")) && (ProjectAuthority is null || ProjectAuthority.CanEditPlanner);
         public bool CanAdoptPlan => CanManage;
         public bool CanUseAi => CanManage && (IsAdministrator || IsProjectManagementLead || IsProjectManager || HasPermission("USE_PROJECT_FORGE_AI_033"));
         public bool CanEditAssignedEstimate => IsEngineer || HasPermission("EDIT_ASSIGNED_PROJECT_FORGE_ESTIMATES_033");
         public bool CanUpdateAssignedTaskStatus => HasPermission("UPDATE_ASSIGNED_PROJECT_FORGE_TASK_STATUS_033");
-        public bool CanViewFinancials => CanManage && !IsViewAs;
+        public bool CanViewFinancials => CanManage && !IsViewAs && (ProjectAuthority is null || ProjectAuthority.CanManageFinancials);
         public bool CanViewAiCitations => CanManage && !IsViewAs;
         public bool CanSelectProjectManager => IsAdministrator || IsProjectManagementLead;
         public bool CanViewAllScopedTasks => IsAdministrator || IsProjectManagementLead || IsProjectManager
