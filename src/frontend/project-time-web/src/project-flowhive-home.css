@@ -104,3 +104,6 @@
 .project-flowhive-center.projectpulse-module-standard .flowhive-home-sharing { border-left-color: var(--flowhive-blue); }
 .project-flowhive-center.projectpulse-module-standard .flowhive-project-home-summary article.attention { border-left-color: #c77c13; }
 .project-flowhive-center.projectpulse-module-standard .flowhive-project-home-summary article.healthy { border-left-color: #25834a; }
+
+.project-flowhive-center .flowhive-home-sharing .flowhive-sharing-recordings input[type='checkbox'] { flex: 0 0 auto; min-height: 1.1rem; width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--flowhive-blue); }
+.project-flowhive-center .flowhive-home-sharing input::placeholder { color: var(--flowhive-muted); opacity: 1; }
