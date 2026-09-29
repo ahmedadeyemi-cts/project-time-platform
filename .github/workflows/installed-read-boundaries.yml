@@ -39,10 +39,10 @@ jobs:
       cancel-in-progress: false
     env:
       DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
-      EVIDENCE_DIR: ${{ runner.temp }}/installed-read-private
-      SAFE_EVIDENCE_DIR: ${{ runner.temp }}/installed-read-safe
-      OUTPUT_CONTEXT: ${{ runner.temp }}/installed-read-private/installed-release-context.json
-      INSTALLED_RELEASE_CONTEXT: ${{ runner.temp }}/installed-read-private/installed-release-context.json
+      EVIDENCE_DIR: ${{ github.workspace }}/installed-read-private
+      SAFE_EVIDENCE_DIR: ${{ github.workspace }}/installed-read-safe
+      OUTPUT_CONTEXT: ${{ github.workspace }}/installed-read-private/installed-release-context.json
+      INSTALLED_RELEASE_CONTEXT: ${{ github.workspace }}/installed-read-private/installed-release-context.json
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
@@ -75,6 +75,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: installed-read-boundaries-${{ github.run_id }}
-          path: ${{ runner.temp }}/installed-read-safe/installed-read-boundaries.json
+          path: ${{ github.workspace }}/installed-read-safe/installed-read-boundaries.json
           if-no-files-found: ignore
           retention-days: 7
