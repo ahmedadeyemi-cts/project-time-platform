@@ -95,6 +95,11 @@ done
 install -m 0444 "$ROOT/scripts/release-test/verify-module060-contract-funding.sql" "$CONTEXT/database/verify-module060-contract-funding.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/060*.sql database/verify-module060-contract-funding.sql > database/module060-contract-funding.sha256)
 # MODULE060_CONTRACT_PACKAGE_END
+# SECURITY_130_PACKAGE_BEGIN
+install -m 0444 "$ROOT/database/migrations/130_security_integrity_boundaries.sql" "$CONTEXT/database/migrations/130_security_integrity_boundaries.sql"
+install -m 0444 "$ROOT/scripts/security/verify-security-integrity-130.sql" "$CONTEXT/database/verify-security-integrity-130.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/130_security_integrity_boundaries.sql database/verify-security-integrity-130.sql > database/security-integrity-130.sha256)
+# SECURITY_130_PACKAGE_END
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -186,6 +191,12 @@ psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/060c-contract-appro
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-module060-contract-funding.sql"
 echo 'MODULE060_CONTRACT_FUNDING=APPLIED_AND_VERIFIED'
 # MODULE060_CONTRACT_APPLY_END
+# SECURITY_130_APPLY_BEGIN
+(cd "$ROOT" && sha256sum --check --status database/security-integrity-130.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/130_security_integrity_boundaries.sql"
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-security-integrity-130.sql"
+echo 'MIGRATION_130_SECURITY_INTEGRITY=APPLIED_AND_VERIFIED'
+# SECURITY_130_APPLY_END
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT

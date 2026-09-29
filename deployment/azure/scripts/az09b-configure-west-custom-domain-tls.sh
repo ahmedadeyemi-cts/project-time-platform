@@ -565,6 +565,60 @@ PY
 
     wait_for_gateway || fail "Application Gateway HTTPS configuration did not reach Succeeded."
 
+    # Include the original catch-all listener: a host-specific redirect alone
+    # leaves requests by IP or an alternate Host header on plaintext backends.
+    python3 - "$RG_NETWORK" "$APP_GATEWAY" "$REDIRECT_CONFIG" <<'PY_GATEWAY_HTTPS'
+import json
+import subprocess
+import sys
+
+def redirect_plan(gateway, redirect_name):
+    if gateway.get('tags', {}).get('environment') != 'test':
+        raise ValueError('Gateway is not tagged Test')
+    listeners = {x['id']: x for x in gateway.get('httpListeners', [])}
+    redirects = {x['id']: x for x in gateway.get('redirectConfigurations', [])}
+    target = next((x for x in redirects.values() if x['name'] == redirect_name), None)
+    https = listeners.get(((target or {}).get('targetListener') or {}).get('id'), {})
+    if (not target or https.get('protocol') != 'Https'
+            or https.get('hostName') != 'phd-west-test.onenecklab.com'
+            or target.get('redirectType') != 'Permanent'
+            or target.get('includePath') is not True
+            or target.get('includeQueryString') is not True):
+        raise ValueError('Canonical permanent HTTPS redirect is not ready')
+    changes = []
+    for rule in gateway.get('requestRoutingRules', []):
+        listener = listeners.get((rule.get('httpListener') or {}).get('id'))
+        if listener is None:
+            raise ValueError('Unresolved gateway listener')
+        if listener.get('protocol') != 'Http':
+            continue
+        if rule.get('ruleType') != 'Basic' or rule.get('urlPathMap'):
+            raise ValueError('HTTP path-map requires explicit review')
+        if ((rule.get('redirectConfiguration') or {}).get('id') != target['id']
+                or rule.get('backendAddressPool') or rule.get('backendHttpSettings')):
+            changes.append(rule['name'])
+    return changes
+
+def main():
+    group, name, redirect = sys.argv[1:]
+    if (group, name) != ('rg-project-health-dashboard-test-network-westus3', 'agw-phd-test-westus3'):
+        raise ValueError('Unexpected gateway scope')
+    prefix = ['az', 'network', 'application-gateway']
+    def read():
+        return json.loads(subprocess.check_output(prefix + ['show', '-g', group, '-n', name, '-o', 'json', '--only-show-errors']))
+    plan = redirect_plan(read(), redirect)
+    for rule in plan:
+        subprocess.run(prefix + ['rule', 'update', '-g', group, '--gateway-name', name,
+            '-n', rule, '--redirect-config', redirect, '--remove', 'backendAddressPool',
+            '--remove', 'backendHttpSettings', '--only-show-errors', '-o', 'none'], check=True)
+    if redirect_plan(read(), redirect):
+        raise ValueError('Plaintext backend routing remains')
+    print('ALL_HTTP_LISTENERS_REDIRECT_TO_HTTPS=PASS')
+
+if __name__ == '__main__':
+    main()
+PY_GATEWAY_HTTPS
+
     section "Validating HTTPS custom domain"
 
     HTTPS_STATUS=""

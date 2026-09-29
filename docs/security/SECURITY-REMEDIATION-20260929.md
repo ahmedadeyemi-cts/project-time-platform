@@ -2,9 +2,9 @@
 
 Draft source candidate from `e01f559e0bb7df91e233fd885c837f666802cb98`. All 149 findings remain tracked in the restricted review. **No finding is declared closed, and this candidate is not deployed.** The earlier ledger remains a historical record of PR1209, not a current security clearance.
 
-This candidate tightens authorization, document/financial scope, identity refresh, integration secret handling, time immutability and data integrity. It adds isolated migration, authorization and OCR regression coverage. Migration130 and independent-key provisioning are mandatory prerequisites; do not merge/deploy this draft before the credential transition, remaining source review and protected release admission are complete.
+This candidate tightens authorization, document/financial scope, identity refresh, integration secret handling, time immutability and data integrity. It adds isolated migration, authorization and OCR regression coverage. Migration130 execution and independent-key provisioning are mandatory prerequisites; do not merge/deploy this draft before the credential transition, remaining source review and protected release admission are complete.
 
-The active protected deployment workflow and its exact registration remain unchanged. The last inspected UAT run installed its release but failed functional acceptance and evidence publication. No passing installed acceptance is claimed. Historical operational review and remaining source remediations must be completed privately. Do not upload customer data, raw evidence, credential values or the security report to this public repository.
+The active protected deployment workflow and its exact registration remain unchanged. A narrow migration-builder addition packages and verifies migration130 while preserving the private-network runner and all existing release steps. The last inspected UAT run installed its release but failed functional acceptance and evidence publication. No passing installed acceptance is claimed. Historical operational review and remaining source remediations must be completed privately. Do not upload customer data, raw evidence, credential values or the security report to this public repository.
 
 ## Validation
 
@@ -31,7 +31,7 @@ The active protected deployment workflow and its exact registration remain uncha
 - Actual authorization resolvers and contract handlers pass 16 database-backed cases. Coverage includes delegated privilege rejection, authorized reads, View-As, revoked administrator assignments, contract-balance reads and contract usage writes.
 - Full local run:14 authority,16 privileged integration,15 identity/session,64 completion,45 route and58 existing authorization checks passed against an isolated PostgreSQL-compatible engine. Native PostgreSQL validation remains required for this latest change, especially concurrent behavior.
 - The prior pushed checkpoint passed68 of72 returned workflows at inspection; one was running and three historical registration failures are addressed in this follow-up. All121 admission tests passed locally without removing assertions. No live deployment occurred.
-- Current dispositions:37 prior source repairs,92 candidate repairs with incomplete validation,20 further remediation/review. Zero findings are closed through UAT.
+- Current dispositions:37 prior source repairs,93 candidate repairs with incomplete validation,19 further remediation/review. Zero findings are closed through UAT.
 
 ## All-finding disposition
 
@@ -52,7 +52,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 011 | Prior source fix; UAT unverified | Not established |
 | 012 | Prior source fix; UAT unverified | Not established |
 | 013 | Prior source fix; UAT unverified | Not established |
-| 014 | Further remediation/review required | Not established |
+| 014 | Candidate repair; live gateway verified, source review pending | Not established |
 | 015 | Prior source fix; UAT unverified | Not established |
 | 016 | Prior source fix; UAT unverified | Not established |
 | 017 | Candidate repair; incomplete validation | Not established |
@@ -188,3 +188,11 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 147 | Further remediation/review required | Not established |
 | 148 | Candidate repair; incomplete validation | Not established |
 | 149 | Candidate repair; incomplete validation | Not established |
+
+## Connected follow-up
+
+- All74 returned native workflows passed on the preceding candidate b8f41d80. This follow-up requires fresh native checks.
+- The TLS provisioning script now covers every basic HTTP listener, including catch-all routing, and refuses unknown path maps or an untrusted HTTPS target. Three regression tests pass. The Test gateway was updated; IP, alternate-host and canonical-host probes returned301 redirects preserving path/query, and HTTPS health remained200.
+- Migration130 is packaged with digest verification and content-free database postconditions. The private-network runner, workflow and approval paths are unchanged; a constrained registration test rejects unrelated builder edits. All24 migration assertions pass locally. Live migration130 execution remains pending.
+- The credential-transition utility defaults to read-only verification, validates old envelopes/fingerprints, and performs both Microsoft-store updates in one transaction. Rotation requires an explicit maintenance marker. Nine isolated tests cover successful rotation, incorrect key/maintenance rejection, rollback on partial failure, and secret-free output. Native CI is required before rotation.
+- Azure provisioning now requires separately provisioned runtime credentials; VM example guidance no longer reuses the database administrator. Live role provisioning and runtime validation remain pending.

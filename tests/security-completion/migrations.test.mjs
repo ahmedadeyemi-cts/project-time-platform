@@ -47,10 +47,14 @@ async function scalar(db,sql){return Object.values((await db.query(sql)).rows[0]
  INSERT INTO work_register_documents VALUES('10000000-0000-0000-0000-000000000001','ptc_admin_only');
  INSERT INTO project_intake_documents VALUES('20000000-0000-0000-0000-000000000001','10000000-0000-0000-0000-000000000001',TRUE,'private SOW.pdf','sow','sow');`);
  await db.exec(read('database/migrations/130_security_integrity_boundaries.sql'));
+ await db.exec(read('scripts/security/verify-security-integrity-130.sql'));checks++;
  assert.equal(await scalar(db,'SELECT engineering_visible FROM project_intake_documents'),false);checks++;
  assert.equal(await scalar(db,'SELECT count(*)::int FROM security_integrity_repair_events'),1);checks++;
  await db.exec('UPDATE project_intake_documents SET engineering_visible=TRUE');
+ await assert.rejects(()=>db.exec(read('scripts/security/verify-security-integrity-130.sql')));checks++;
+ await db.exec('ROLLBACK');
  await db.exec(read('database/migrations/130_security_integrity_boundaries.sql'));
+ await db.exec(read('scripts/security/verify-security-integrity-130.sql'));checks++;
  assert.equal(await scalar(db,'SELECT engineering_visible FROM project_intake_documents'),false);checks++;
  assert.equal(await scalar(db,'SELECT count(*)::int FROM security_integrity_repair_events'),1);checks++;
  await db.exec(`INSERT INTO app_users VALUES('30000000-0000-0000-0000-000000000001',TRUE),('30000000-0000-0000-0000-000000000002',TRUE);

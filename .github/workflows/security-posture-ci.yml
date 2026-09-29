@@ -47,6 +47,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 tests/security-completion/ocr.test.py
+          python3 tests/security-completion/gateway.test.py
+          python3 tests/security-completion/test_scope.py
           python3 tests/security-deployment-boundaries.test.py
           python3 tests/security-release/test_controller_registration.py
           python3 tests/security-frontend-proxy.test.py
@@ -84,6 +86,11 @@ jobs:
 
       - name: Exercise database identity and session boundaries
         run: dotnet run --no-build --project tests/ProjectTime.Api.AuthorizationTests/ProjectTime.Api.AuthorizationTests.csproj
+
+      - name: Verify atomic credential transition in isolated database
+        run: |
+          dotnet build tools/SecurityCredentialTransition
+          dotnet run --project tests/SecurityCredentialTransitionTests -- tools/SecurityCredentialTransition/bin/Debug/net10.0/SecurityCredentialTransition.dll
 
       - name: Remove isolated authorization database
         if: always()

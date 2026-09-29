@@ -12,6 +12,15 @@ REPOSITORY = 'ahmedadeyemi-cts/project-time-platform'
 MANIFEST = 'tests/security-completion/manifest.json'
 CI_DISPATCH = {'scripts/release-test/validate-protected-test-controller-branches.sh',
                'scripts/release-test/validate-module025-governed-release.sh'}
+MIGRATION_BUILDER = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+
+def verify_migration_delta(before, after):
+    registration = json.loads((ROOT/'tests/security-completion/migration-registration.json').read_text())
+    require(registration['path'] == MIGRATION_BUILDER, 'Wrong migration builder')
+    for anchor, addition in registration['patches']:
+        require(before.count(anchor) == 1, 'Ambiguous migration insertion')
+        before = before.replace(anchor, anchor + addition, 1)
+    require(before == after, 'Migration runner, authority or existing release behavior changed')
 
 def require(value, message):
     if not value: raise RuntimeError(message)
@@ -21,6 +30,7 @@ def git(*args):
 
 def frozen(path):
     if path in CI_DISPATCH: return False
+    if path == MIGRATION_BUILDER: return False
     if path.startswith('scripts/release-test/'): return True
     if path.startswith('.github/') and not path.startswith('.github/workflows/'): return True
     if path.startswith('.github/workflows/'):
@@ -55,6 +65,7 @@ def main():
             require(pr['base']['repo']['full_name'] == REPOSITORY, 'Wrong target repository')
     subprocess.run(['git', '-C', str(ROOT), 'merge-base', '--is-ancestor', BASE, 'HEAD'], check=True)
     manifest = json.loads((ROOT / MANIFEST).read_text())
+    verify_migration_delta(git('show', f'{BASE}:{MIGRATION_BUILDER}').decode(), (ROOT/MIGRATION_BUILDER).read_text())
     paths = git('diff', '--name-only', BASE, 'HEAD').decode().splitlines()
     verify_paths(paths, manifest)
     for path in paths:
