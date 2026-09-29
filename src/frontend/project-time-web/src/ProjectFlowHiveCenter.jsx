@@ -92,12 +92,19 @@ function authenticationHeaders(extra = {}) {
 
 async function parseResponse(response, path) {
   const contentType = response.headers.get('content-type') || '';
+  const correlationId = response.headers.get('x-projectpulse-correlation-id') || response.headers.get('x-correlation-id') || '';
   if (!contentType.includes('application/json')) {
-    if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}`);
+    if (!response.ok) {
+      const error = new Error(response.status === 400
+        ? 'The server could not read these changes. They were not saved. Refresh the project and retry; if this continues, provide the reference to support.'
+        : `The request failed (HTTP ${response.status}). Refresh the project before retrying.`);
+      error.status = response.status;
+      error.responseBody = {correlationId};
+      throw error;
+    }
     return response;
   }
   const body = await response.json();
-  const correlationId = response.headers.get('x-projectpulse-correlation-id') || response.headers.get('x-correlation-id') || '';
   if (body && typeof body === 'object' && correlationId && !body.correlationId) body.correlationId = correlationId;
   if (!response.ok) {
     const error = new Error(body.message || body.detail || body.issues?.[0]?.message || `${path} returned HTTP ${response.status}`);
@@ -603,6 +610,8 @@ export default function ProjectFlowHiveCenter() {
   const selectedProject = projects.find((project) => project.projectId === selectedProjectId) || null;
   const isArchived = documentReadiness?.projectId === selectedProjectId ? documentReadiness.isArchived : isFlowHiveArchived(selectedProject);
   const automaticPlanRunning = automaticPlan?.projectId === selectedProjectId && automaticPlan?.status === 'generating';
+  const plannerWritePending = automaticPlanRunning || plannerObserved
+    || (aiPreview?.projectId === selectedProjectId && aiPreview?.terminal === false);
   const canEditPlanner = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canEditPlanner && !enterprise?.access?.isViewAs);
   const canAdministerPlanner = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdministerPlanner && !enterprise?.access?.isViewAs);
   const canAdoptBaseline = Boolean(!isArchived && enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canAdoptBaseline && !enterprise?.access?.isViewAs);
@@ -624,11 +633,11 @@ export default function ProjectFlowHiveCenter() {
   // One write at a time; preserve edits made while a save is in flight. A conflict
   // requires an explicit reload instead of silently overwriting another editor.
   useEffect(() => {
-    if (!dirty || !canEditPlanner || busy || automaticPlanRunning || !workingCopyReady.current
+    if (!dirty || !canEditPlanner || busy || plannerWritePending || !workingCopyReady.current
         || autosaveConflict.current || autosaveAttempt.current === editEpoch.current) return;
     const timer = window.setTimeout(() => { void saveWorkingCopy(); }, 1800);
     return () => window.clearTimeout(timer);
-  }, [draftPlan, dirty, canEditPlanner, busy, automaticPlanRunning, saveCompletion]);
+  }, [draftPlan, dirty, canEditPlanner, busy, plannerWritePending, saveCompletion]);
 
   useEffect(() => {
     if (!dirty || !draftPlan || !canEditPlanner || automaticPlanRunning) return;
@@ -828,7 +837,7 @@ export default function ProjectFlowHiveCenter() {
 
   async function saveWorkingCopy() {
     const isCurrent = captureWorkspaceOperation(false);
-    if (!draftPlan || !selectedProjectId || !canEditPlanner || busy || workingSavePending.current) return;
+    if (!draftPlan || !selectedProjectId || !canEditPlanner || busy || plannerWritePending || workingSavePending.current) return;
     workingSavePending.current=true;
     autosaveAttempt.current=editEpoch.current; setAutosaveStatus('saving');
     const projectId = selectedProjectId;
@@ -1512,7 +1521,7 @@ export default function ProjectFlowHiveCenter() {
             <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || dirty || needsVersion || !schedule?.valid || busy || !canAdoptBaseline || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button><button type="button" onClick={deleteSavedPlan} disabled={!draftPlan?.planId || busy || !canEditPlanner || Boolean(savedPlans.find((plan) => plan.planId === draftPlan?.planId)?.baselineVersion)}>{busy === 'delete-plan' ? 'Deleting…' : 'Delete plan / Start over'}</button>
           </div>
           <p className="flowhive-baseline-guidance">{!schedule?.valid ? 'Resolve the schedule issues below before saving a baseline.' : needsVersion ? 'Schedule ready. Save an immutable version, review it, then establish the baseline for customer sharing.' : 'Saved version ready for baseline review. Customer sharing uses only the reviewed baseline.'}</p>
-          <FlowHiveSaveBar autosaveStatus={autosaveStatus} dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={canEditPlanner} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
+          <FlowHiveSaveBar autosaveStatus={autosaveStatus} autosavePaused={plannerWritePending} dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={canEditPlanner} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
           <div className="flowhive-plan-metadata">
             <label>Saved FlowHive plan<select value={draftPlan?.planId || ''} onChange={(event) => loadSavedPlan(event.target.value)}><option value="">{enterprise?.workingCopy ? 'Current working copy — not yet versioned' : 'New unsaved plan'}</option>{savedPlans.filter((plan) => !selectedProjectId || plan.projectId === selectedProjectId).map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · v{plan.currentVersion}{plan.baselineVersion ? ` · baseline v${plan.baselineVersion}` : ''}</option>)}</select></label>
             <label>Baseline review note<input value={baselineNote} onChange={(event) => setBaselineNote(event.target.value)} placeholder="Required reviewer decision note" /></label>

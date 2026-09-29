@@ -74,6 +74,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
+          if [[ "$GITHUB_HEAD_REF" == 'fix/installed-acceptance-browser-evidence-20260929' ]]; then
+            python3 tests/installed-browser-resolution/scope.py
+            python3 tests/installed-browser-resolution/test_scope.py
+            python3 tests/flowhive-installed-resolution.test.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py

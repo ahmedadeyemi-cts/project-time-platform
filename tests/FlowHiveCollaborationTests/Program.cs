@@ -52,7 +52,10 @@ Check(ParseError(bufferedResult) is null,"working-copy reader replays a previous
 var builder=WebApplication.CreateBuilder(Array.Empty<string>());builder.Logging.ClearProviders();builder.WebHost.UseUrls("http://127.0.0.1:0");
 await using(var app=builder.Build())
 {
+ app.UseProjectPulseSecurityHardening();
  app.MapPut("/old",(ProjectFlowHiveWorkingCopyRequest request)=>Results.Ok());
+ app.MapPost("/fixture/contact-contract",(FlowHiveContactRequest request)=>Results.Ok(new {request.DisplayName,request.ProjectContactId}));
+ app.MapPut("/fixture/controls-contract",(ProjectFlowHiveProjectControlsRequest request)=>Results.Ok(new {request.ApprovedBudget,request.CustomerSharingEnabled}));
  var type=assembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveEnterpriseModule")!;
  var handler=(Func<Guid,HttpContext,CancellationToken,Task<IResult>>)type.GetMethod("SaveWorkingCopyAsync",flags)!.CreateDelegate(typeof(Func<Guid,HttpContext,CancellationToken,Task<IResult>>));
  app.MapPut("/working-copy/{projectId:guid}",handler);
@@ -61,6 +64,8 @@ await using(var app=builder.Build())
  await app.StartAsync();using var client=new HttpClient{BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
  async Task<HttpStatusCode> Send(HttpMethod method,string path,string body){using var req=new HttpRequestMessage(method,path){Content=new StringContent(body,Encoding.UTF8,"application/json")};using var res=await client.SendAsync(req);return res.StatusCode;}
  Check(await Send(HttpMethod.Put,"/old",cleared)==HttpStatusCode.BadRequest,"real original typed binding reproduces blank-DateOnly 400");
+ Check(await Send(HttpMethod.Post,"/fixture/contact-contract","""{"displayName":"UAT QA Contact","email":"qa@example.invalid","phone":"","title":"","organization":"Synthetic","contactKind":"customer","isActive":true}""")==HttpStatusCode.OK,"valid browser contact DTO survives security inspection and real typed binding");
+ Check(await Send(HttpMethod.Put,"/fixture/controls-contract","""{"contractType":"unknown","currencyCode":"USD","approvedBudget":null,"expenseBudget":null,"contingencyBudget":null,"forecastAtCompletion":null,"percentCompleteMethod":"task_weighted","statusReportCadence":"weekly","customerSharingEnabled":false,"financialNotes":"Synthetic QA"}""")==HttpStatusCode.OK,"optional financial amounts survive security inspection and real typed binding");
  Check(await Send(HttpMethod.Put,$"/working-copy/{project}",cleared)==HttpStatusCode.Unauthorized,"real new save handler checks session before parsing or DB access");
  Check(await Send(HttpMethod.Post,$"/contacts/{project}","{}") == HttpStatusCode.Unauthorized,"contact handler never trusts anonymous caller");
  Check(await Send(HttpMethod.Post,$"/meetings/{project}","{}") == HttpStatusCode.Unauthorized,"meeting draft handler never trusts anonymous caller");

@@ -15,7 +15,7 @@ def timing(pid):return dict(projectId=pid,valid=True,projectFinishDate='2026-09-
 async def main():
  async with async_playwright() as pw:
   browser=await pw.chromium.launch(headless=True,executable_path=os.getenv('FLOWHIVE_CHROMIUM_PATH') or None,args=['--no-sandbox','--disable-dev-shm-usage'])
-  for mode,theme,width in [('success','light',1440),('error','light',1440),('readonly','dark',1440),('limit','light',1440),('race','light',1440),('conflict','light',1440),('success','dark',390)]:
+  for mode,theme,width in [('success','light',1440),('error','light',1440),('binding_error','light',1440),('readonly','dark',1440),('limit','light',1440),('race','light',1440),('conflict','light',1440),('success','dark',390)]:
    page=await browser.new_page(viewport={'width':width,'height':1100});page.set_default_timeout(7000)
    state={'writes':[],'errors':[],'plans':{A:seed(A),B:seed(B)},'version':P,'contacts':[dict(projectContactId=CONTACT,displayName='Customer IT owner',email='customer@example.invalid',phone='555-0101',title='IT Director',organization='Customer',contactKind='customer',isActive=True,rowVersion=P)],'meetings':[]}
    if mode=='limit':state['contacts']=[dict(state['contacts'][0],projectContactId=f'90000000-0000-4000-8000-{i:012d}',displayName=f'Contact {i}',email=f'contact{i}@example.invalid') for i in range(15)]
@@ -37,6 +37,7 @@ async def main():
      body=timing(A);body['tasks'][0]['endDate']=req.post_data_json['tasks'][0].get('estimatedFinishDate') or '2026-09-29'
     elif path.endswith('/working-copy'):
      payload=req.post_data_json
+     if mode=='binding_error':return await route.fulfill(status=400,content_type='text/plain',headers={'x-projectpulse-correlation-id':'BINDING-FIXTURE'},body='')
      if mode=='race' and len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1:await asyncio.sleep(1)
      if mode=='conflict':status=409;body={'message':'Another editor saved a newer working copy. Reload before saving.','issues':[],'stateChanged':False}
      elif mode=='error':status=400;body={'message':'A field needs correction.','issues':[{'path':'$.plan.tasks[0].durationWorkingDays','message':'Working-day duration must be a whole number.','severity':'error'}],'correlationId':'FIELD-FIXTURE'}
@@ -91,6 +92,13 @@ async def main():
      await page.get_by_label('Task 1 name',exact=True).fill('Preserve after conflict');await page.wait_for_timeout(2200)
      assert len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1
      assert await page.get_by_label('Task 1 name',exact=True).input_value()=='Preserve after conflict'
+    elif mode=='binding_error':
+     await page.get_by_text(re.compile('The server could not read these changes')).wait_for()
+     assert 'BINDING-FIXTURE' in await page.locator('.flowhive-error').inner_text()
+     assert await page.get_by_role('button',name='Save now',exact=True).is_enabled()
+     await page.wait_for_timeout(2200)
+     assert len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1
+     assert '2 assigned' in await picker.locator('summary').inner_text()
     elif mode=='error':
      await page.get_by_role('region',name='Fields needing correction').wait_for();assert 'durationWorkingDays' in await page.get_by_role('region',name='Fields needing correction').inner_text();assert await page.get_by_role('button',name='Save now',exact=True).is_enabled();await page.wait_for_timeout(2200);assert len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1
     else:
@@ -111,5 +119,5 @@ async def main():
    assert await page.get_by_role('region',name='Project team and customer contacts').get_by_text('customer@example.invalid',exact=True).count()==0
    await page.close()
   await browser.close()
- print('FLOWHIVE_COLLABORATION_BROWSER_CASES=7; LIVE_REQUESTS=0; INVITATIONS_SENT=0; RESULT=PASS')
+ print('FLOWHIVE_COLLABORATION_BROWSER_CASES=8; LIVE_REQUESTS=0; INVITATIONS_SENT=0; RESULT=PASS')
 asyncio.run(main())

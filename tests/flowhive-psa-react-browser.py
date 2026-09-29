@@ -242,6 +242,8 @@ async def main(readback_mode=None):
             assert state['posts'][0]['expectedWorkingRowVersion']==V1
             assert state['posts'][0]['hasWorkingCopyExpectation'] is True
             print('PASSED: actual React start posts edited dates and exact working-copy revision',flush=True)
+            await page.wait_for_timeout(2200)
+            assert state['versions'][A]==V1, 'autosave must not invalidate the working revision while AI is running'
             state['complete']=True
             if readback_mode=='review_proposal':
                 review=page.locator('details.flowhive-planner-review')
@@ -249,7 +251,10 @@ async def main(readback_mode=None):
                 assert not await review.evaluate('(el)=>el.open'), 'saved proposal should start collapsed'
                 await review.locator(':scope > summary').click()
                 await review.get_by_text('Generated unique task Plan',exact=True).wait_for()
-                assert state['versions'][A]==V1 and len(state['plans'][A]['milestones'])==1
+                await page.get_by_text('All changes saved',exact=True).wait_for()
+                assert state['versions'][A]==V2 and len(state['plans'][A]['milestones'])==1
+                assert state['plans'][A]['projectStartDate']=='2026-09-10'
+                assert state['plans'][A]['tasks'][1]['name']=='Stored project task Plan'
                 assert state['posts'][0]['plan']['milestones'][0]['milestoneId']==SAVED
                 assert await page.locator('input[value="Stored project task Plan"]').count()==1
                 assert not await page.locator('input[value="Generated unique task Plan"]').count()
@@ -266,7 +271,7 @@ async def main(readback_mode=None):
                 await review.locator(':scope > summary').click()
                 await review.get_by_text('Generated unique task Plan',exact=True).wait_for()
                 assert await page.locator('input[value="Stored project task Plan"]').count()==1
-                assert len(state['posts'])==1 and state['versions'][A]==V1
+                assert len(state['posts'])==1 and state['versions'][A]==V2
                 assert not state['errors'],state['errors']
                 print('PASSED: saved proposal and untouched original work survive page reload without inference',flush=True)
                 return
