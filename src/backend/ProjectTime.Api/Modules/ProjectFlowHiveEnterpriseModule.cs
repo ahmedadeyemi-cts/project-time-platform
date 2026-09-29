@@ -13,7 +13,7 @@ namespace ProjectTime.Api.Modules;
 /// PM-owned working copies, project controls, RAID, status reports, SOW evidence
 /// readiness, and reviewed customer sharing without changing canonical tasks.
 /// </summary>
-internal static class ProjectFlowHiveEnterpriseModule
+internal static partial class ProjectFlowHiveEnterpriseModule
 {
     private enum FlowHiveAccessRequirement
     {
@@ -43,7 +43,7 @@ internal static class ProjectFlowHiveEnterpriseModule
             (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)GetDocumentReadinessAsync);
         app.MapPut(
             "/api/project-flowhive/projects/{projectId:guid}/working-copy",
-            (Func<Guid, ProjectFlowHiveWorkingCopyRequest, HttpContext, CancellationToken, Task<IResult>>)SaveWorkingCopyAsync);
+            (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)SaveWorkingCopyAsync);
         app.MapPut(
             "/api/project-flowhive/projects/{projectId:guid}/controls",
             (Func<Guid, ProjectFlowHiveProjectControlsRequest, HttpContext, CancellationToken, Task<IResult>>)SaveControlsAsync);
@@ -60,6 +60,9 @@ internal static class ProjectFlowHiveEnterpriseModule
             "/api/project-flowhive/projects/{projectId:guid}/status-reports",
             (Func<Guid, ProjectFlowHiveStatusReportRequest, HttpContext, CancellationToken, Task<IResult>>)CreateStatusReportAsync);
         app.MapPost(
+            "/api/project-flowhive/projects/{projectId:guid}/customer-sharing/enable",
+            (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)EnableCustomerSharingAsync);
+        app.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/customer-shares",
             (Func<Guid, ProjectFlowHiveCustomerShareRequest, HttpContext, CancellationToken, Task<IResult>>)CreateCustomerShareAsync);
         app.MapDelete(
@@ -73,6 +76,7 @@ internal static class ProjectFlowHiveEnterpriseModule
                 (Func<string, HttpContext, CancellationToken, Task<IResult>>)ViewCustomerShareAsync)
             .AllowAnonymous();
 
+        MapCollaborationEndpoints(app);
         app.MapProjectFlowHiveAiPlannerOrchestrationEndpoints();
 
         return app;
@@ -177,27 +181,26 @@ internal static class ProjectFlowHiveEnterpriseModule
         });
     }
 
-    private static async Task<IResult> SaveWorkingCopyAsync(
-        Guid projectId,
-        ProjectFlowHiveWorkingCopyRequest request,
-        HttpContext context,
-        CancellationToken cancellationToken)
+    private static async Task<IResult> SaveWorkingCopyAsync(Guid projectId, HttpContext context, CancellationToken cancellationToken)
     {
-        if (request.Plan is null)
-            return Validation("A FlowHive plan is required.");
-        if (request.Plan.ProjectId != projectId)
-            return Validation("The working copy project does not match the selected project.");
-
         var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.EditPlanner, cancellationToken);
         if (opened.Error is not null) return opened.Error;
         await using var connection = opened.Connection!;
         var access = opened.Access!;
+        var read = await ProjectFlowHiveRequestReader.ReadAsync(context,cancellationToken);
+        if (read.Error is not null) return read.Error;
+        var request = read.Request!;
+        if (request.Plan!.ProjectId != projectId) return Validation("The working copy project does not match the selected project.");
 
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        if (!await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, projectId, cancellationToken))
+            return ProjectFlowHiveLifecycle.Archived();
+        try { request = request with { Plan = await ProjectFlowHiveCollaborationStore.ResolveContactsAsync(connection,transaction,projectId,request.Plan,cancellationToken) }; }
+        catch(ProjectFlowHiveCollaborationStore.InputException error) { return CollaborationInput(error); }
         var validation = ProjectFlowHiveScheduleEngine.Validate(request.Plan);
         var schedule = ProjectFlowHiveScheduleEngine.Calculate(request.Plan);
         var payload = JsonSerializer.Serialize(request.Plan, Json);
 
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         const string sql = """
             INSERT INTO project_flowhive_working_copies(
                 project_id,plan_id,working_payload,updated_by_user_id)
@@ -211,8 +214,6 @@ internal static class ProjectFlowHiveEnterpriseModule
             WHERE project_flowhive_working_copies.row_version=@expected_row_version
             RETURNING working_revision,row_version,updated_at;
             """;
-        if (!await ProjectFlowHiveLifecycle.LockActiveAsync(connection, transaction, projectId, cancellationToken))
-            return ProjectFlowHiveLifecycle.Archived();
         await using var command = new NpgsqlCommand(sql, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
         command.Parameters.Add("plan_id", NpgsqlDbType.Uuid).Value =
@@ -521,6 +522,35 @@ internal static class ProjectFlowHiveEnterpriseModule
             immutable = true,
             stateChanged = true
         }, statusCode: StatusCodes.Status201Created);
+    }
+
+    // Sharing enablement is deliberately not a round-trip of the financial-controls DTO.
+    // Do not accept budgets, notes, project IDs or permission claims from this request body.
+    private static async Task<IResult> EnableCustomerSharingAsync(
+        Guid projectId, HttpContext context, CancellationToken cancellationToken)
+    {
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.CustomerShare, cancellationToken);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var access = opened.Access!;
+        if (!access.CanShare || access.IsViewAs)
+            return Forbidden("Customer sharing requires an assigned Project Manager, authorized PM Lead, or Administrator outside View-As.");
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var changed = await ProjectFlowHiveCustomerSharingStore.EnableAsync(connection, transaction, projectId, access.ActualUserId, cancellationToken);
+        if (changed)
+            await InsertAuditAsync(connection, transaction, projectId, null, null, "customer_sharing_enabled", access,
+                new { customerSharingEnabled = true, customerLinkCreated = false, financialControlsChanged = false },
+                context.TraceIdentifier, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return Results.Ok(new
+        {
+            status = "flowhive_customer_sharing_enabled",
+            projectId,
+            customerSharingEnabled = true,
+            customerLinkCreated = false,
+            stateChanged = changed,
+            message = "Customer sharing is enabled. No link was created or sent. Choose an approved baseline to create an expiring customer link."
+        });
     }
 
     private static async Task<IResult> CreateCustomerShareAsync(

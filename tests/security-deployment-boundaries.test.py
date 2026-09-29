@@ -192,4 +192,31 @@ class EvidenceBoundaryTests(unittest.TestCase):
             with self.assertRaises(ValueError): evidence.publish(source, target)
             self.assertFalse(target.exists())
 
+    def test_incomplete_revision_checks_publish_only_summary_without_installation_receipt(self):
+        for phase in evidence.INCOMPLETE_REVISION_PHASES:
+            with self.subTest(phase=phase), tempfile.TemporaryDirectory() as directory:
+                source = Path(directory) / 'private'; source.mkdir()
+                target = Path(directory) / 'public'
+                name = 'module001b-revision-reconcile.json'
+                (source / name).write_text(json.dumps({
+                    'phase': phase, 'expectedRevisionActive': True,
+                    'expectedImage': 'SENTINEL_private_unverified_identity',
+                    'productionMutation': False,
+                }))
+                evidence.publish(source, target)
+                self.assertFalse((target / name).exists())
+                summary = json.loads((target / 'security-safe-uat-summary.json').read_text())
+                self.assertEqual(summary['reports'][name]['status'], 'unclassified')
+                self.assertNotIn('SENTINEL', (target / 'security-safe-uat-summary.json').read_text())
+                self.assertFalse(summary['rawResponsesPublished'])
+
+    def test_unknown_or_invalid_converged_revision_receipts_still_fail_closed(self):
+        for receipt in ({'phase': 'unrecognized'}, {'phase': 'converged', 'expectedImage': 'registry.invalid/api:latest'}):
+            with self.subTest(receipt=receipt), tempfile.TemporaryDirectory() as directory:
+                source = Path(directory) / 'private'; source.mkdir()
+                target = Path(directory) / 'public'
+                (source / 'module001b-revision-reconcile.json').write_text(json.dumps(receipt))
+                with self.assertRaises(ValueError): evidence.publish(source, target)
+                self.assertFalse(target.exists())
+
 if __name__ == '__main__': unittest.main()

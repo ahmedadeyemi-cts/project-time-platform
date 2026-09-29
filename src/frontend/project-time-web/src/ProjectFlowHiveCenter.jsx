@@ -1,6 +1,11 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import ProjectFlowHivePlannerReview from './ProjectFlowHivePlannerReview.jsx';
 import ProjectFlowHiveOverview from './ProjectFlowHiveOverview.jsx';
+import ProjectFlowHiveAssignees from './ProjectFlowHiveAssignees.jsx';
+import ProjectFlowHiveCollaboration from './ProjectFlowHiveCollaboration.jsx';
+import { flowHivePlanRequest, workingCopyRequest, flowHiveErrorText, optionalGuid } from './flowhive-plan-request.js';
+import { assigneeKey, taskAssignees, changeTaskAssignee, updateAssigneeHours } from './flowhive-assignees.js';
+import { projectControlsRequest, enableProjectCustomerSharing, customerSharingError } from './flowhive-project-controls.js';
 import ProjectFlowHiveDocumentReadiness from './ProjectFlowHiveDocumentReadiness.jsx';
 import ProjectFlowHiveAutomation from './ProjectFlowHiveAutomation.jsx';
 import { isFlowHiveArchived, filterFlowHiveProjects } from './flowhive-project-lifecycle.js';
@@ -108,11 +113,13 @@ async function getJson(path, signal) {
 }
 
 async function postJson(path, body, signal) {
+  const payload = body?.projectId && Array.isArray(body?.tasks) ? flowHivePlanRequest(body,body.projectId)
+    : body?.plan ? {...body,plan:flowHivePlanRequest(body.plan,body.plan.projectId)} : body;
   return parseResponse(await boundedFetch(path, {
     signal,
     method: 'POST',
     headers: authenticationHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(body)
+    body: JSON.stringify(payload)
   }), path);
 }
 
@@ -352,6 +359,13 @@ export default function ProjectFlowHiveCenter() {
   const [enterpriseError, setEnterpriseError] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [controls, setControls] = useState(defaultControls);
+  const [collaboration,setCollaboration]=useState(null);
+  const [collaborationError,setCollaborationError]=useState('');
+  const [requestIssues,setRequestIssues]=useState([]);
+  const [criticalOnly,setCriticalOnly]=useState(false);
+  const collaborationSequence=useRef(0),workingSavePending=useRef(false);
+  const [sharingError, setSharingError] = useState(null);
+  const sharingRequestInFlight = useRef(false);
   const [dirty, setDirtyState] = useState(false);
   const projectRef = useRef(selectedProjectId);
   projectRef.current = selectedProjectId;
@@ -382,7 +396,7 @@ export default function ProjectFlowHiveCenter() {
       editEpoch.current += 1;
       loadedWorkingVersion.current = null;
       workingCopyReady.current = false; displayingVersion.current = null; selectionEpoch.current += 1;
-      setEnterprise(null); setFinancials(null); setLatestShareUrl(''); setBusy('');
+      setEnterprise(null); setControls(defaultControls); setShareDraft({ ...defaultShareDraft }); setSharingError(null); sharingRequestInFlight.current = false; setFinancials(null); setLatestShareUrl(''); setBusy('');
       setSelectedProjectId(projectId);
       setDraftPlan(null); setSchedule(null); setValidation(null); setAiPreview(null); setDirty(false);
     }
@@ -400,7 +414,7 @@ export default function ProjectFlowHiveCenter() {
     const scope = selectionEpoch.current;
     const isCurrent = () => sequence === moduleLoadSequence.current && scope === selectionEpoch.current;
     setLoading(true);
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const [capabilities, portfolioResult, readinessResult, artifactResult, plansResult] = await Promise.all([
         getJson('/api/project-flowhive/capabilities'),
@@ -433,7 +447,7 @@ export default function ProjectFlowHiveCenter() {
     plannerObservation.current?.abort();
     displayingVersion.current = null;
     editEpoch.current += 1;
-    setError('');
+    setError(''); setRequestIssues([]);
     const readback = await loadEnterpriseWorkspace(selectedProjectId, true, editEpoch.current);
     if (!isCurrent()) return;
     if (readback?.applied) setActiveView('planner');
@@ -447,6 +461,19 @@ export default function ProjectFlowHiveCenter() {
     setPortfolio(current => !current ? current : { ...current, projects: current.projects.map(project =>
       project.projectId === result.projectId ? { ...project, status: result.projectStatus, isArchived: result.isArchived } : project) });
   }
+
+  async function loadCollaboration(projectId) {
+    const sequence=++collaborationSequence.current,selection=selectionEpoch.current;
+    if(!projectId){setCollaboration(null);return;}
+    try {
+      const result=await getJson(`/api/project-flowhive/projects/${projectId}/collaboration`);
+      if(projectRef.current!==projectId || sequence!==collaborationSequence.current || selection!==selectionEpoch.current)return;
+      if(result?.projectId!==projectId)throw new Error('Project team readback could not be verified.');
+      setCollaboration(result);setCollaborationError('');
+    } catch(error){if(projectRef.current===projectId && sequence===collaborationSequence.current && selection===selectionEpoch.current){setCollaboration(null);setCollaborationError(flowHiveErrorText(error));}}
+  }
+  useEffect(()=>{setCollaboration(null);setCollaborationError('');setRequestIssues([]);setCriticalOnly(false);void loadCollaboration(selectedProjectId);},[selectedProjectId]);
+  function showRequestError(error){setError(flowHiveErrorText(error));setRequestIssues(error?.responseBody?.issues || []);}
 
   async function loadEnterpriseWorkspace(projectId, applyWorkingCopy = false, expectedEdit = editEpoch.current, expectedSavedVersion = null) {
     const sequence = ++workspaceLoadSequence.current;
@@ -495,7 +522,7 @@ export default function ProjectFlowHiveCenter() {
         requiredMigration: body.requiredMigration || (body.status === 'migration_086_required' ? '086_module_066_flowhive_enterprise_pm' : ''),
         correlationId: body.correlationId || ''
       });
-      setError('');
+      setError(''); setRequestIssues([]);
     }
     try {
       const finance = await getJson(`/api/project-financials/projects/${projectId}?workspace=project_management`);
@@ -589,25 +616,15 @@ export default function ProjectFlowHiveCenter() {
   ), [schedule]);
 
   const identityOptions = useMemo(() => {
-    const values = new Map();
-    assignments.forEach((assignment) => {
-      if (!assignment.resourceUserId) return;
-      values.set(assignment.resourceUserId, {
-        userId: assignment.resourceUserId,
-        displayName: assignment.resourceName,
-        email: assignment.resourceEmail || ''
-      });
-    });
-    const currentId = identityKey(identityProfile);
-    if (currentId) {
-      values.set(currentId, {
-        userId: currentId,
-        displayName: identityProfile.displayName || identityProfile.email || 'Current identity',
-        email: identityProfile.email || ''
-      });
-    }
-    return [...values.values()].sort((left, right) => left.displayName.localeCompare(right.displayName));
-  }, [assignments, identityProfile]);
+    const values=new Map();
+    assignments.filter(item=>item.projectId===selectedProjectId).forEach(item=>{if(item.resourceUserId)values.set(item.resourceUserId,{userId:item.resourceUserId,displayName:item.resourceName || 'Team member',email:item.resourceEmail || '',role:'Project team'});});
+    if(collaboration?.projectId===selectedProjectId) for(const person of collaboration.team || []) values.set(person.userId,person);
+    const currentId=identityKey(identityProfile);
+    if(currentId && canEditPlanner && !values.has(currentId))values.set(currentId,{userId:currentId,displayName:identityProfile.displayName || identityProfile.email || 'Current user',email:identityProfile.email || '',role:'Current authorized user'});
+    return [...values.values()].sort((a,b)=>a.displayName.localeCompare(b.displayName));
+  },[assignments,identityProfile,selectedProjectId,collaboration,canEditPlanner]);
+  const assignmentPeople=[...identityOptions.map(person=>({...person,resourceUserId:person.userId})),
+    ...(collaboration?.projectId===selectedProjectId && collaboration.ready ? (collaboration.contacts || []).filter(person=>person.isActive).map(person=>({...person,resourceUserId:null})) : [])];
 
   const customerOptions = useMemo(() => [...new Set(projects.map((project) => project.customerName).filter(Boolean))]
     .sort((left, right) => left.localeCompare(right)), [projects]);
@@ -682,27 +699,13 @@ export default function ProjectFlowHiveCenter() {
     setDirty(true);
   }
 
-  function updateTaskResource(taskWbs, resourceUserId) {
-    if (!canEditPlanner) return;
-    const identity = identityOptions.find((option) => option.userId === resourceUserId);
-    setDraftPlan((current) => {
-      if (!current) return current;
-      const withoutTask = current.assignments.filter((assignment) => assignment.taskWbs !== taskWbs);
-      return {
-        ...current,
-        assignments: resourceUserId
-          ? [...withoutTask, {
-              taskWbs,
-              resourceUserId,
-              resourceDisplayName: identity?.displayName || '',
-              allocationPercent: 100,
-              plannedHours: Number(current.tasks.find((task) => task.wbsNumber === taskWbs)?.remainingEffortHours || 0)
-            }]
-          : withoutTask
-      };
-    });
-    setSchedule(null);
-    setDirty(true);
+  function updateTaskPeople(taskWbs,person,selected) {
+    if(!canEditPlanner || busy)return;
+    setDraftPlan(current=>changeTaskAssignee(current,taskWbs,person,selected));setSchedule(null);setDirty(true);
+  }
+  function updateTaskEffort(taskWbs,key,field,value) {
+    if(!canEditPlanner || busy)return;
+    setDraftPlan(current=>updateAssigneeHours(current,taskWbs,key,field,value));setSchedule(null);setDirty(true);
   }
 
   function addTask(phaseWbs) {
@@ -783,28 +786,29 @@ export default function ProjectFlowHiveCenter() {
 
   async function saveWorkingCopy() {
     const isCurrent = captureWorkspaceOperation(false);
-    if (!draftPlan || !selectedProjectId) return;
+    if (!draftPlan || !selectedProjectId || !canEditPlanner || busy || workingSavePending.current) return;
+    workingSavePending.current=true;
     const projectId = selectedProjectId;
     const startedEdit = editEpoch.current;
     setBusy('working-copy');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
-      const result = await putJson(`/api/project-flowhive/projects/${selectedProjectId}/working-copy`, {
-        plan: draftPlan,
-        expectedRowVersion: loadedWorkingVersion.current
-      });
+      const result = await putJson(`/api/project-flowhive/projects/${selectedProjectId}/working-copy`, workingCopyRequest(draftPlan,selectedProjectId,loadedWorkingVersion.current));
       if (!isCurrent()) return;
       if (projectRef.current !== projectId) return;
       displayingVersion.current = null;
+      if(!result.rowVersion || !optionalGuid(result.rowVersion,'savedRowVersion'))throw new Error('The save result could not be verified. Reload the saved working copy before retrying.');
       loadedWorkingVersion.current = result.rowVersion;
+      if(editEpoch.current===startedEdit){setSchedule(result.schedule || null);setValidation(result.validation || null);}
       if (editEpoch.current === startedEdit) setDirty(false);
       setNotice(`Project planning working-copy revision ${result.workingRevision} saved. The canonical project and immutable plan history were not changed.`);
       await loadEnterpriseWorkspace(selectedProjectId, false);
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
+      workingSavePending.current=false;
       if (isCurrent()) setBusy('');
     }
   }
@@ -813,17 +817,19 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!selectedProjectId) return;
     setBusy('controls');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
-      await putJson(`/api/project-flowhive/projects/${selectedProjectId}/controls`, nextControls);
+      const payload = projectControlsRequest(nextControls);
+      const result = await putJson(`/api/project-flowhive/projects/${selectedProjectId}/controls`, payload);
       if (!isCurrent()) return;
-      setControls(nextControls);
+      if (result.controls?.projectId !== selectedProjectId) throw new Error('The saved controls could not be verified for this project.');
+      setControls({ ...defaultControls, ...result.controls });
       setNotice('Project financial and reporting controls were saved.');
       await loadEnterpriseWorkspace(selectedProjectId, false);
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -833,7 +839,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!selectedProjectId) return;
     setBusy('raid-create');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       await postJson(`/api/project-flowhive/projects/${selectedProjectId}/raid`, { ...newRaid, planId: draftPlan?.planId || null });
       if (!isCurrent()) return;
@@ -843,7 +849,7 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -853,7 +859,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!selectedProjectId || !window.confirm(`Delete ${item.itemType}: ${item.title}?`)) return;
     setBusy(`raid-delete-${item.raidItemId}`);
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       await deleteJson(`/api/project-flowhive/projects/${selectedProjectId}/raid/${item.raidItemId}`);
       if (!isCurrent()) return;
@@ -862,7 +868,7 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -881,7 +887,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!selectedProjectId) return;
     setBusy('status-report');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const saved = savedPlans.find((plan) => plan.planId === draftPlan?.planId);
       await postJson(`/api/project-flowhive/projects/${selectedProjectId}/status-reports`, {
@@ -899,7 +905,7 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -909,7 +915,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!selectedProjectId) return;
     setBusy(`evidence-${item.documentId}`);
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const result = await postJson(`/api/project-flowhive/projects/${selectedProjectId}/sow-evidence/${item.documentId}/prepare`, {
         correlationId: aiPreview?.correlationId || crypto.randomUUID()
@@ -920,22 +926,39 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
   }
 
   async function enableCustomerSharing() {
-    const next = { ...controls, customerSharingEnabled: true };
-    await saveProjectControls(next);
+    const isCurrent = captureWorkspaceOperation(false);
+    if (sharingRequestInFlight.current || busy || !selectedProjectId || enterprise?.project?.projectId !== selectedProjectId
+        || !enterprise?.access?.canShare || enterprise.access.isViewAs) return;
+    if (!window.confirm('Enable customer sharing for this project? This does not create or send a link. A separate reviewed-baseline link is required for customer access.')) return;
+    sharingRequestInFlight.current = true;
+    setBusy('sharing-enable');
+    setSharingError(null);
+    setError(''); setRequestIssues([]);
+    await enableProjectCustomerSharing({ projectId: selectedProjectId, enterprise, busy: false, post: postJson, isCurrent,
+      onSaved: (result) => {
+        // Use confirmed server state, while preserving any unsaved financial form edits.
+        setControls(current => ({ ...current, customerSharingEnabled: true }));
+        setEnterprise(current => current?.project?.projectId === selectedProjectId
+          ? { ...current, controls: { ...current.controls, customerSharingEnabled: true } } : current);
+        setNotice(result.message);
+      },
+      onError: actionError => setSharingError(customerSharingError(actionError)),
+      onSettled: () => { sharingRequestInFlight.current = false; setBusy(''); }
+    });
   }
 
   async function createCustomerShare() {
     const isCurrent = captureWorkspaceOperation(false);
-    if (!selectedProjectId) return;
+    if (!selectedProjectId || busy || enterprise?.project?.projectId !== selectedProjectId || !enterprise?.access?.canShare || enterprise.access.isViewAs) return;
     setBusy('customer-share');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const result = await postJson(`/api/project-flowhive/projects/${selectedProjectId}/customer-shares`, shareDraft);
       if (!isCurrent()) return;
@@ -945,7 +968,7 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -955,7 +978,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!selectedProjectId || !window.confirm('Revoke this customer link immediately?')) return;
     setBusy(`share-revoke-${share.shareId}`);
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       await deleteJson(`/api/project-flowhive/projects/${selectedProjectId}/customer-shares/${share.shareId}`, { reason: 'Revoked by the assigned Project Manager.' });
       if (!isCurrent()) return;
@@ -964,7 +987,7 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -974,7 +997,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(true);
     if (!draftPlan) return;
     setBusy('validate');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const result = await postJson('/api/project-flowhive/planning/validate', draftPlan);
       if (!isCurrent()) return;
@@ -982,7 +1005,7 @@ export default function ProjectFlowHiveCenter() {
       setNotice(result.valid ? 'Plan contract is valid. Nothing was persisted.' : 'Plan validation found issues.');
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -992,7 +1015,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(true);
     if (!draftPlan) return;
     setBusy('schedule');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const result = await postJson('/api/project-flowhive/schedule/calculate', draftPlan);
       if (!isCurrent()) return;
@@ -1007,7 +1030,7 @@ export default function ProjectFlowHiveCenter() {
         setValidation({ valid: false, issues: actionError.responseBody.issues });
         setActiveView('planner');
       }
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -1018,7 +1041,7 @@ export default function ProjectFlowHiveCenter() {
     if (!draftPlan) return;
     const savedEdit = editEpoch.current;
     setBusy('save');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const result = await postJson('/api/project-flowhive/plans/drafts', draftPlan);
       if (!isCurrent()) return;
@@ -1032,7 +1055,7 @@ export default function ProjectFlowHiveCenter() {
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -1060,7 +1083,7 @@ export default function ProjectFlowHiveCenter() {
       setNotice('Plan deleted. FlowHive can now create a clean first draft from the current SOW.');
       await loadEnterpriseWorkspace(selectedProjectId, false);
     } catch (actionError) {
-      if (isCurrent()) setError(actionError.message);
+      if (isCurrent()) showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -1071,7 +1094,7 @@ export default function ProjectFlowHiveCenter() {
     if (!draftPlan?.planId) return;
     const current = savedPlans.find((plan) => plan.planId === draftPlan.planId);
     setBusy('baseline');
-    setError('');
+    setError(''); setRequestIssues([]);
     try {
       const result = await postJson(`/api/project-flowhive/plans/${draftPlan.planId}/baseline`, {
         approvalNote: baselineNote,
@@ -1086,7 +1109,7 @@ export default function ProjectFlowHiveCenter() {
       setSavedPlans(plansResult.plans || []);
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -1109,7 +1132,7 @@ export default function ProjectFlowHiveCenter() {
       setDirty(false); setActiveView('planner'); setBusy('');
       await loadEnterpriseWorkspace(result.summary.projectId, false);
     } catch (actionError) {
-      if (isCurrent()) setError(actionError.message);
+      if (isCurrent()) showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
@@ -1249,7 +1272,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!draftPlan) return;
     setBusy(format);
-    setError('');
+    setError(''); setRequestIssues([]);
     const path = `/api/project-flowhive/artifacts/${format}-preview`;
     try {
       const response = await parseResponse(await fetch(path, {
@@ -1275,11 +1298,21 @@ export default function ProjectFlowHiveCenter() {
       setNotice(`US Signal branded ${format === 'excel' ? 'Excel' : 'PDF'} Project Management working plan generated. Customer sharing remains a separate reviewed action.`);
     } catch (actionError) {
       if (!isCurrent()) return;
-      setError(actionError.message);
+      showRequestError(actionError);
     } finally {
       if (isCurrent()) setBusy('');
     }
   }
+
+  const collaborationPanel=selectedProjectId ? <ProjectFlowHiveCollaboration key={`collaboration-${selectedProjectId}-${activeView}`} projectId={selectedProjectId}
+    data={collaboration} error={collaborationError} canManage={canAdministerPlanner} onRefresh={loadCollaboration} postJson={postJson} getJson={getJson} meetingsOnly={activeView==='meetings'} /> : null;
+  const sharingPanel = selectedProjectId ? <FlowHiveCustomerSharingPanel key={`sharing-${selectedProjectId}`}
+    projectId={selectedProjectId} enterprise={enterprise} controls={enterprise?.controls || defaultControls}
+    savedPlans={savedPlans} latestShareUrl={latestShareUrl} setLatestShareUrl={setLatestShareUrl}
+    shareDraft={shareDraft} setShareDraft={setShareDraft}
+    canManage={Boolean(enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canShare && !enterprise.access.isViewAs)}
+    busy={busy} error={sharingError} onEnableSharing={enableCustomerSharing} onCreateShare={createCustomerShare}
+    onRevoke={revokeCustomerShare} onReviewBaseline={() => setActiveView('planner')} /> : null;
 
   const timelineMaximum = Math.max(1, ...(schedule?.tasks || []).map((task) => task.earliestStartIndex + Math.max(1, task.durationWorkingDays)));
 
@@ -1322,7 +1355,7 @@ export default function ProjectFlowHiveCenter() {
           <div><span>View-As</span><strong>{portfolio.access.isViewAs ? 'Read-only preview' : 'Not active'}</strong></div>
           <div><span>Planning capability</span><strong>{capabilityLabel}</strong></div>
           <div><span>Persistence</span><strong>{capabilityResponse?.databaseMutationEnabled ? 'Ready' : 'Unavailable'}</strong></div>
-          <div><span>Customer links</span><strong>{enterprise?.access?.canShare ? (controls.customerSharingEnabled ? 'Enabled for reviewed baseline' : 'Available — enable in Financials') : 'Read-only / unavailable'}</strong></div>
+          <div><span>Customer links</span><strong>{enterprise?.access?.canShare ? (controls.customerSharingEnabled ? 'Enabled for reviewed baseline' : 'Off — manage in Project home') : 'Read-only / unavailable'}</strong></div>
         </div>
       ) : null}
 
@@ -1358,6 +1391,7 @@ export default function ProjectFlowHiveCenter() {
         canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
       /> : null}
 
+      {activeView === 'meetings' ? collaborationPanel : null}
       {activeView === 'meetings' ? <ProjectFlowHivePsaWorkspace
         mode="meetings" projectId={selectedProjectId} draftPlan={draftPlan} setDraftPlan={setDraftPlan}
         schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
@@ -1366,6 +1400,7 @@ export default function ProjectFlowHiveCenter() {
 
       {enterpriseError ? <div className="flowhive-error flowhive-enterprise-readiness-error" role="alert"><div><strong>FlowHive enterprise controls are temporarily unavailable.</strong><span>{enterpriseError.message}</span>{enterpriseError.requiredMigration ? <small>Required database contract: {enterpriseError.requiredMigration}</small> : null}{enterpriseError.correlationId ? <small>Correlation ID: {enterpriseError.correlationId}</small> : null}</div><button type="button" onClick={() => loadEnterpriseWorkspace(selectedProjectId, false)} disabled={!selectedProjectId || busy}>Retry enterprise workspace</button></div> : null}
       {error ? <div className="flowhive-error" role="alert"><strong>Project FlowHive needs attention.</strong><span>{error}</span></div> : null}
+      {error && requestIssues.length>0 ? <section className="flowhive-collaboration-error" aria-label="Fields needing correction"><strong>Correct these fields; your unsaved changes are still here.</strong><ul>{requestIssues.slice(0,20).map((issue,index)=><li key={index}><code>{issue.path || 'Entry'}</code>: {issue.message}</li>)}</ul></section> : null}
       {notice ? <div className="flowhive-notice" role="status"><span>{notice}</span><button type="button" onClick={() => setNotice('')}>Dismiss</button></div> : null}
 
       <details className="flowhive-planner-history" open={busy === 'ai-planner' || (Boolean(aiPreview?.runId) && !aiPreview.terminal)}><summary>AI planning activity{aiPreview?.phase ? ` · ${labelFrom(aiPreview.phase)}` : ''}</summary>
@@ -1418,7 +1453,7 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
-      {activeView === 'overview' ? <ProjectFlowHiveOverview key={selectedProjectId} plan={draftPlan} schedule={schedule} dirty={dirty} userId={portfolio?.access?.effectiveUserId} onNavigate={setActiveView} onOpenTask={(wbs) => { setActiveView('planner'); setCollapsedPhases(new Set()); setExpandedTaskWbs(wbs); }} /> : null}
+      {activeView === 'overview' ? <ProjectFlowHiveOverview key={selectedProjectId} sharingPanel={sharingPanel} collaborationPanel={collaborationPanel} projectName={selectedProject?.projectName} plan={draftPlan} schedule={schedule} dirty={dirty} userId={portfolio?.access?.effectiveUserId} onNavigate={setActiveView} onOpenTask={(wbs) => { setActiveView('planner'); setCollapsedPhases(new Set()); setExpandedTaskWbs(wbs); }} /> : null}
 
       {activeView === 'planner' ? (
         <div className="flowhive-view-panel">
@@ -1476,14 +1511,15 @@ export default function ProjectFlowHiveCenter() {
                 })}</div>
               </section>
               {(draftPlan.milestones || []).length ? <details className="flowhive-milestone-disclosure"><summary>Project milestones ({draftPlan.milestones.length})</summary><section className="flowhive-milestone-list"><header><div><h3>Project milestones</h3><p>Source-backed release and acceptance gates. Target dates are calculated from predecessor tasks.</p></div><strong>{draftPlan.milestones.length}</strong></header><div>{draftPlan.milestones.map((milestone) => <article key={milestone.clientMilestoneId}><div><span>{milestone.predecessorWbs}</span><h4>{milestone.name}</h4></div><p>{milestone.description}</p><small>{formatDate(milestone.targetDate)} · {(milestone.citationIds || []).length} citation(s)</small></article>)}</div></section></details> : null}
+              <section className="flowhive-cpm-summary" aria-label="Critical Path Method"><div><strong>Critical Path Method (CPM)</strong><p>{schedule?.valid ? `${schedule.tasks.filter(t=>!t.isSummary && t.isCritical).length} critical tasks · zero total float controls the calculated finish.` : 'Calculate the schedule to refresh dependencies, critical tasks and float after edits.'}</p><small>Weekdays only. Holidays, PTO and resource leveling are not applied.</small></div><div><label><input type="checkbox" checked={criticalOnly && Boolean(schedule?.valid)} disabled={!schedule?.valid} onChange={e=>setCriticalOnly(e.target.checked)} />Critical tasks only</label><button type="button" onClick={()=>setActiveView('timeline')}>View critical path & float</button></div></section>
               <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Use the Add task action on the Plan, Design, Implement, Validate, or Release phase header. Drag tasks to reorder or move them between phases.</p></div></div>
               <div className="flowhive-table-wrap">
                 <table className="flowhive-task-table flowhive-planner-table flowhive-smartsheet-table">
-                  <thead><tr><th title="Work Breakdown Structure number. FlowHive renumbers child tasks after a move or deletion.">WBS</th><th title="The scoped activity or phase deliverable.">Task Name</th><th title="Calculated start date. Enter a date to set a Start No Earlier Than constraint.">Start Date</th><th title="Calculated finish date. Editing it recalculates task duration in working days.">End Date</th><th title="Weekday duration, excluding weekends.">Duration in Days</th><th title="Completion percentage from 0 through 100.">Progress</th><th title="The WBS task that controls this task. Start means no predecessor.">Predecessor</th><th title={`${dependencyTypeHelp.FS} ${dependencyTypeHelp.SS} ${dependencyTypeHelp.FF} ${dependencyTypeHelp.SF}`}>Type</th><th title="Review and collaboration comments.">Comments</th><th title="Internal task notes included in the PM working artifact, but excluded from customer links.">Notes</th><th title="Module 062 identity assigned to the task.">Assigned Identity</th></tr></thead>
-                  <tbody>{draftPlan.tasks.filter((task) => task.isSummary || !collapsedPhases.has(task.parentWbsNumber)).map((task) => {
+                  <thead><tr><th title="Work Breakdown Structure number. FlowHive renumbers child tasks after a move or deletion.">WBS</th><th title="The scoped activity or phase deliverable.">Task Name</th><th title="Calculated start date. Enter a date to set a Start No Earlier Than constraint.">Start Date</th><th title="Calculated finish date. Editing it recalculates task duration in working days.">End Date</th><th title="Weekday duration, excluding weekends.">Duration in Days</th><th title="Completion percentage from 0 through 100.">Progress</th><th title="The WBS task that controls this task. Start means no predecessor.">Predecessor</th><th title={`${dependencyTypeHelp.FS} ${dependencyTypeHelp.SS} ${dependencyTypeHelp.FF} ${dependencyTypeHelp.SF}`}>Type</th><th title="Review and collaboration comments.">Comments</th><th title="Internal task notes included in the PM working artifact, but excluded from customer links.">Notes</th><th title="Assign multiple internal users or project-scoped external contacts.">Assigned people</th></tr></thead>
+                  <tbody>{draftPlan.tasks.filter((task) => task.isSummary || (!collapsedPhases.has(task.parentWbsNumber) && (!criticalOnly || !schedule?.valid || scheduleByWbs.get(task.wbsNumber)?.isCritical))).map((task) => {
                     const index = draftPlan.tasks.indexOf(task);
                     const dependency = draftPlan.dependencies.find((item) => item.successorWbs === task.wbsNumber);
-                    const assignment = draftPlan.assignments.find((item) => item.taskWbs === task.wbsNumber);
+                    const assignedPeople = taskAssignees(draftPlan,task.wbsNumber);
                     const scheduledTask = scheduleByWbs.get(task.wbsNumber);
                     const detailOpen = expandedTaskWbs === task.wbsNumber;
                     if (task.isSummary) {
@@ -1505,7 +1541,7 @@ export default function ProjectFlowHiveCenter() {
                       <Fragment key={task.clientTaskId || `${task.wbsNumber}-${index}`}>
                         <tr className={`flowhive-work-row phase-${String(task.phase || '').toLowerCase()} ${draggedTaskWbs === task.wbsNumber ? 'dragging' : ''}`} draggable={Boolean(enterprise?.access?.canManage)} onDragStart={() => setDraggedTaskWbs(task.wbsNumber)} onDragEnd={() => setDraggedTaskWbs('')} onDragOver={(event) => event.preventDefault()} onDrop={() => dropTask(task.wbsNumber, task.parentWbsNumber, 'before')}>
                           <td><span className="flowhive-wbs-child" title="Drag this row to reorder or move it to another phase"><span aria-hidden="true">⋮⋮</span>{task.wbsNumber}</span></td>
-                          <td><div className="flowhive-task-name-control"><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><button type="button" className="flowhive-inline-detail-button" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close details' : 'Task details'}</button><button type="button" className="danger-quiet" disabled={!enterprise?.access?.canManage} onClick={() => deleteTask(task.wbsNumber)}>Delete</button></div><small className="flowhive-task-description-preview" title={task.description}>{task.description}</small></td>
+                          <td><div className="flowhive-task-name-control"><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><button type="button" className="flowhive-inline-detail-button" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close details' : 'Task details'}</button><button type="button" className="danger-quiet" disabled={!enterprise?.access?.canManage} onClick={() => deleteTask(task.wbsNumber)}>Delete</button></div><small className="flowhive-task-description-preview" title={task.description}>{task.description}</small>{scheduledTask?.isCritical && schedule?.valid ? <span className="flowhive-cpm-label">Critical path · {scheduledTask.totalFloatWorkingDays}d float</span> : null}</td>
                           <td><input className="flowhive-date-cell" aria-label={`Start date for ${task.name}`} type="date" value={task.constraintDate || scheduledTask?.startDate || ''} onChange={(event) => updateTaskStartDate(index, event.target.value)} /></td>
                           <td><input className="flowhive-date-cell" aria-label={`End date for ${task.name}`} type="date" min={task.constraintDate || scheduledTask?.startDate || draftPlan.projectStartDate || undefined} value={scheduledTask?.endDate || ''} onChange={(event) => updateTaskEndDate(index, event.target.value, scheduledTask?.startDate)} /></td>
                           <td><div className="flowhive-duration-cell"><input aria-label={`Duration for ${task.name}`} type="number" min="1" max="730" value={task.durationWorkingDays} onChange={(event) => updateTask(index, 'durationWorkingDays', Number(event.target.value))} /><span>day(s)</span></div></td>
@@ -1514,7 +1550,7 @@ export default function ProjectFlowHiveCenter() {
                           <td><select aria-label={`Dependency type for ${task.name}`} value={dependency?.type || 'FS'} disabled={!dependency?.predecessorWbs} onChange={(event) => updateDependencyForTask(index, 'type', event.target.value)}>{['FS', 'SS', 'FF', 'SF'].map((type) => <option key={type} value={type}>{type}</option>)}</select></td>
                           <td><textarea className="flowhive-sheet-textarea" aria-label={`Comments for ${task.name}`} value={task.comments || ''} onChange={(event) => updateTask(index, 'comments', event.target.value)} rows="2" placeholder="Review comments" /></td>
                           <td><textarea className="flowhive-sheet-textarea" aria-label={`Notes for ${task.name}`} value={task.notes || ''} onChange={(event) => updateTask(index, 'notes', event.target.value)} rows="2" placeholder="Task notes" /></td>
-                          <td><select aria-label={`Assigned identity for ${task.name}`} value={assignment?.resourceUserId || ''} onChange={(event) => updateTaskResource(task.wbsNumber, event.target.value)}><option value="">Unassigned</option>{identityOptions.map((identity) => <option key={identity.userId} value={identity.userId}>{identity.displayName}{identity.email ? ` — ${identity.email}` : ''}</option>)}</select></td>
+                          <td><ProjectFlowHiveAssignees task={task} assignments={assignedPeople} people={assignmentPeople} disabled={!canEditPlanner || Boolean(busy)} onToggle={(person,selected)=>updateTaskPeople(task.wbsNumber,person,selected)} onHours={(key,field,value)=>updateTaskEffort(task.wbsNumber,key,field,value)} /></td>
                         </tr>
                         {detailOpen ? <tr className="flowhive-task-detail-row"><td colSpan="11"><div className="flowhive-task-detail-panel">
                           <header><div><span>{task.phase} · WBS {task.wbsNumber}</span><h4>{task.name}</h4></div><div>{(task.citationIds || []).map((citationId) => <span key={citationId} className="flowhive-citation-chip">Private source [{citationId}]</span>)}</div></header>
@@ -1604,7 +1640,7 @@ export default function ProjectFlowHiveCenter() {
           schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
           canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
         />
-        <FlowHiveCustomerSharingPanel enterprise={enterprise} controls={controls} savedPlans={savedPlans} draftPlan={draftPlan} latestShareUrl={latestShareUrl} setLatestShareUrl={setLatestShareUrl} shareDraft={shareDraft} setShareDraft={setShareDraft} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onEnableSharing={enableCustomerSharing} onCreateShare={createCustomerShare} onRevoke={revokeCustomerShare} />
+        {sharingPanel}
       </div> : null}
 
       {activeView === 'governance' ? (

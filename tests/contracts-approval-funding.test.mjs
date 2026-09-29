@@ -18,7 +18,7 @@ for (const name of ['060-module-contracts-boh-foundation.sql', '060b-module-cont
   await db.exec((await file('deployment/database/' + name)).replace('CREATE EXTENSION IF NOT EXISTS pgcrypto;', ''));
 }
 await db.exec('ALTER TABLE time_entries ADD COLUMN task_id uuid');
-await db.exec(await file('database/migrations/131_time_approval_routing.sql'));
+await db.exec(await file('database/migrations/132_time_approval_routing.sql'));
 const ids = Array.from({ length: 8 }, (_, i) => `00000000-0000-0000-0000-${String(i + 1).padStart(12, '0')}`);
 const [customer, user, pm, project, contract, entry, otherCustomer, otherContract] = ids;
 await db.exec(`
@@ -92,7 +92,7 @@ await db.exec(`UPDATE time_entries SET hours=3, status='manager_approved'`);
 assert.deepEqual(await totals(), {ph:0,ah:3,pa:0,aa:300,balance:700}); checks++;
 
 await db.exec(await file('deployment/database/060c-contract-approval-funding.sql'));
-await db.exec(await file('database/migrations/131_time_approval_routing.sql'));
+await db.exec(await file('database/migrations/132_time_approval_routing.sql'));
 assert.deepEqual(await totals(), {ph:0,ah:3,pa:0,aa:300,balance:700}); checks++;
 assert.equal((await db.query('SELECT COUNT(*)::int AS n FROM contract_project_funding')).rows[0].n, 1); checks++;
 console.log(`PASS ${checks} contract approval/funding database cases; migration reapplies cleanly.`);

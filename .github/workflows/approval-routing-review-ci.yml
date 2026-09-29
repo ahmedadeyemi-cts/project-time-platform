@@ -7,7 +7,7 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/ContractsPrepaidManagementModule.cs'
       - 'src/frontend/project-time-web/src/*Approval*'
       - 'src/frontend/project-time-web/src/approval-period-review.css'
-      - 'database/migrations/131_time_approval_routing.sql'
+      - 'database/migrations/132_time_approval_routing.sql'
       - 'tests/approval*'
       - 'tests/approval-review/**'
       - 'tests/ApprovalBoundaryTests/**'

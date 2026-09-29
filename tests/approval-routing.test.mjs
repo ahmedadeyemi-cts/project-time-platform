@@ -4,7 +4,7 @@ const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pgli
 const db = new PGlite();
 const file = path => readFile(new URL('../' + path, import.meta.url), 'utf8');
 const source = await file('src/backend/ProjectTime.Api/Modules/ProductionApprovalWorkModule.cs');
-const migration = await file('database/migrations/131_time_approval_routing.sql');
+const migration = await file('database/migrations/132_time_approval_routing.sql');
 await db.exec(migration.slice(migration.indexOf('CREATE OR REPLACE FUNCTION'), migration.indexOf('CREATE OR REPLACE VIEW')));
 const id = n => `10000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 const engineer = id(1), manager = id(2), pm = id(3), pc = id(4), ptc = id(5), otherPm = id(6), sheet = id(10);

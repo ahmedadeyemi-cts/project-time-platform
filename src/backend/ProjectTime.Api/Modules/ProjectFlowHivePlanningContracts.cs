@@ -97,7 +97,8 @@ public sealed record ProjectFlowHivePlanAssignmentInput(
     Guid? ResourceUserId,
     string? ResourceDisplayName,
     decimal AllocationPercent,
-    decimal PlannedHours);
+    decimal PlannedHours,
+    Guid? ProjectContactId = null);
 
 public sealed record ProjectFlowHiveValidationIssue(
     string Code,

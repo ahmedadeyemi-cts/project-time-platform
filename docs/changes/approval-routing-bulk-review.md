@@ -31,7 +31,7 @@ The legacy header now uses a responsive grid so its title, scope, toolbar, and e
 
 ## Deployment
 
-Apply `database/migrations/131_time_approval_routing.sql` after 060c and before the matching API. The existing private-network migration packaging script includes and checksum-verifies it. The migration is additive and reapplies safely. It changes the authoritative contract usage view without rewriting time or audit history. No release-controller permissions, environment approvals, authentication controls, or protected deployment workflows are changed.
+Apply `database/migrations/132_time_approval_routing.sql` after 060c and before the matching API. The existing private-network migration packaging script includes and checksum-verifies it. The migration is additive and reapplies safely. It changes the authoritative contract usage view without rewriting time or audit history. No release-controller permissions, environment approvals, authentication controls, or protected deployment workflows are changed.
 
 For application rollback, retain the additive function and contract view so approved/pending usage is not lost. Rolling back the API restores its previous routing behavior; therefore pause approvals and review compatibility before doing so. This PR has not been deployed.
 

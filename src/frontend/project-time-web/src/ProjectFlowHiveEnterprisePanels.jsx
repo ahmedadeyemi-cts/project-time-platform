@@ -1,4 +1,5 @@
-import { useMemo } from 'react';
+import { useId, useMemo, useState } from 'react';
+import './project-flowhive-home.css';
 
 function label(value) {
   return String(value ?? '').replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -116,17 +117,51 @@ export function FlowHiveStatusRaidPanel({ enterprise, draftPlan, statusDraft, se
   </div>;
 }
 
-export function FlowHiveCustomerSharingPanel({ enterprise, controls, savedPlans, draftPlan, latestShareUrl, setLatestShareUrl, shareDraft, setShareDraft, canManage, busy, onEnableSharing, onCreateShare, onRevoke }) {
-  const shares = enterprise?.customerShares || [];
-  const baselined = useMemo(() => savedPlans.filter((plan) => plan.projectId === draftPlan?.projectId && plan.baselineVersion), [savedPlans, draftPlan?.projectId]);
-  return <article className={`flowhive-sharing-card ${controls.customerSharingEnabled ? 'enabled' : 'locked'}`}>
-    <h4>Reviewed customer sharing</h4>
-    <p>Creates an expiring, revocable, read-only link tied to an exact reviewed baseline. Internal notes, citations, assignments, provider data, and financial details are excluded.</p>
-    {!controls.customerSharingEnabled ? <button type="button" disabled={!canManage || busy} onClick={onEnableSharing}>Enable customer sharing for this project</button> : <>
-      <div className="flowhive-share-controls"><label>Reviewed baseline<select value={shareDraft.planId || ''} onChange={(event) => { const plan = baselined.find((item) => item.planId === event.target.value); setShareDraft({ ...shareDraft, planId: event.target.value, versionNumber: plan?.baselineVersion || null }); }}><option value="">Select baseline</option>{baselined.map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · baseline v{plan.baselineVersion}</option>)}</select></label><label>Expiration<select value={shareDraft.expirationDays} onChange={(event) => setShareDraft({ ...shareDraft, expirationDays: Number(event.target.value) })}><option value="7">7 days</option><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option></select></label><label className="wide">Customer note<input value={shareDraft.shareNote || ''} onChange={(event) => setShareDraft({ ...shareDraft, shareNote: event.target.value })} placeholder="Optional customer-facing context" /></label><label className="wide"><input type="checkbox" checked={(shareDraft.allowedArtifacts || []).includes('meetings')} onChange={(event) => setShareDraft({ ...shareDraft, allowedArtifacts: event.target.checked ? [...new Set([...(shareDraft.allowedArtifacts || []), 'meetings'])] : (shareDraft.allowedArtifacts || []).filter((value) => value !== 'meetings') })} /> Allow customer meeting-recording downloads</label></div>
-      <button type="button" className="primary" disabled={!canManage || busy || !shareDraft.planId || !shareDraft.versionNumber} onClick={onCreateShare}>{busy === 'customer-share' ? 'Creating…' : 'Create customer link'}</button>
-      {latestShareUrl ? <div className="flowhive-share-result"><strong>New customer link</strong><input readOnly value={latestShareUrl} onFocus={(event) => event.target.select()} /><button type="button" onClick={() => navigator.clipboard?.writeText(latestShareUrl)}>Copy</button><a href={latestShareUrl} target="_blank" rel="noreferrer">Open</a><button type="button" onClick={() => setLatestShareUrl('')}>Dismiss</button></div> : null}
+export function FlowHiveCustomerSharingPanel({ projectId, enterprise, controls, savedPlans = [], latestShareUrl, setLatestShareUrl, shareDraft, setShareDraft, canManage, busy, error, onEnableSharing, onCreateShare, onRevoke, onReviewBaseline }) {
+  const id = useId();
+  const [copyMessage, setCopyMessage] = useState('');
+  const current = enterprise?.project?.projectId === projectId;
+  const shares = current ? enterprise?.customerShares || [] : [];
+  const baselined = useMemo(() => savedPlans.filter(plan => plan.projectId === projectId && Number.isInteger(plan.baselineVersion) && plan.baselineVersion > 0), [savedPlans, projectId]);
+  const enabled = current && controls.customerSharingEnabled === true;
+  const editable = current && canManage && enterprise?.access?.canShare === true && !enterprise.access.isViewAs;
+  const activeShares = shares.filter(share => share.active).length;
+  const selectedBaseline = baselined.some(plan => plan.planId === shareDraft.planId && plan.baselineVersion === shareDraft.versionNumber);
+  const state = !current ? 'Loading sharing status' : !enabled ? activeShares ? `New links off · ${activeShares} active ${activeShares === 1 ? 'link' : 'links'}` : 'Off · internal only' : activeShares ? `${activeShares} active ${activeShares === 1 ? 'link' : 'links'}` : 'Enabled · no active links';
+  async function copyLink() {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('unavailable');
+      await navigator.clipboard.writeText(latestShareUrl);
+      setCopyMessage('Customer link copied.');
+    } catch { setCopyMessage('Copy is unavailable. Select the link and copy it manually.'); }
+  }
+  return <article className={`flowhive-sharing-card flowhive-home-sharing ${enabled ? 'enabled' : 'locked'}`} aria-labelledby={`${id}-title`} aria-busy={busy === 'sharing-enable'}>
+    <header><div className="flowhive-sharing-title"><span className="flowhive-sharing-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 3 4 6v6c0 5 8 9 8 9s8-4 8-9V6l-8-3Z" /><path d="m8 12 3 3 5-6" /></svg></span><div><span className="flowhive-home-eyebrow">Customer collaboration</span><h4 id={`${id}-title`}>Reviewed customer sharing</h4></div></div><span className={`flowhive-home-badge ${enabled ? 'enabled' : ''}`} role="status">{state}</span></header>
+    <p>Share an approved project snapshot, not your live working copy. Customer links are read-only, expire automatically, and can be revoked.</p>
+    <div className="flowhive-sharing-steps" aria-label="Sharing readiness">
+      <span><b aria-hidden="true">1</b>{enabled ? 'Project enabled' : 'Enable for this project'}</span>
+      <span><b aria-hidden="true">2</b>{baselined.length ? `${baselined.length} reviewed ${baselined.length === 1 ? 'baseline' : 'baselines'} ready` : 'Reviewed baseline required'}</span>
+      <span><b aria-hidden="true">3</b>Create an expiring link</span>
+    </div>
+    <div className="flowhive-sharing-privacy"><strong>Internal information stays private.</strong><span>Internal notes, citations, assignments, provider data, and financial details are excluded.</span></div>
+    {error && <div className="flowhive-sharing-error" role="alert"><strong>Customer sharing was not confirmed.</strong><p>{error.message}</p>{error.correlationId && <small>Reference: {error.correlationId}</small>}</div>}
+    {!editable && current && <p className="flowhive-sharing-help">{enterprise.access?.isViewAs ? 'View-As is read-only. Exit preview to manage sharing.' : 'Only the assigned Project Manager, authorized PM Lead, or Administrator can manage sharing.'}</p>}
+    {!enabled && activeShares > 0 && <div className="flowhive-sharing-baseline-needed"><div><strong>Previously created links are still active.</strong><p>Disabling new link creation does not revoke existing links. Revoke them individually to stop access before their expiration.</p></div>
+      <div className="flowhive-share-history">{shares.filter(share => share.active).map(share => <div key={share.shareId}><span><strong>Baseline v{share.versionNumber}</strong><small>Expires {date(share.expiresAt)}</small></span>{editable && <button type="button" className="danger-quiet" disabled={Boolean(busy)} onClick={() => onRevoke(share)}>Revoke</button>}</div>)}</div>
+    </div>}
+    {!enabled ? <footer><div><strong>Enabling does not create or send a link.</strong><span>You will choose a reviewed baseline and expiration next.</span></div><button type="button" className="primary" disabled={!editable || Boolean(busy)} onClick={onEnableSharing}>{busy === 'sharing-enable' ? 'Enabling sharing…' : 'Enable customer sharing for this project'}</button></footer> : <>
+      {!baselined.length && <div className="flowhive-sharing-baseline-needed"><div><strong>A reviewed baseline is needed before creating a link.</strong><p>Save a version of the WBS and complete its existing review and baseline process. Enabling sharing does not approve a plan.</p></div><button type="button" onClick={onReviewBaseline}>Review WBS plan</button></div>}
+      <details className="flowhive-sharing-manage"><summary>Manage customer links <span>{shares.length} recorded</span></summary>
+        <div className="flowhive-share-controls"><label htmlFor={`${id}-baseline`}>Reviewed baseline<select id={`${id}-baseline`} value={selectedBaseline ? shareDraft.planId : ''} disabled={!editable || Boolean(busy) || !baselined.length} onChange={event => { const plan = baselined.find(item => item.planId === event.target.value); setShareDraft({ ...shareDraft, planId: plan?.planId || '', versionNumber: plan?.baselineVersion || null }); }}><option value="">Select baseline</option>{baselined.map(plan => <option key={plan.planId} value={plan.planId}>{plan.planName} · baseline v{plan.baselineVersion}</option>)}</select></label>
+          <label htmlFor={`${id}-expiration`}>Expiration<select id={`${id}-expiration`} value={shareDraft.expirationDays} disabled={!editable || Boolean(busy)} onChange={event => setShareDraft({ ...shareDraft, expirationDays: Number(event.target.value) })}>{[7, 14, 30, 60, 90].map(days => <option key={days} value={days}>{days} days</option>)}</select></label>
+          <label className="wide" htmlFor={`${id}-note`}>Customer note<input id={`${id}-note`} value={shareDraft.shareNote || ''} maxLength="4000" disabled={!editable || Boolean(busy)} onChange={event => setShareDraft({ ...shareDraft, shareNote: event.target.value })} placeholder="Optional customer-facing context" /></label>
+          <label className="wide flowhive-sharing-recordings"><input type="checkbox" disabled={!editable || Boolean(busy)} checked={(shareDraft.allowedArtifacts || []).includes('meetings')} onChange={event => setShareDraft({ ...shareDraft, allowedArtifacts: event.target.checked ? [...new Set([...(shareDraft.allowedArtifacts || []), 'meetings'])] : (shareDraft.allowedArtifacts || []).filter(value => value !== 'meetings') })} /> Allow customer meeting-recording downloads</label>
+        </div>
+        <button type="button" className="primary" disabled={!editable || Boolean(busy) || !selectedBaseline} onClick={onCreateShare}>{busy === 'customer-share' ? 'Creating…' : 'Create customer link'}</button>
+        <div className="flowhive-share-history">{shares.map(share => <div key={share.shareId}><span><strong>Baseline v{share.versionNumber}</strong><small>{share.revokedAt ? `Revoked ${date(share.revokedAt)}` : share.active ? `Expires ${date(share.expiresAt)}` : `Expired ${date(share.expiresAt)}`} · {share.accessCount} access(es)</small></span>{share.active && editable ? <button type="button" className="danger-quiet" disabled={Boolean(busy)} onClick={() => onRevoke(share)}>Revoke</button> : null}</div>)}</div>
+        {!shares.length && <p className="flowhive-sharing-help">No customer link has been created for this project.</p>}
+      </details>
+      {latestShareUrl && editable && <div className="flowhive-share-result"><label htmlFor={`${id}-url`}>New customer link · shown once<input id={`${id}-url`} readOnly value={latestShareUrl} onFocus={event => event.target.select()} /></label><button type="button" onClick={copyLink}>Copy</button><a href={latestShareUrl} target="_blank" rel="noreferrer">Open</a><button type="button" onClick={() => { setLatestShareUrl(''); setCopyMessage(''); }}>Dismiss</button>{copyMessage && <span role="status">{copyMessage}</span>}</div>}
     </>}
-    <div className="flowhive-share-history">{shares.map((share) => <div key={share.shareId}><span><strong>Baseline v{share.versionNumber}</strong><small>{share.active ? `Expires ${date(share.expiresAt)}` : `Revoked ${date(share.revokedAt)}`} · {share.accessCount} access(es)</small></span>{share.active && canManage ? <button type="button" className="danger-quiet" disabled={busy} onClick={() => onRevoke(share)}>Revoke</button> : null}</div>)}</div>
   </article>;
 }

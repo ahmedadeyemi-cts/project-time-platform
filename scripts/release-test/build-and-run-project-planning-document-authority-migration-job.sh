@@ -100,8 +100,10 @@ install -m 0444 "$ROOT/database/migrations/130_security_integrity_boundaries.sql
 install -m 0444 "$ROOT/scripts/security/verify-security-integrity-130.sql" "$CONTEXT/database/verify-security-integrity-130.sql"
 (cd "$CONTEXT" && sha256sum database/migrations/130_security_integrity_boundaries.sql database/verify-security-integrity-130.sql > database/security-integrity-130.sha256)
 # SECURITY_130_PACKAGE_END
-install -m 0444 "$ROOT/database/migrations/131_time_approval_routing.sql" "$CONTEXT/database/migrations/131_time_approval_routing.sql"
-(cd "$CONTEXT" && sha256sum database/migrations/131_time_approval_routing.sql > database/time-approval-routing.sha256)
+install -m 0444 "$ROOT/database/migrations/131_flowhive_project_collaboration.sql" "$CONTEXT/database/migrations/131_flowhive_project_collaboration.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/131_flowhive_project_collaboration.sql > database/flowhive-project-collaboration.sha256)
+install -m 0444 "$ROOT/database/migrations/132_time_approval_routing.sql" "$CONTEXT/database/migrations/132_time_approval_routing.sql"
+(cd "$CONTEXT" && sha256sum database/migrations/132_time_approval_routing.sql > database/time-approval-routing.sha256)
 printf '%s\n' "$RELEASE_COMMIT" > "$CONTEXT/release-commit"
 chmod 0444 "$CONTEXT/release-commit"
 
@@ -196,13 +198,16 @@ echo 'MODULE060_CONTRACT_FUNDING=APPLIED_AND_VERIFIED'
 # SECURITY_130_APPLY_BEGIN
 (cd "$ROOT" && sha256sum --check --status database/security-integrity-130.sha256)
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/130_security_integrity_boundaries.sql"
-(cd "$ROOT" && sha256sum -c database/time-approval-routing.sha256)
-psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/131_time_approval_routing.sql"
-echo 'TIME_APPROVAL_ROUTING_131=APPLIED'
-
 psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/verify-security-integrity-130.sql"
 echo 'MIGRATION_130_SECURITY_INTEGRITY=APPLIED_AND_VERIFIED'
 # SECURITY_130_APPLY_END
+(cd "$ROOT" && sha256sum --check --status database/flowhive-project-collaboration.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/131_flowhive_project_collaboration.sql"
+echo 'FLOWHIVE_PROJECT_COLLABORATION_131=APPLIED'
+(cd "$ROOT" && sha256sum -c database/time-approval-routing.sha256)
+psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/132_time_approval_routing.sql"
+echo 'TIME_APPROVAL_ROUTING_132=APPLIED'
+
 
 verification="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
 SELECT
