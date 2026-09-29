@@ -2,10 +2,16 @@
   "base": "5c371854343cc8f5c26f2ae26cc30c904edc35ea",
   "files": [
     ".github/workflows/approval-routing-review-ci.yml",
+    ".github/workflows/celar-laya-integration.yml",
     ".github/workflows/contracts-approval-funding-ci.yml",
     ".github/workflows/flowhive-customer-sharing-ci.yml",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/module-management-owner-drawer-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
     ".github/workflows/production-approval-workflow-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "database/migrations/131_flowhive_project_collaboration.sql",
     "database/migrations/132_time_approval_routing.sql",
     "database/rollback/131_flowhive_project_collaboration_rollback.sql",
@@ -65,7 +71,6 @@
     "tests/combined-release/test_scope.py",
     "tests/contracts-approval-funding.test.mjs",
     "tests/flowhive-migration-package.test.py",
-    "tests/flowhive-psa-admission.test.mjs",
     "tests/flowhive-sharing/browser-bundle.mjs",
     "tests/flowhive-sharing/browser.py",
     "tests/flowhive-sharing/collaboration-browser.py",
@@ -73,14 +78,21 @@
     "tests/flowhive-sharing/controls.test.mjs",
     "tests/laya/processed-source-scope.py",
     "tests/security-completion/approval-scope.test.mjs",
-    "tests/security-completion/test_scope.py"
+    "tests/security-completion/test_scope.py",
+    "tests/security-release/admission_fixture.py"
   ],
   "sha256": {
     ".github/workflows/approval-routing-review-ci.yml": "9e16c06d0beb1eb3bdb36f21fd3ac130cafd8fc868dd95b854162b03adfa17e3",
+    ".github/workflows/celar-laya-integration.yml": "9289bd4a30895a92f893cbd5f56aa019ee8baf7812a8630680bb00ca0c538952",
     ".github/workflows/contracts-approval-funding-ci.yml": "7a7b55aa6bba42186c6b72c2b5c4c80889fbc76154d468d7a72e9f7ba976f095",
     ".github/workflows/flowhive-customer-sharing-ci.yml": "a98f79f322cf5183ff41060ccd712518e2a4b151f31a7205ba401753a4b6275e",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml": "e6f044587eb32b803a798535b0cc1636e29d5f93f8282af0c3568bc6328b2cdf",
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "e957274cac20fa92559156d788c7a5fa4e7a55bcb99e3e60febf45c4e33c042a",
     ".github/workflows/module-management-owner-drawer-ci.yml": "89187c8b9a739581e75bfe60b802afd9f0aac078f3e3d7e64de042d2a2b0aa19",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "bff6272fde6705c2b975f2ad5c9ed027418b41b50af679e577c584e622d07a31",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "5a81f7d1e98cd4f7f3fb3371b2dd203b4db1b6349595dda518998f9b09600df1",
     ".github/workflows/production-approval-workflow-ci.yml": "79e9854b52b152a0c887f797770b65a4397db69cdff4f2ed4e6f63ab5cc398ad",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "5ccbe2695176bc46dcf264de856f943f23acecf70b033b1ce17425e3d5149b8b",
     "database/migrations/131_flowhive_project_collaboration.sql": "d3e557f043a11725a05f3a57c583bc7778a5e0084296d3848986825c6510c54b",
     "database/migrations/132_time_approval_routing.sql": "680a2e3668b2eb04df89afefec1297bfd6937ce2549d31ca1d8c9f9a750568a3",
     "database/rollback/131_flowhive_project_collaboration_rollback.sql": "be59fc5ebccf96ac84202639e46d7a186295e5048a3908b417d2016c013eb920",
@@ -139,7 +151,6 @@
     "tests/combined-release/test_scope.py": "8d515fe84d2ee81703a1330783ea3b1690d5a94f190f24a1dfef069b993c9e1c",
     "tests/contracts-approval-funding.test.mjs": "bc5a865639573b119dd22168ad9cabdf78a42ffe966c8bd4584b1721092f8a75",
     "tests/flowhive-migration-package.test.py": "2ea22cdaf21f977aa22d8c184452a83eca1d29d1948ee0275a5418a9e9cb27e7",
-    "tests/flowhive-psa-admission.test.mjs": "f68a2e779cee88d06389532e6cf8133fd6feb9a2ac6e322a11854421efeadb77",
     "tests/flowhive-sharing/browser-bundle.mjs": "791e5729a524f5cabf622cc810d1032293aff5d37a6c7a7610c34778ea24b42f",
     "tests/flowhive-sharing/browser.py": "f059e47a5b26a30cf753f60afdeff8391386e0567367f5cd5d11c72453449a02",
     "tests/flowhive-sharing/collaboration-browser.py": "9537de0ed9381fbb9a90ee7b41ff25ef053653f6ca5609ed99c590ece5ab9b5c",
@@ -147,6 +158,7 @@
     "tests/flowhive-sharing/controls.test.mjs": "9e50c76182e6f16eded2c9ad42482c241089605857c54c6c155c8d27119e3996",
     "tests/laya/processed-source-scope.py": "63ef562da7689f3beb6f7b4ff7463814f697884674d43880bef1029f737ab4fa",
     "tests/security-completion/approval-scope.test.mjs": "c8afa4ba3e78e7da54a9bce6c309707b3e5f6c4e3fee13de15692a8020dc9041",
-    "tests/security-completion/test_scope.py": "a430e580ac8054ddbf874d727afb5decbbdaeaaa106048f270fec4f5cfaea022"
+    "tests/security-completion/test_scope.py": "a430e580ac8054ddbf874d727afb5decbbdaeaaa106048f270fec4f5cfaea022",
+    "tests/security-release/admission_fixture.py": "b5ff55dbcd60bb2881f5ea07f6cab6f32786d7ba4dea01f17a1d12a18fe32854"
   }
 }
