@@ -2195,6 +2195,17 @@
       ],
       "decision": "review_required",
       "rationale": "Security remediation candidate; production application requires separate review and admission."
+    },
+    {
+      "path": "database/migrations/131_flowhive_project_collaboration.sql",
+      "sha256": "d3e557f043a11725a05f3a57c583bc7778a5e0084296d3848986825c6510c54b",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Project-scoped contacts and unsent meeting drafts only. Requires explicit migration review and normal Protected UAT release; no accounts, access grants, invitations or production execution."
     }
   ]
 }

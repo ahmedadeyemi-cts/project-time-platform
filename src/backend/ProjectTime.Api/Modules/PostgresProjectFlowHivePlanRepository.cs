@@ -210,6 +210,10 @@ public sealed class PostgresProjectFlowHivePlanRepository : IProjectFlowHivePlan
         if (!await CanManageProjectAsync(connection, transaction, actorUserId, request.ProjectId.Value, cancellationToken))
             return new(false, "forbidden", request.PlanId, null, "The current user cannot manage FlowHive plans for this project.");
 
+        try { request = await ProjectFlowHiveCollaborationStore.ResolveContactsAsync(connection,transaction,request.ProjectId.Value,request,cancellationToken); }
+        catch(ProjectFlowHiveCollaborationStore.InputException error)
+        { return new(false,"invalid_project_contact",request.PlanId,null,error.Message); }
+
         var planId = request.PlanId.GetValueOrDefault();
         var priorState = "null";
         var currentVersion = 0;

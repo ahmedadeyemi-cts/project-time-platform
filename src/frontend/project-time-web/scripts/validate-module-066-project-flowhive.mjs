@@ -401,9 +401,11 @@ assertInvariant(
   'MODULE_066_FRONTEND_IDENTITY_DROPDOWN',
   frontend.includes('identityOptions') &&
     frontend.includes('resourceUserId') &&
-    frontend.includes('Assigned Identity') &&
+    frontend.includes('Assigned people') &&
+    frontend.includes('ProjectFlowHiveAssignees') &&
+    frontend.includes('changeTaskAssignee') &&
     frontend.includes('useIdentityProfile'),
-  'assignments preserve Module 062-backed user IDs'
+  'multi-person assignments preserve Module 062 user IDs and separately identify project contacts'
 );
 
 assertInvariant(

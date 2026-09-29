@@ -5,7 +5,7 @@ import './project-flowhive-home.css';
 const filters = { all: 'Open work', attention: 'Needs attention', mine: 'My work', overdue: 'Overdue', dueSoon: 'Due within 3 days', unassigned: 'Unassigned', blocked: 'Blocked', critical: 'Critical path' };
 const readableDate = value => value ? new Date(`${value}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'Not scheduled';
 const isAttention = task => task.overdue || task.blocked || task.unassigned;
-export default function ProjectFlowHiveOverview({ plan, schedule, userId, dirty, projectName, sharingPanel, onOpenTask, onNavigate }) {
+export default function ProjectFlowHiveOverview({ plan, schedule, userId, dirty, projectName, sharingPanel, collaborationPanel, onOpenTask, onNavigate }) {
   const [filter, setFilter] = useState('all');
   const id = useId();
   const data = projectOverview(plan, schedule, new Date().toISOString().slice(0, 10), userId);
@@ -36,7 +36,9 @@ export default function ProjectFlowHiveOverview({ plan, schedule, userId, dirty,
         <button type="button" onClick={() => onNavigate?.('governance')}>Open Notifications</button>
       </nav>
     </>}
+    <section className="flowhive-cpm-summary" aria-label="Project critical path"><div><strong>Critical path (CPM)</strong><p>{schedule?.valid ? `${data.totals.critical} open critical tasks. Review dependencies and float before committing the finish date.` : 'Recalculate after WBS changes to see a current critical path.'}</p></div><button type="button" onClick={()=>onNavigate?.('timeline')}>View critical path & float</button></section>
     {sharingPanel}
+    {collaborationPanel}
     {plan && <section className="flowhive-home-work" aria-labelledby={`${id}-work`}>
       <div className="flowhive-home-work-heading"><div><h4 id={`${id}-work`}>Work to focus on</h4><p>Choose a filter, then open a task to review its details.</p></div><label htmlFor={`${id}-filter`}>Show work<select id={`${id}-filter`} value={filter} onChange={event => setFilter(event.target.value)}>{Object.entries(filters).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div>
       <div className="flowhive-overview-metrics" role="group" aria-label="Work filters">{Object.entries(data.totals).map(([key, value]) => <button key={key} type="button" aria-pressed={filter === key} onClick={() => setFilter(filter === key ? 'all' : key)}><span>{filters[key]}</span><strong>{value}</strong></button>)}</div>

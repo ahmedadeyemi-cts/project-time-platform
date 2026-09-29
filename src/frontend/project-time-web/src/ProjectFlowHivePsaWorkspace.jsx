@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './project-flowhive-psa-workspace.css';
+import { assigneeNames } from './flowhive-assignees.js';
+import { flowHivePlanRequest } from './flowhive-plan-request.js';
 import ProjectFlowHiveTeamCalendar from './ProjectFlowHiveTeamCalendar.jsx';
 
 const KANBAN_COLUMNS = [
@@ -40,7 +42,7 @@ async function jsonRequest(path, options = {}) {
   const body = type.includes('application/json') ? await response.json() : null;
   if (!response.ok) {
     const error = new Error(body?.message || body?.detail || `${path} returned HTTP ${response.status}`);
-    error.body = body;
+    error.body = body; error.responseBody = body; error.status = response.status;
     throw error;
   }
   return body;
@@ -204,7 +206,7 @@ export default function ProjectFlowHivePsaWorkspace({
   );
   const scheduleTasks = schedule?.tasks || [];
   const scheduleByWbs = useMemo(() => new Map(scheduleTasks.map((task) => [String(task.wbsNumber), task])), [scheduleTasks]);
-  const assignments = useMemo(() => new Map((draftPlan?.assignments || []).map((item) => [String(item.taskWbs), item])), [draftPlan]);
+  const assignments = useMemo(() => { const groups=new Map();for(const item of draftPlan?.assignments || []){const key=String(item.taskWbs);groups.set(key,[...(groups.get(key)||[]),item]);}return groups;}, [draftPlan]);
 
   function changeTaskStatus(wbsNumber, status) {
     if (!canManage) return;
@@ -226,7 +228,7 @@ export default function ProjectFlowHivePsaWorkspace({
       const result = await jsonRequest('/api/project-flowhive/schedule/calculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(draftPlan)
+        body: JSON.stringify(flowHivePlanRequest(draftPlan,projectId))
       });
       if (!actionIsCurrent(context)) return;
       setSchedule?.(result);
@@ -331,7 +333,7 @@ export default function ProjectFlowHivePsaWorkspace({
       const response = await fetch(path, {
         method: 'POST',
         headers: sessionHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ plan: draftPlan })
+        body: JSON.stringify({ plan: flowHivePlanRequest(draftPlan,projectId) })
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
@@ -364,7 +366,7 @@ export default function ProjectFlowHivePsaWorkspace({
               <span>{task.phase} · WBS {task.wbsNumber}</span>
               <h4>{task.name}</h4>
               <p>{task.description || 'No task description recorded.'}</p>
-              <dl><div><dt>Due</dt><dd>{displayDate(timing?.endDate)}</dd></div><div><dt>Owner</dt><dd>{assignment?.resourceDisplayName || 'Unassigned'}</dd></div><div><dt>Hours</dt><dd>{number(task.remainingEffortHours)?.toLocaleString() ?? '—'}</dd></div><div><dt>Progress</dt><dd>{Math.round(number(task.percentComplete) || 0)}%</dd></div></dl>
+              <dl><div><dt>Due</dt><dd>{displayDate(timing?.endDate)}</dd></div><div><dt>Owner</dt><dd>{assigneeNames(assignment)}</dd></div><div><dt>Hours</dt><dd>{number(task.remainingEffortHours)?.toLocaleString() ?? '—'}</dd></div><div><dt>Progress</dt><dd>{Math.round(number(task.percentComplete) || 0)}%</dd></div></dl>
               <select aria-label={`Status for ${task.name}`} value={task.status || 'not_started'} disabled={!canManage} onChange={(event) => changeTaskStatus(task.wbsNumber, event.target.value)}>{KANBAN_COLUMNS.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</select>
             </article>;
           })}{!tasks.length ? <Empty>No tasks in this lane.</Empty> : null}</div>

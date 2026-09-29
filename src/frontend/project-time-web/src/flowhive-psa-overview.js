@@ -1,7 +1,7 @@
 export function projectOverview(plan, schedule, today, userId = '') {
   const dated = schedule?.valid ? new Map((schedule.tasks || []).map(task => [task.wbsNumber, task])) : new Map();
   const tasks = (plan?.tasks || []).filter(task => !task.isSummary && !task.isMilestone).map(task => {
-    const assignments = (plan.assignments || []).filter(item => item.taskWbs === task.wbsNumber && item.resourceUserId);
+    const assignments = (plan.assignments || []).filter(item => item.taskWbs === task.wbsNumber && (item.resourceUserId || item.projectContactId));
     const due = dated.get(task.wbsNumber)?.endDate || '';
     const days = due ? Math.round((Date.parse(`${due}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000) : null;
     const closed = Number(task.percentComplete) >= 100 || ['complete', 'completed', 'done', 'cancelled', 'canceled', 'archived'].includes(task.status);

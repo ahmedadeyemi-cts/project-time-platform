@@ -10,6 +10,19 @@ on:
       - 'src/frontend/project-time-web/src/flowhive-project-controls.js'
       - 'src/frontend/project-time-web/src/project-flowhive-home.css'
       - 'tests/FlowHiveCustomerSharingTests/**'
+      - 'tests/FlowHiveCollaborationTests/**'
+      - 'database/migrations/131_flowhive_project_collaboration.sql'
+      - 'database/rollback/131_flowhive_project_collaboration_rollback.sql'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveCollaboration*.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveRequestReader.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHivePlanningContracts.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveScheduleEngine.cs'
+      - 'src/backend/ProjectTime.Api/Modules/PostgresProjectFlowHivePlanRepository.cs'
+      - 'src/frontend/project-time-web/src/flowhive-plan-request.js'
+      - 'src/frontend/project-time-web/src/flowhive-assignees.js'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveAssignees.jsx'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveCollaboration.jsx'
+      - 'src/frontend/project-time-web/src/project-flowhive-collaboration.css'
       - 'tests/flowhive-sharing/**'
       - '.github/workflows/flowhive-customer-sharing-ci.yml'
 permissions:
@@ -46,11 +59,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Test sharing request, safe controls DTO and existing overview semantics
-        run: node --test tests/flowhive-sharing/controls.test.mjs tests/flowhive-psa-overview.test.mjs
+        run: node --test tests/flowhive-sharing/controls.test.mjs tests/flowhive-sharing/collaboration.test.mjs tests/flowhive-psa-overview.test.mjs
       - name: Test actual HTTP binding and isolated PostgreSQL persistence
         env:
           FLOWHIVE_SHARING_DB: 'Host=127.0.0.1;Database=flowhive_sharing_test;Username=sharing_fixture;Pooling=false'
         run: dotnet run --project tests/FlowHiveCustomerSharingTests -c Release -- --database
+      - name: Validate WBS request contracts, CPM, contact limits and unsent meetings
+        env:
+          FLOWHIVE_COLLABORATION_DB: 'Host=127.0.0.1;Database=flowhive_sharing_test;Username=sharing_fixture;Pooling=false'
+        run: dotnet run --project tests/FlowHiveCollaborationTests -c Release -- --database
       - name: Build the actual Project Home and sharing interface
         run: |
           npm ci --prefix src/frontend/project-time-web --ignore-scripts
@@ -58,7 +75,9 @@ jobs:
           python -m pip install playwright==1.57.0
           python -m playwright install --with-deps chromium
       - name: Exercise real UI requests, permissions, failures and responsive themes
-        run: python tests/flowhive-sharing/browser.py
+        run: |
+          python tests/flowhive-sharing/browser.py
+          python tests/flowhive-sharing/collaboration-browser.py
       - name: Preserve synthetic Project Home screenshots
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
