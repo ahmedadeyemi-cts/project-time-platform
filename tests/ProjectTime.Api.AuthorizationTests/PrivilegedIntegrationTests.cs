@@ -95,6 +95,40 @@ internal static class PrivilegedIntegrationTests
                 var args=type==typeof(MicrosoftServicesRuntimeCompatibility)?new object[]{Context(3,true)}:new object[]{Context(3,true),true};
                 Check(await ResultStatus(type,"ResolveAccessAsync",args)==403,"View-As cannot activate identity profiles");
             }
+            foreach(var role in new[]{1,2,3})
+            {
+                Check(await ResultStatus(typeof(AdminExperienceCommon),"AuthorizeAsync",Context(role),false)==(role==1?403:200),
+                    "Maintenance administration cannot be delegated through SYSTEM_ADMINISTRATION");
+                var method=typeof(CiCdPipelineModule).GetMethod("RequireAdminAsync",BindingFlags.Static|BindingFlags.NonPublic)!;
+                var failure=await (Task<IResult?>)method.Invoke(null,new object[]{Context(role)})!;
+                Check((failure is null?200:((IStatusCodeHttpResult)failure).StatusCode)==(role==1?403:200),
+                    "CI/CD dispatch and rollback require administrator roles");
+            }
+            var schedule=typeof(CelarAiRuntimeVersionModule).GetMethod("UpdateScheduleAsync",BindingFlags.Static|BindingFlags.NonPublic)!;
+            foreach(var context in new[]{Context(1),Context(3,true)})
+            {
+                var result=await (Task<IResult>)schedule.Invoke(null,new object[]{new CelarAiRuntimeMaintenanceScheduleRequest(true,"Monday","03:00","UTC"),context,CancellationToken.None})!;
+                Check(((IStatusCodeHttpResult)result).StatusCode==403,"Unauthorized maintenance requests are blocked before contacting the VM");
+            }
+            await using(var connection=new NpgsqlConnection(builder.ConnectionString))
+            {
+                await connection.OpenAsync();await using var transaction=await connection.BeginTransactionAsync();
+                var targetUser=Guid.Parse("10000000-0000-0000-0000-000000000003");
+                foreach(var role in new[]{1,2,3})
+                {
+                    var failure=await PasswordResetTargetSafety.ValidateAsync(Context(role),connection,transaction,targetUser,"protected@example.invalid");
+                    Check((failure is null?200:((IStatusCodeHttpResult)failure).StatusCode)==(role==3?200:403),
+                        "Reset completion protects Super Administrator targets");
+                    failure=await PasswordResetTargetSafety.ValidateAsync(Context(role),connection,transaction,targetUser,
+                        Environment.GetEnvironmentVariable("PROJECTPULSE_BREAK_GLASS_ACCOUNT")??"ahmed.adeyemi@ussignal.local");
+                    Check(((IStatusCodeHttpResult)failure!).StatusCode==403,"Break-glass passwords cannot be reset through completion");
+                }
+                Check(await PasswordResetTargetSafety.ValidateAsync(Context(3,true),connection,transaction,targetUser,"protected@example.invalid") is not null,
+                    "View-As cannot reset a protected password");
+                Check(await PasswordResetTargetSafety.ValidateAsync(Context(2),connection,transaction,Guid.Parse("10000000-0000-0000-0000-000000000004"),"ordinary.local") is null,
+                    "Target protection preserves an authorized ordinary-account reset");
+                await transaction.RollbackAsync();
+            }
             // Exercise the real compatibility middleware with a delegated, authenticated actor.
             var webBuilder=WebApplication.CreateBuilder(new WebApplicationOptions {Args=Array.Empty<string>(),EnvironmentName="Test"});
             await using(var app=webBuilder.Build())

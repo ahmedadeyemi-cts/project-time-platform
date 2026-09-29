@@ -31,7 +31,7 @@ The active protected deployment workflow and its exact registration remain uncha
 - Actual authorization resolvers and contract handlers pass 16 database-backed cases. Coverage includes delegated privilege rejection, authorized reads, View-As, revoked administrator assignments, contract-balance reads and contract usage writes.
 - Full local run:14 authority,16 privileged integration,15 identity/session,64 completion,45 route and58 existing authorization checks passed against an isolated PostgreSQL-compatible engine. Native PostgreSQL validation remains required for this latest change, especially concurrent behavior.
 - The prior pushed checkpoint passed68 of72 returned workflows at inspection; one was running and three historical registration failures are addressed in this follow-up. All121 admission tests passed locally without removing assertions. No live deployment occurred.
-- Current dispositions:37 prior source repairs,104 candidate repairs with incomplete validation,8 further remediation/review. Zero findings are closed through UAT.
+- Current dispositions:37 prior source repairs,109 candidate repairs with incomplete validation,3 further remediation/review. Zero findings are closed through UAT.
 
 ## All-finding disposition
 
@@ -57,7 +57,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 016 | Prior source fix; UAT unverified | Not established |
 | 017 | Candidate repair; incomplete validation | Not established |
 | 018 | Candidate repair; incomplete validation | Not established |
-| 019 | Further remediation/review required | Not established |
+| 019 | Candidate repair; incomplete validation | Not established |
 | 020 | Prior source fix; UAT unverified | Not established |
 | 021 | Prior source fix; UAT unverified | Not established |
 | 022 | Prior source fix; UAT unverified | Not established |
@@ -99,7 +99,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 058 | Candidate repair; incomplete validation | Not established |
 | 059 | Prior source fix; UAT unverified | Not established |
 | 060 | Prior source fix; UAT unverified | Not established |
-| 061 | Further remediation/review required | Not established |
+| 061 | Candidate repair; incomplete validation | Not established |
 | 062 | Candidate repair; incomplete validation | Not established |
 | 063 | Candidate repair; incomplete validation | Not established |
 | 064 | Candidate repair; incomplete validation | Not established |
@@ -159,7 +159,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 118 | Candidate repair; incomplete validation | Not established |
 | 119 | Candidate repair; incomplete validation | Not established |
 | 120 | Candidate repair; incomplete validation | Not established |
-| 121 | Further remediation/review required | Not established |
+| 121 | Candidate repair; incomplete validation | Not established |
 | 122 | Prior source fix; UAT unverified | Not established |
 | 123 | Candidate repair; incomplete validation | Not established |
 | 124 | Prior source fix; UAT unverified | Not established |
@@ -168,12 +168,12 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 127 | Candidate repair; incomplete validation | Not established |
 | 128 | Candidate repair; incomplete validation | Not established |
 | 129 | Candidate repair; incomplete validation | Not established |
-| 130 | Further remediation/review required | Not established |
+| 130 | Candidate repair; incomplete validation | Not established |
 | 131 | Candidate repair; incomplete validation | Not established |
 | 132 | Candidate repair; incomplete validation | Not established |
 | 133 | Candidate repair; incomplete validation | Not established |
 | 134 | Prior source fix; UAT unverified | Not established |
-| 135 | Further remediation/review required | Not established |
+| 135 | Candidate repair; incomplete validation | Not established |
 | 136 | Candidate repair; incomplete validation | Not established |
 | 137 | Prior source fix; UAT unverified | Not established |
 | 138 | Candidate repair; incomplete validation | Not established |
@@ -216,3 +216,12 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 - Historical UAT artifact inventory confirmed retained evidence archives from prior successful runs. Their private review and containment remain open; no cleanup is claimed by these source tests.
 
 - The private credential-transition utility now includes a maintenance-gated reverse transition. Fifteen isolated checks cover rotation, atomic failure, restoration to the previous key derivation and successful rotation again. Native validation is required before live use.
+
+## Protected reset and operational authority
+
+- Password-reset completion calls a directly tested protected-target guard and locks the approved request/local-account records before replacing credentials. Break-glass accounts remain blocked even for Super Administrators; View-As and non-Super-Administrator protected-target resets are rejected.
+- Actual maintenance handler and CI/CD authorization tests reject delegated system authority, while retaining administrator admission. Privileged integration checks now total72 locally; fresh native validation is required for this follow-up.
+- The preceding source checkpoint passed the native security suite including15 atomic credential-transition cases. A failed artifact-upload network request was retried without changing validation requirements.
+- Dedicated integration keys are now active in Test after an atomic two-store transition and new-key verification. HTTPS health returned200 on the configuration revision. The application image/source remains the existing release, not this PR.
+- Identified historical Protected UAT artifacts were privately preserved, checksum-verified and removed from repository-readable storage. Verification confirmed those URLs unavailable. Other historical exposure and credential rotation remain part of the restricted review.
+- Runtime database credentials are staged in Test; application identity activation and live acceptance remain pending. Migration130 has not run in UAT. No finding is declared closed.
