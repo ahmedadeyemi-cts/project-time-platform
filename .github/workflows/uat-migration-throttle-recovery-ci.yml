@@ -46,7 +46,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
-          if [[ "$GITHUB_HEAD_REF" == 'fix/security-uat-followup-20260929' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-uat-acceptance-20260929' ]]; then
+            python3 tests/security-uat-acceptance/scope.py
+            python3 tests/security-uat-acceptance/test_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/security-uat-followup-20260929' ]]; then
             python3 tests/security-uat-followup/scope.py
             python3 tests/security-uat-followup/test_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/security-complete-20260929' ]]; then
