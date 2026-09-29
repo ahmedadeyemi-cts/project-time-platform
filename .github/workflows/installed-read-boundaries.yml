@@ -1,0 +1,80 @@
+name: Verify installed Test read boundaries
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/installed-read-boundaries.yml'
+      - 'scripts/security/verify-installed-read-boundaries.py'
+      - 'tests/security-installed-read-boundaries.test.py'
+  workflow_dispatch:
+    inputs:
+      deployment_run_id:
+        description: Existing protected Test deployment to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  offline:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - run: python3 tests/security-installed-read-boundaries.test.py
+
+  installed:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: offline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment:
+      name: test
+    concurrency:
+      group: projectpulse-deploy-test
+      cancel-in-progress: false
+    env:
+      DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+      EVIDENCE_DIR: ${{ runner.temp }}/installed-read-private
+      SAFE_EVIDENCE_DIR: ${{ runner.temp }}/installed-read-safe
+      OUTPUT_CONTEXT: ${{ runner.temp }}/installed-read-private/installed-release-context.json
+      INSTALLED_RELEASE_CONTEXT: ${{ runner.temp }}/installed-read-private/installed-release-context.json
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require current trusted main and fixed Test target
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$GITHUB_REF" == refs/heads/main ]]
+          [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)" == "$GITHUB_SHA" ]]
+          umask 077
+          mkdir -p "$EVIDENCE_DIR" "$SAFE_EVIDENCE_DIR"
+          python3 scripts/release-test/resolve-flowhive-installed-deployment.py
+      - name: Verify server-confirmed installed source
+        env:
+          PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
+          PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+          PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+        run: python3 scripts/release-test/verify-flowhive-installed-identity.py
+      - name: Verify supported authenticated read boundaries
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: python3 scripts/security/verify-installed-read-boundaries.py
+      - name: Publish content-free acceptance summary
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: installed-read-boundaries-${{ github.run_id }}
+          path: ${{ runner.temp }}/installed-read-safe/installed-read-boundaries.json
+          if-no-files-found: ignore
+          retention-days: 7
