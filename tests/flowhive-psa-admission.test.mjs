@@ -13,6 +13,7 @@ const installedSowRoleAcceptanceSourceFiles = [
   'src/frontend/project-time-web/tests/role-journeys.test.mjs',
   'tests/flowhive-psa-release-control.mjs'
 ].sort();
+const combinedApprovalFlowHive = process.env.GITHUB_HEAD_REF === 'codex/approval-routing-bulk-review';
 const module025ExportRetention = process.env.GITHUB_HEAD_REF === 'fix/module025-export-retention-scope';
 const module025StandardExports = process.env.GITHUB_HEAD_REF === 'fix/module025-standard-download-formats-20260919';
 const privateGenerationCorrection = process.env.GITHUB_HEAD_REF === 'fix/module025-private-generation-recovery';
@@ -470,6 +471,14 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
 test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
+  if (combinedApprovalFlowHive) {
+    execFileSync('python3', ['tests/combined-release/scope.py']);
+    const base = '5c371854343cc8f5c26f2ae26cc30c904edc35ea';
+    assert.deepEqual(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url)), execFileSync('git', ['show', `${base}:.github/flowhive-psa-protected-test-candidate.json`]));
+    assert.equal(approval.workflowExceptions.length, 0);
+    assert.throws(() => verifySourceDrift(['src/backend/ProjectTime.Api/Program.cs'], []), /Main has a source change absent/);
+    return;
+  }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }
@@ -531,6 +540,14 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (combinedApprovalFlowHive) {
+    execFileSync('python3', ['tests/combined-release/scope.py']);
+    const base = '5c371854343cc8f5c26f2ae26cc30c904edc35ea';
+    assert.deepEqual(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url)), execFileSync('git', ['show', `${base}:.github/flowhive-psa-protected-test-candidate.json`]));
+    assert.equal(approval.workflowExceptions.length, 0);
+    assert.throws(() => verifySourceDrift(['src/backend/ProjectTime.Api/Program.cs'], []), /Main has a source change absent/);
+    return;
+  }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }
@@ -983,6 +1000,14 @@ test('successor approval enumerates only the workflows that ran for the exact se
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
+  if (combinedApprovalFlowHive) {
+    execFileSync('python3', ['tests/combined-release/scope.py']);
+    const base = '5c371854343cc8f5c26f2ae26cc30c904edc35ea';
+    assert.deepEqual(fs.readFileSync(new URL('../.github/flowhive-psa-protected-test-candidate.json', import.meta.url)), execFileSync('git', ['show', `${base}:.github/flowhive-psa-protected-test-candidate.json`]));
+    assert.equal(approval.workflowExceptions.length, 0);
+    assert.throws(() => verifySourceDrift(['src/backend/ProjectTime.Api/Program.cs'], []), /Main has a source change absent/);
+    return;
+  }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }

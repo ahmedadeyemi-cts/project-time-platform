@@ -18,8 +18,9 @@ class ScopeTests(unittest.TestCase):
             else: manifest['base']='0'*40
             with self.assertRaises(RuntimeError): scope.verify_paths(self.paths,manifest)
     def test_wrong_identity(self):
-        identity=[scope.BRANCH,scope.REPOSITORY,'main','1210']
+        identity=[scope.BRANCH,scope.REPOSITORY,'main','1213']
         scope.verify_identity(*identity)
+        with self.assertRaises(RuntimeError): scope.verify_identity(*identity[:3], '1212')
         for i in range(4):
             wrong=identity.copy();wrong[i]='other'
             with self.assertRaises(RuntimeError): scope.verify_identity(*wrong)
@@ -37,11 +38,9 @@ class ScopeTests(unittest.TestCase):
             with self.assertRaises(RuntimeError): scope.verify_paths(manifest['files'],manifest)
         for path in scope.CI_DISPATCH: self.assertFalse(scope.frozen(path))
 
-    def test_migration_package_preserves_existing_release_authority(self):
+    def test_migration_delta_rejects_authority_changes(self):
         before = scope.git('show', f'{scope.BASE}:{scope.MIGRATION_BUILDER}').decode()
-        # Validate the historical PR1210 registration against its accepted source.
-        # New extensions are independently byte-bound by their own registration.
-        current = scope.git('show', '5f9c58057a11858b17f272661b93dc890d037047:'+scope.MIGRATION_BUILDER).decode()
+        current = (scope.ROOT/scope.MIGRATION_BUILDER).read_text()
         scope.verify_migration_delta(before, current)
         for altered in [current+'\necho extra\n', current.replace('bash "$MIGRATION_RUNNER"', 'true', 1), current.replace('set -Eeuo pipefail', 'set +e', 1)]:
             with self.assertRaises(RuntimeError): scope.verify_migration_delta(before, altered)

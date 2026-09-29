@@ -94,7 +94,7 @@ jobs:
           cat src/frontend/project-time-web/dist/assets/*.css > /tmp/production-approval.css
           for marker in \
             'Time approvals across all weeks' \
-            'This is the only approval surface' \
+            'Every approval uses the same authorized workflow' \
             'Time Reallocation & Corrections' \
             'Submitted and approved time stays in its current status' \
             'No worker resubmission, Manager approval, or Project Manager approval is required' \

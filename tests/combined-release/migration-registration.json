@@ -1,0 +1,13 @@
+{
+  "path": "scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh",
+  "patches": [
+    [
+      "# SECURITY_130_PACKAGE_END\n",
+      "install -m 0444 \"$ROOT/database/migrations/131_flowhive_project_collaboration.sql\" \"$CONTEXT/database/migrations/131_flowhive_project_collaboration.sql\"\n(cd \"$CONTEXT\" && sha256sum database/migrations/131_flowhive_project_collaboration.sql > database/flowhive-project-collaboration.sha256)\ninstall -m 0444 \"$ROOT/database/migrations/132_time_approval_routing.sql\" \"$CONTEXT/database/migrations/132_time_approval_routing.sql\"\n(cd \"$CONTEXT\" && sha256sum database/migrations/132_time_approval_routing.sql > database/time-approval-routing.sha256)\n"
+    ],
+    [
+      "# SECURITY_130_APPLY_END\n",
+      "(cd \"$ROOT\" && sha256sum --check --status database/flowhive-project-collaboration.sha256)\npsql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/migrations/131_flowhive_project_collaboration.sql\"\necho 'FLOWHIVE_PROJECT_COLLABORATION_131=APPLIED'\n(cd \"$ROOT\" && sha256sum -c database/time-approval-routing.sha256)\npsql -X -v ON_ERROR_STOP=1 --file \"$ROOT/database/migrations/132_time_approval_routing.sql\"\necho 'TIME_APPROVAL_ROUTING_132=APPLIED'\n\n"
+    ]
+  ]
+}
