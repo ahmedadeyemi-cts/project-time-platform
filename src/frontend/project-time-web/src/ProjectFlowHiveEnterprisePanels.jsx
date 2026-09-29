@@ -127,7 +127,7 @@ export function FlowHiveCustomerSharingPanel({ projectId, enterprise, controls, 
   const editable = current && canManage && enterprise?.access?.canShare === true && !enterprise.access.isViewAs;
   const activeShares = shares.filter(share => share.active).length;
   const selectedBaseline = baselined.some(plan => plan.planId === shareDraft.planId && plan.baselineVersion === shareDraft.versionNumber);
-  const state = !current ? 'Loading sharing status' : !enabled ? 'Off · internal only' : activeShares ? `${activeShares} active ${activeShares === 1 ? 'link' : 'links'}` : 'Enabled · no active links';
+  const state = !current ? 'Loading sharing status' : !enabled ? activeShares ? `New links off · ${activeShares} active ${activeShares === 1 ? 'link' : 'links'}` : 'Off · internal only' : activeShares ? `${activeShares} active ${activeShares === 1 ? 'link' : 'links'}` : 'Enabled · no active links';
   async function copyLink() {
     try {
       if (!navigator.clipboard?.writeText) throw new Error('unavailable');
@@ -146,6 +146,9 @@ export function FlowHiveCustomerSharingPanel({ projectId, enterprise, controls, 
     <div className="flowhive-sharing-privacy"><strong>Internal information stays private.</strong><span>Internal notes, citations, assignments, provider data, and financial details are excluded.</span></div>
     {error && <div className="flowhive-sharing-error" role="alert"><strong>Customer sharing was not confirmed.</strong><p>{error.message}</p>{error.correlationId && <small>Reference: {error.correlationId}</small>}</div>}
     {!editable && current && <p className="flowhive-sharing-help">{enterprise.access?.isViewAs ? 'View-As is read-only. Exit preview to manage sharing.' : 'Only the assigned Project Manager, authorized PM Lead, or Administrator can manage sharing.'}</p>}
+    {!enabled && activeShares > 0 && <div className="flowhive-sharing-baseline-needed"><div><strong>Previously created links are still active.</strong><p>Disabling new link creation does not revoke existing links. Revoke them individually to stop access before their expiration.</p></div>
+      <div className="flowhive-share-history">{shares.filter(share => share.active).map(share => <div key={share.shareId}><span><strong>Baseline v{share.versionNumber}</strong><small>Expires {date(share.expiresAt)}</small></span>{editable && <button type="button" className="danger-quiet" disabled={Boolean(busy)} onClick={() => onRevoke(share)}>Revoke</button>}</div>)}</div>
+    </div>}
     {!enabled ? <footer><div><strong>Enabling does not create or send a link.</strong><span>You will choose a reviewed baseline and expiration next.</span></div><button type="button" className="primary" disabled={!editable || Boolean(busy)} onClick={onEnableSharing}>{busy === 'sharing-enable' ? 'Enabling sharing…' : 'Enable customer sharing for this project'}</button></footer> : <>
       {!baselined.length && <div className="flowhive-sharing-baseline-needed"><div><strong>A reviewed baseline is needed before creating a link.</strong><p>Save a version of the WBS and complete its existing review and baseline process. Enabling sharing does not approve a plan.</p></div><button type="button" onClick={onReviewBaseline}>Review WBS plan</button></div>}
       <details className="flowhive-sharing-manage"><summary>Manage customer links <span>{shares.length} recorded</span></summary>

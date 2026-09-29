@@ -32,7 +32,7 @@ async def main():
       elif path=='/api/project-flowhive/plans':result={'plans':[{'planId':P,'projectId':A,'planName':'Reviewed plan','baselineVersion':None if mode=='nobaseline' else 2,'currentVersion':2}]}
       elif path.endswith('/enterprise'):
        pid=path.split('/')[4];seed=plan(pid)
-       result={'project':{'projectId':pid,'customerName':'Example customer'},'access':{'canManage':True,'canEditPlanner':True,'canAdministerPlanner':mode not in ('viewas','engineer'),'canShare':mode!='engineer','isViewAs':mode=='viewas'},'workingCopy':{'plan':seed,'rowVersion':P,'workingRevision':1,'validation':{'valid':True,'issues':[]},'schedule':{'valid':True,'projectFinishDate':'2026-10-08','tasks':[{'wbsNumber':f'1.{i}','endDate':'2026-09-15' if i<3 else '2026-10-08','isCritical':True} for i in range(1,4)]}},'controls':{'approvedBudget':'invalid unrelated value','financialNotes':'Unsaved private fixture note','customerSharingEnabled':state['enabled'] if pid==A else False},'raidItems':[],'statusReports':[],'customerShares':[],'sowEvidence':[]}
+       result={'project':{'projectId':pid,'customerName':'Example customer'},'access':{'canManage':True,'canEditPlanner':True,'canAdministerPlanner':mode not in ('viewas','engineer'),'canShare':mode!='engineer','isViewAs':mode=='viewas'},'workingCopy':{'plan':seed,'rowVersion':P,'workingRevision':1,'validation':{'valid':True,'issues':[]},'schedule':{'valid':True,'projectFinishDate':'2026-10-08','tasks':[{'wbsNumber':f'1.{i}','endDate':'2026-09-15' if i<3 else '2026-10-08','isCritical':True} for i in range(1,4)]}},'controls':{'approvedBudget':'invalid unrelated value','financialNotes':'Unsaved private fixture note','customerSharingEnabled':state['enabled'] if pid==A else False},'raidItems':[],'statusReports':[],'customerShares':[{'shareId':P,'versionNumber':2,'active':True,'expiresAt':'2026-11-01T00:00:00Z','revokedAt':None,'accessCount':1}] if mode=='existinglinks' else [],'sowEvidence':[]}
       elif path.endswith('/customer-sharing/enable'):
        state['started'].set()
        if mode=='delayed':await state['hold'].wait()
@@ -54,9 +54,13 @@ async def main():
       print('BROWSER_DIAGNOSTICS',state['errors'],await page.locator('body').inner_text(),flush=True)
       raise
     await page.get_by_role('button',name='Project home',exact=True).click()
-    card=page.locator('.flowhive-home-sharing');await card.get_by_text('Off · internal only',exact=True).wait_for()
+    card=page.locator('.flowhive-home-sharing');await card.get_by_text('New links off · 1 active link' if mode=='existinglinks' else 'Off · internal only',exact=True).wait_for()
     button=card.get_by_role('button',name='Enable customer sharing for this project',exact=True)
-    if mode in ('viewas','engineer'):
+    if mode=='existinglinks':
+      assert await card.get_by_text('Previously created links are still active.',exact=True).count()==1
+      assert await card.get_by_role('button',name='Revoke',exact=True).is_enabled()
+      assert state['writes']==[];cases+=1
+    elif mode in ('viewas','engineer'):
       assert await button.is_disabled();assert state['writes']==[];cases+=1
     else:
       await button.click()
@@ -105,7 +109,7 @@ async def main():
       if width==1440:await card.locator('summary').click()
       await page.locator('.flowhive-command-center').screenshot(path=str(OUT/f'command-center-{theme}-{width}.png'))
     await page.close()
-  for mode in ['success','error','delayed','viewas','engineer','nobaseline']:await run_case(mode)
+  for mode in ['success','error','delayed','viewas','engineer','nobaseline','existinglinks']:await run_case(mode)
   await run_case('success','dark',1440)
   await run_case('success','light',390)
   await run_case('success','dark',390)

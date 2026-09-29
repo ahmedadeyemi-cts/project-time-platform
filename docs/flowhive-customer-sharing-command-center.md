@@ -18,7 +18,7 @@ The financial save remains available separately and now builds an explicit ten-f
 
 ## Project Home design
 
-The Project Command Center now includes a customer collaboration card, also reused in Branded Exports. It explains the distinction between enabling the project and granting access through a customer link. States cover internal-only, enabled with no active links, active links, loading, failure and saving. Review prerequisites, privacy exclusions and a local error reference are visible alongside the action.
+The Project Command Center now includes a customer collaboration card, also reused in Branded Exports. It explains the distinction between enabling the project and granting access through a customer link. States cover internal-only, enabled with no active links, active links, loading, failure and saving. If previously issued links remain active while new link creation is disabled, the card explicitly says so and keeps authorized revocation available; it never labels that state internal-only. Review prerequisites, privacy exclusions and a local error reference are visible alongside the action.
 
 The button uses the actual `canShare` capability, not generic `canManage`. A confirmation explains that enablement does not create/send a link. Pending requests are disabled, failures never optimistically enable, and project/selection checks reject stale replies. Changing projects clears the one-time URL, share draft, customer note and inline error. A sharing save does not reload over unsaved commercial edits.
 
