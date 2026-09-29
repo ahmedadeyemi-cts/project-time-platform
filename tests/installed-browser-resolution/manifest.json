@@ -1,0 +1,20 @@
+{
+  "base": "4992cf9fd741c0e6eb3b03b8d6fbc427a802d352",
+  "files": [
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    "scripts/release-test/resolve-flowhive-installed-deployment.py",
+    "tests/flowhive-installed-resolution.test.py",
+    "tests/installed-browser-resolution/manifest.json",
+    "tests/installed-browser-resolution/scope.py",
+    "tests/installed-browser-resolution/test_scope.py",
+    "tests/security-release/admission_fixture.py"
+  ],
+  "sha256": {
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "1507c31acbc73140ac41c08eaaa1a9968264585407f3e55cc85c83aef12aa1bc",
+    "scripts/release-test/resolve-flowhive-installed-deployment.py": "9cb7e55a5d90b5f0c0db60611eecf134550d47ac20b472b1d65a691c43eb9edf",
+    "tests/flowhive-installed-resolution.test.py": "372010263cee5472c01347558822f8751923ffff4fa9f1d0ce68e56dac535463",
+    "tests/installed-browser-resolution/scope.py": "f8ba6f6edb9fe4ffd61782a70bc480deccd37253315cd51339783ba701f394d9",
+    "tests/installed-browser-resolution/test_scope.py": "778337251069d4df8e753e28fc2244c4d6cd3d90dd1ed31582bd6bd6b5b98564",
+    "tests/security-release/admission_fixture.py": "7cd799f5fae4eeaddfd8072b75bec10b82ce0fc2071401c4609c2b7a863a9ffb"
+  }
+}

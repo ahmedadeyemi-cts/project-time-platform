@@ -181,8 +181,16 @@ def installation_steps(run: dict, jobs: list[dict], application_branch: str) -> 
                      "Run protected-Test authenticated functional UAT"):
             require(steps.get(name, {}).get("conclusion") == "skipped", "scoped_sow_full_acceptance_not_skipped")
     if application_branch == "main":
+        # Current full releases run normal SA/browser acceptance too. Admit
+        # this path only with successful functional and browser evidence;
+        # do not reinterpret setup success alone as completed acceptance.
+        full_browser_success = (
+            not scoped_sow and run.get("conclusion") == "success"
+            and steps.get("Run protected-Test authenticated functional UAT", {}).get("conclusion") == "success"
+            and steps.get("Verify normal Solution Architect browser and retained register", {}).get("conclusion") == "success"
+        )
         for name in MAIN_PATH_SKIPPED_STEPS:
-            expected = "success" if scoped_sow and name == BROWSER_SETUP_STEP else "skipped"
+            expected = "success" if (scoped_sow or full_browser_success) and name == BROWSER_SETUP_STEP else "skipped"
             require(steps.get(name, {}).get("conclusion") == expected, "main_path_step_not_skipped")
         required_steps = tuple(name for name in required_steps if name not in MAIN_PATH_SKIPPED_STEPS)
     for name in required_steps:

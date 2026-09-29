@@ -116,6 +116,44 @@ def standard_main_case():
 
 
 class ResolutionTests(unittest.TestCase):
+    def full_browser_case(self):
+        data = standard_main_case()
+        data[0]["conclusion"] = data[1][0]["conclusion"] = "success"
+        steps = data[1][0]["steps"]
+        for step in steps:
+            if step["name"] == resolver.BROWSER_SETUP_STEP:
+                step["conclusion"] = "success"
+            if step["name"] == "Verify PSA candidate health and the live SOW-to-WBS lifecycle":
+                step["conclusion"] = "skipped"
+        steps.extend([
+            {"name": "Run protected-Test authenticated functional UAT", "status": "completed", "conclusion": "success"},
+            {"name": "Verify normal Solution Architect browser and retained register", "status": "completed", "conclusion": "success"},
+        ])
+        return data
+
+    def test_successful_full_main_browser_path(self):
+        context = validate(self.full_browser_case())
+        self.assertTrue(context["installationVerified"])
+        self.assertTrue(context["liveIdentityRequired"])
+        self.assertEqual(context["failedAcceptanceSteps"], [])
+
+    def test_full_browser_path_requires_complete_success(self):
+        for name in (resolver.BROWSER_SETUP_STEP, "Run protected-Test authenticated functional UAT",
+                     "Verify normal Solution Architect browser and retained register"):
+            for outcome in ("failure", "skipped", "cancelled"):
+                with self.subTest(name=name, outcome=outcome):
+                    data = self.full_browser_case()
+                    next(step for step in data[1][0]["steps"] if step["name"] == name)["conclusion"] = outcome
+                    with self.assertRaises(resolver.ResolutionError):
+                        validate(data)
+
+    def test_full_browser_path_still_excludes_rollback_and_candidate_mode(self):
+        for name in (resolver.ROLLBACK_STEPS[0], resolver.MAIN_PATH_SKIPPED_STEPS[0]):
+            data = self.full_browser_case()
+            next(step for step in data[1][0]["steps"] if step["name"] == name)["conclusion"] = "success"
+            with self.assertRaises(resolver.ResolutionError):
+                validate(data)
+
     def test_current_controller_migration_step_is_supported(self):
         # Read the real controller, independently of resolver fixture constants.
         workflow = yaml.safe_load((ROOT / resolver.WORKFLOW_PATH).read_text())
