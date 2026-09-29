@@ -262,10 +262,7 @@ export default function ApprovalCenter() {
           <p className="eyebrow">MODULE 002</p>
           <h2>Approval Center</h2>
           <p>
-            Review only the approval work assigned to
-            your authenticated role and organizational
-            scope. Draft time is never counted as an
-            approval request.
+            Review submitted time and keep work moving. Only your authorized approval work is shown.
           </p>
         </div>
 
@@ -281,6 +278,12 @@ export default function ApprovalCenter() {
           </small>
         </div>
       </section>
+
+      {access.canViewTimeApprovals ? <div className="approval-routing-guide" aria-label="Time approval workflow">
+        <span><strong>Project</strong> Manager → PM / coordinator</span>
+        <span><strong>SR / Internal / Presales</strong> Manager</span>
+        <span><strong>PTC</strong> Can complete either stage</span>
+      </div> : null}
 
       <section
         className="approval-summary-grid"

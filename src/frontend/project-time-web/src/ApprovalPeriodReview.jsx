@@ -73,29 +73,29 @@ export default function ApprovalPeriodReview({ fetchPending, completePending, re
     finally { setBusy(false); }
   }
   return <section className="approval-period-review" aria-labelledby="approval-period-title" aria-busy={loading || busy}>
-    <header><div><p className="eyebrow">BULK TIME REVIEW</p><h3 id="approval-period-title">All unapproved time</h3>
-      <p>Review a week or calendar month. Only time you can approve is shown. Each action completes one approval stage.</p></div>
+    <header><div><h3 id="approval-period-title">All unapproved time</h3>
+      <p>Select a week or month, review the selection, then approve.</p></div>
       <button type="button" onClick={load} disabled={busy || loading}>Refresh time</button></header>
     <div className="approval-period-filters">
-      <label>Period<select value={kind} disabled={busy} onChange={event => { setKind(event.target.value); setNotice(''); }}><option value="week">Week</option><option value="month">Month</option></select></label>
+      <div className="approval-period-switch" role="group" aria-label="Period"><span>Period</span>{['week','month'].map(value => <button type="button" key={value} aria-pressed={kind === value} disabled={busy} onClick={() => { setKind(value); setNotice(''); }}>{value === 'week' ? 'Week' : 'Month'}</button>)}</div>
       <label>{kind === 'month' ? 'Month' : 'Date in week'}<input type={kind === 'month' ? 'month' : 'date'} value={kind === 'month' ? date.slice(0, 7) : date} disabled={busy}
         onChange={event => { setDate(kind === 'month' ? `${event.target.value}-01` : event.target.value); setNotice(''); }} /></label>
       <label>Approval stage<select value={stage} disabled={busy} onChange={event => { setStage(event.target.value); setNotice(''); }}><option value="manager" disabled={access && !access.canManagerApprove}>Manager review</option><option value="pm" disabled={access && !access.canProjectApprove}>PM / coordinator review</option></select></label>
     </div>
-    {period ? <p>Period starts {period.weekStart || period.monthStart} · {total} pending approval units · {hours(rows.reduce((sum, item) => sum + Number(item.totalHours), 0))} loaded hours</p> : <p>Select a valid period.</p>}
-    <p className="approval-period-help">PTCs may act on behalf of Managers and project reviewers. Nobody can approve their own time. Service requests, internal tasks, and presales need Manager approval only.</p>
+    {period ? <p className="approval-period-count">{total} records · {hours(rows.reduce((sum, item) => sum + Number(item.totalHours), 0))} hours awaiting {stage === 'manager' ? 'manager' : 'project'} approval</p> : <p>Select a valid period.</p>}
+    <details className="approval-period-help"><summary>Who approves this time?</summary><p>Project: Manager → PM / coordinator. Service requests, internal tasks and presales: Manager only. PTCs may complete either stage. Your own time is excluded.</p></details>
     {readOnly ? <p role="status">Administrator View-As is read-only. Return to your own session to approve time.</p> : null}
     {error ? <p role="alert" className="approval-period-error">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
     {loading ? <p role="status">Loading all authorized time in this period…</p> : <>
       {total > rows.length ? <p role="status">Showing the first {rows.length} of {total} units. Approve this reviewed batch, then refresh for the remaining time.</p> : null}
-      <label className="approval-period-select"><input type="checkbox" checked={all} disabled={!rows.length || busy || readOnly} onChange={() => { setSelected(all ? new Set() : new Set(rows.map(key))); setReviewing(false); }} />
-        {total > rows.length ? 'Select all loaded time' : `Select all ${kind}`} ({rows.length})</label>
-      {!rows.length ? <p>No unapproved time at this stage in the selected period.</p> : <div className="approval-period-table"><table><caption>Authorized unapproved time</caption><thead><tr><th scope="col">Select</th><th scope="col">Employee</th><th scope="col">Date</th><th scope="col">Work</th><th scope="col">Hours</th></tr></thead>
-        <tbody>{rows.map(item => <tr key={key(item)}><td><input type="checkbox" aria-label={`Select ${item.resourceName}, ${item.workDate}, ${item.projectCodes || 'employee day'}`} checked={selected.has(key(item))} disabled={busy || readOnly} onChange={() => toggle(item)} /></td>
-          <th scope="row">{item.resourceName}</th><td>{item.workDate}</td><td>{item.projectNames || item.projectCodes || 'Non-project time'}<small>{stage === 'pm' ? 'This project scope only' : 'All submitted entries for this employee day'}</small></td><td>{hours(item.totalHours)}</td></tr>)}</tbody></table></div>}
+      <div className="approval-period-selection"><label className="approval-period-select"><input type="checkbox" checked={all} disabled={!rows.length || busy || readOnly} onChange={() => { setSelected(all ? new Set() : new Set(rows.map(key))); setReviewing(false); }} />
+        {total > rows.length ? 'Select all loaded time' : `Select all ${kind}`} ({rows.length})</label><button type="button" disabled={!chosen.length || busy} onClick={() => { setSelected(new Set()); setReviewing(false); }}>Clear selection</button></div>
+      {!rows.length ? <p>No unapproved time at this stage in the selected period.</p> : <div className="approval-period-table"><table><caption className="approval-visually-hidden">Authorized unapproved time</caption><thead><tr><th scope="col">Select</th><th scope="col">Employee</th><th scope="col">Date</th><th scope="col">Work</th><th scope="col">Hours</th><th scope="col">Status</th></tr></thead>
+        <tbody>{rows.map(item => <tr key={key(item)} data-selected={selected.has(key(item))}><td><input type="checkbox" aria-label={`Select ${item.resourceName}, ${item.workDate}, ${item.projectCodes || 'employee day'}`} checked={selected.has(key(item))} disabled={busy || readOnly} onChange={() => toggle(item)} /></td>
+          <th scope="row">{item.resourceName}</th><td>{item.workDate}</td><td>{item.projectNames || item.projectCodes || 'Non-project time'}<small>{stage === 'pm' ? 'This project scope only' : 'All submitted entries for this employee day'}</small></td><td>{hours(item.totalHours)}</td><td><span className="approval-period-badge">Awaiting {stage === 'manager' ? 'manager' : 'PM / coordinator'}</span></td></tr>)}</tbody></table></div>}
       <footer><strong>{chosen.length} selected · {hours(chosen.reduce((sum, item) => sum + Number(item.totalHours), 0))} hours</strong>
-        {!reviewing ? <button type="button" disabled={!chosen.length || busy || readOnly} onClick={() => setReviewing(true)}>Review selected approvals</button> : <div role="region" aria-label="Confirm selected approvals">
+        {!reviewing ? <button type="button" disabled={!chosen.length || busy || readOnly} onClick={() => setReviewing(true)} className="approval-period-primary">Review selected ({chosen.length})</button> : <div role="region" aria-label="Confirm selected approvals">
           <p>Complete {stage === 'manager' ? 'Manager' : 'PM / coordinator'} approval for these {chosen.length} units? This will be recorded under your account. Newly submitted time is excluded.</p>
           <button type="button" disabled={busy || readOnly} onClick={approve}>{busy ? 'Approving…' : 'Confirm approval'}</button>
           <button type="button" disabled={busy} onClick={() => setReviewing(false)}>Keep reviewing</button></div>}

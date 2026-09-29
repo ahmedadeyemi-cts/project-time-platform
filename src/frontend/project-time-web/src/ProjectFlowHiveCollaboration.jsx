@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { flowHiveErrorText } from './flowhive-plan-request.js';
+import { flowHiveErrorText, optionalGuid } from './flowhive-plan-request.js';
 import './project-flowhive-collaboration.css';
 
 const emptyContact={displayName:'',email:'',phone:'',title:'',organization:'',contactKind:'customer',isActive:true};
@@ -23,7 +23,8 @@ export default function ProjectFlowHiveCollaboration({projectId,data,error,canMa
     finally{pending.current=false;if(alive.current)setBusy('');}
   }
   async function saveContact(e){e.preventDefault();await run('contact',async()=>{
-    await postJson(`/api/project-flowhive/projects/${projectId}/contacts`,contact);
+    const result=await postJson(`/api/project-flowhive/projects/${projectId}/contacts`,{...contact,projectContactId:optionalGuid(contact.projectContactId,'Contact'),expectedRowVersion:optionalGuid(contact.expectedRowVersion,'Contact version')});
+    if(result.projectId!==projectId || !optionalGuid(result.projectContactId,'Saved contact') || !optionalGuid(result.rowVersion,'Saved contact version')) throw new Error('The saved contact could not be verified. Refresh the project contacts before retrying.');
     if(alive.current){setContact(null);setNotice('Project contact saved. No account, access permission or invitation was created.');}
   });}
   async function archiveContact(person){if(!window.confirm(`Archive ${person.displayName} from this project? Existing history will be retained.`))return;

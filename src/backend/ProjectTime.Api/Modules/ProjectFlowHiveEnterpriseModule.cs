@@ -1218,18 +1218,25 @@ internal static partial class ProjectFlowHiveEnterpriseModule
     private static async Task<object?> LoadWorkingCopyAsync(NpgsqlConnection connection, Guid projectId, CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand("""
-            SELECT plan_id,working_payload::text,working_revision,row_version,updated_by_user_id,created_at,updated_at
-            FROM project_flowhive_working_copies WHERE project_id=@project_id;
+            SELECT wc.plan_id,wc.working_payload::text,wc.working_revision,wc.row_version,wc.updated_by_user_id,wc.created_at,wc.updated_at,
+                   COALESCE(p.start_date,(p.created_at AT TIME ZONE 'UTC')::date)
+            FROM project_flowhive_working_copies wc JOIN projects p ON p.project_id=wc.project_id
+            WHERE wc.project_id=@project_id;
             """, connection);
         command.Parameters.AddWithValue("project_id", projectId);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken)) return null;
+        var workingPlan=JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(1),Json);
+        // Older drafts may predate a project start date. Keep explicit planning dates;
+        // derive only the missing anchor from the canonical project creation date.
+        if(workingPlan is not null && workingPlan.ProjectStartDate is null && !reader.IsDBNull(7))
+            workingPlan=workingPlan with {ProjectStartDate=reader.GetFieldValue<DateOnly>(7)};
         return new
         {
             planId = reader.IsDBNull(0) ? (Guid?)null : reader.GetGuid(0),
-            plan = ParseJson(reader.GetString(1)),
-            schedule = ProjectFlowHiveScheduleEngine.Calculate(JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(1), Json)),
-            validation = ProjectFlowHiveScheduleEngine.Validate(JsonSerializer.Deserialize<ProjectFlowHivePlanRequest>(reader.GetString(1), Json)),
+            plan = workingPlan,
+            schedule = ProjectFlowHiveScheduleEngine.Calculate(workingPlan),
+            validation = ProjectFlowHiveScheduleEngine.Validate(workingPlan),
             workingRevision = reader.GetInt32(2),
             rowVersion = reader.GetGuid(3),
             updatedByUserId = reader.GetGuid(4),

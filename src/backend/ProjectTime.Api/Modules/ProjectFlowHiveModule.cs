@@ -667,7 +667,7 @@ public static class ProjectFlowHiveModule
                 p.project_name,
                 COALESCE(c.client_name, 'No customer') AS customer_name,
                 p.status,
-                p.start_date,
+                COALESCE(p.start_date, (p.created_at AT TIME ZONE 'UTC')::date) AS start_date,
                 p.end_date,
                 COALESCE(pm.display_name, pm.email, 'Unassigned') AS project_manager_name,
                 COALESCE(ae.display_name, ae.email, 'Unassigned') AS account_executive_name,

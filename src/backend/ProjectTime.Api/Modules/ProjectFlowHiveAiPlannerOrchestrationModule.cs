@@ -975,7 +975,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                    COALESCE(project.project_code,''),
                    COALESCE(project.project_name,''),
                    COALESCE(client.client_name,''),
-                   project.start_date,
+                   COALESCE(project.start_date, (project.created_at AT TIME ZONE 'UTC')::date),
                    project.end_date
               FROM projects project
               LEFT JOIN clients client ON client.client_id=project.client_id

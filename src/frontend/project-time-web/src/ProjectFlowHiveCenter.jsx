@@ -367,6 +367,11 @@ export default function ProjectFlowHiveCenter() {
   const [sharingError, setSharingError] = useState(null);
   const sharingRequestInFlight = useRef(false);
   const [dirty, setDirtyState] = useState(false);
+  const [needsVersion, setNeedsVersion] = useState(true);
+  const [saveCompletion, setSaveCompletion] = useState(0);
+  const [autosaveStatus, setAutosaveStatus] = useState('saved');
+  const autosaveAttempt = useRef(-1);
+  const autosaveConflict = useRef(false);
   const projectRef = useRef(selectedProjectId);
   projectRef.current = selectedProjectId;
   const editEpoch = useRef(0);
@@ -385,7 +390,7 @@ export default function ProjectFlowHiveCenter() {
   const [plannerObserved, setPlannerObserved] = useState(false);
   const [plannerRequestStartedAt, setPlannerRequestStartedAt] = useState(null);
   function setDirty(value) {
-    if (value === true) editEpoch.current += 1;
+    if (value === true) { editEpoch.current += 1; setAutosaveStatus(autosaveConflict.current ? 'error' : 'pending'); setNeedsVersion(true); }
     setDirtyState(value);
   }
   function chooseProject(projectId, openProject = false) {
@@ -395,7 +400,7 @@ export default function ProjectFlowHiveCenter() {
       projectRef.current = projectId;
       editEpoch.current += 1;
       loadedWorkingVersion.current = null;
-      workingCopyReady.current = false; displayingVersion.current = null; selectionEpoch.current += 1;
+      workingCopyReady.current = false; displayingVersion.current = null; selectionEpoch.current += 1; autosaveConflict.current = false; autosaveAttempt.current = -1;
       setEnterprise(null); setControls(defaultControls); setShareDraft({ ...defaultShareDraft }); setSharingError(null); sharingRequestInFlight.current = false; setFinancials(null); setLatestShareUrl(''); setBusy('');
       setSelectedProjectId(projectId);
       setDraftPlan(null); setSchedule(null); setValidation(null); setAiPreview(null); setDirty(false);
@@ -508,6 +513,7 @@ export default function ProjectFlowHiveCenter() {
         setSchedule(result.workingCopy.schedule || null);
         setValidation(result.workingCopy.validation || null);
         loadedWorkingVersion.current = result.workingCopy.rowVersion;
+        autosaveConflict.current = false; setAutosaveStatus('saved'); setNeedsVersion(true);
         setCollapsedPhases(new Set());
         setDirty(false);
         setNotice(`Loaded project planning working-copy revision ${result.workingCopy.workingRevision}.`);
@@ -615,6 +621,41 @@ export default function ProjectFlowHiveCenter() {
     (schedule?.tasks || []).map((task) => [task.wbsNumber, task])
   ), [schedule]);
 
+  // One write at a time; preserve edits made while a save is in flight. A conflict
+  // requires an explicit reload instead of silently overwriting another editor.
+  useEffect(() => {
+    if (!dirty || !canEditPlanner || busy || automaticPlanRunning || !workingCopyReady.current
+        || autosaveConflict.current || autosaveAttempt.current === editEpoch.current) return;
+    const timer = window.setTimeout(() => { void saveWorkingCopy(); }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [draftPlan, dirty, canEditPlanner, busy, automaticPlanRunning, saveCompletion]);
+
+  useEffect(() => {
+    if (!dirty || !draftPlan || !canEditPlanner || automaticPlanRunning) return;
+    const isCurrent = captureWorkspaceOperation(true);
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const result = await postJson('/api/project-flowhive/schedule/calculate', draftPlan, controller.signal);
+        if (!controller.signal.aborted && isCurrent()) {
+          setSchedule(result); setValidation({ valid: result.valid === true, issues: result.issues || [] });
+        }
+      } catch (failure) {
+        if (!controller.signal.aborted && isCurrent()) {
+          setSchedule(null); setValidation({valid:false,issues:failure.responseBody?.issues || [{path:'Schedule',message:flowHiveErrorText(failure)}]});
+        }
+      }
+    }, 700);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [draftPlan, dirty, canEditPlanner, automaticPlanRunning]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = event => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
+
   const identityOptions = useMemo(() => {
     const values=new Map();
     assignments.filter(item=>item.projectId===selectedProjectId).forEach(item=>{if(item.resourceUserId)values.set(item.resourceUserId,{userId:item.resourceUserId,displayName:item.resourceName || 'Team member',email:item.resourceEmail || '',role:'Project team'});});
@@ -662,7 +703,7 @@ export default function ProjectFlowHiveCenter() {
     setDraftPlan((current) => {
       if (!current) return current;
       const nextTasks = current.tasks.map((task, taskIndex) => taskIndex === index
-        ? { ...task, [field]: value }
+        ? { ...task, [field]: value, ...(field === 'durationWorkingDays' ? { estimatedFinishDate: null } : {}) }
         : task);
       return { ...current, tasks: nextTasks };
     });
@@ -762,7 +803,7 @@ export default function ProjectFlowHiveCenter() {
     setDraftPlan((current) => {
       if (!current) return current;
       const nextTasks = current.tasks.map((task, taskIndex) => taskIndex === index
-        ? { ...task, constraintType: value ? 'SNET' : 'ASAP', constraintDate: value || null }
+        ? { ...task, constraintType: value ? 'SNET' : 'ASAP', constraintDate: value || null, estimatedStartDate: value || null, estimatedFinishDate: null }
         : task);
       return { ...current, tasks: nextTasks };
     });
@@ -776,9 +817,10 @@ export default function ProjectFlowHiveCenter() {
     setDraftPlan((current) => {
       if (!current) return current;
       const task = current.tasks[index];
-      const start = task.constraintDate || scheduledStart || current.projectStartDate;
+      const start = scheduledStart || task.constraintDate || task.estimatedStartDate || current.projectStartDate;
+      if (!start || value < start) { setError('Choose an end date on or after the task start.'); return current; }
       const durationWorkingDays = workingDaysInclusive(start, value);
-      return { ...current, tasks: current.tasks.map((candidate, taskIndex) => taskIndex === index ? { ...candidate, durationWorkingDays } : candidate) };
+      return { ...current, tasks: current.tasks.map((candidate, taskIndex) => taskIndex === index ? { ...candidate, durationWorkingDays, estimatedStartDate: start, estimatedFinishDate: value } : candidate) };
     });
     setSchedule(null);
     setDirty(true);
@@ -788,6 +830,7 @@ export default function ProjectFlowHiveCenter() {
     const isCurrent = captureWorkspaceOperation(false);
     if (!draftPlan || !selectedProjectId || !canEditPlanner || busy || workingSavePending.current) return;
     workingSavePending.current=true;
+    autosaveAttempt.current=editEpoch.current; setAutosaveStatus('saving');
     const projectId = selectedProjectId;
     const startedEdit = editEpoch.current;
     setBusy('working-copy');
@@ -800,15 +843,18 @@ export default function ProjectFlowHiveCenter() {
       if(!result.rowVersion || !optionalGuid(result.rowVersion,'savedRowVersion'))throw new Error('The save result could not be verified. Reload the saved working copy before retrying.');
       loadedWorkingVersion.current = result.rowVersion;
       if(editEpoch.current===startedEdit){setSchedule(result.schedule || null);setValidation(result.validation || null);}
-      if (editEpoch.current === startedEdit) setDirty(false);
+      if (editEpoch.current === startedEdit) { setDirty(false); setAutosaveStatus('saved'); }
+      else setAutosaveStatus('pending');
       setNotice(`Project planning working-copy revision ${result.workingRevision} saved. The canonical project and immutable plan history were not changed.`);
       await loadEnterpriseWorkspace(selectedProjectId, false);
       if (!isCurrent()) return;
     } catch (actionError) {
       if (!isCurrent()) return;
+      if (actionError.status === 409) autosaveConflict.current = true;
+      setAutosaveStatus('error');
       showRequestError(actionError);
     } finally {
-      workingSavePending.current=false;
+      workingSavePending.current=false; setSaveCompletion(value => value + 1);
       if (isCurrent()) setBusy('');
     }
   }
@@ -1046,7 +1092,7 @@ export default function ProjectFlowHiveCenter() {
       const result = await postJson('/api/project-flowhive/plans/drafts', draftPlan);
       if (!isCurrent()) return;
       setDraftPlan((current) => current ? { ...current, planId: result.planId } : current);
-      if (savedEdit === editEpoch.current) setDirty(false);
+      if (savedEdit === editEpoch.current) { setDirty(false); setNeedsVersion(false); setAutosaveStatus('saved'); }
       setNotice(`FlowHive draft version ${result.version} was saved with immutable schedule and validation evidence.`);
       const plansResult = await getJson('/api/project-flowhive/plans');
       if (!isCurrent()) return;
@@ -1091,7 +1137,7 @@ export default function ProjectFlowHiveCenter() {
 
   async function establishBaseline() {
     const isCurrent = captureWorkspaceOperation(false);
-    if (!draftPlan?.planId) return;
+    if (!draftPlan?.planId || dirty || needsVersion || !schedule?.valid) return;
     const current = savedPlans.find((plan) => plan.planId === draftPlan.planId);
     setBusy('baseline');
     setError(''); setRequestIssues([]);
@@ -1126,7 +1172,7 @@ export default function ProjectFlowHiveCenter() {
       plannerObservation.current?.abort(); editEpoch.current += 1;
       displayingVersion.current = { projectId: result.summary.projectId, planId };
       projectRef.current = result.summary.projectId;
-      setDraftPlan(result.plan); setSchedule(result.schedule); setValidation(result.validation);
+      setDraftPlan(result.plan); setSchedule(result.schedule); setValidation(result.validation); setNeedsVersion(false);
       setSelectedProjectId(result.summary.projectId); setAiPreview(null);
       setNotice(`Loaded immutable FlowHive version ${result.summary.currentVersion}. Changes remain a working draft until explicitly saved.`);
       setDirty(false); setActiveView('planner'); setBusy('');
@@ -1463,9 +1509,10 @@ export default function ProjectFlowHiveCenter() {
             <button type="button" onClick={validatePlan} disabled={!selectedProjectId || busy}>Validate</button>
             <button type="button" onClick={calculateSchedule} disabled={!draftPlan || busy}>Calculate schedule</button>
             <button type="button" onClick={saveDraft} disabled={!draftPlan || busy || !canEditPlanner}>{busy === 'save' ? 'Saving…' : 'Save immutable version'}</button>
-            <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || busy || !canAdoptBaseline || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button><button type="button" onClick={deleteSavedPlan} disabled={!draftPlan?.planId || busy || !canEditPlanner || Boolean(savedPlans.find((plan) => plan.planId === draftPlan?.planId)?.baselineVersion)}>{busy === 'delete-plan' ? 'Deleting…' : 'Delete plan / Start over'}</button>
+            <button type="button" onClick={establishBaseline} disabled={!draftPlan?.planId || dirty || needsVersion || !schedule?.valid || busy || !canAdoptBaseline || baselineNote.trim().length < 10}>{busy === 'baseline' ? 'Approving…' : 'Establish reviewed baseline'}</button><button type="button" onClick={deleteSavedPlan} disabled={!draftPlan?.planId || busy || !canEditPlanner || Boolean(savedPlans.find((plan) => plan.planId === draftPlan?.planId)?.baselineVersion)}>{busy === 'delete-plan' ? 'Deleting…' : 'Delete plan / Start over'}</button>
           </div>
-          <FlowHiveSaveBar dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={canEditPlanner} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
+          <p className="flowhive-baseline-guidance">{!schedule?.valid ? 'Resolve the schedule issues below before saving a baseline.' : needsVersion ? 'Schedule ready. Save an immutable version, review it, then establish the baseline for customer sharing.' : 'Saved version ready for baseline review. Customer sharing uses only the reviewed baseline.'}</p>
+          <FlowHiveSaveBar autosaveStatus={autosaveStatus} dirty={dirty} workingCopy={enterprise?.workingCopy} canManage={canEditPlanner} busy={busy} onSaveWorkingCopy={saveWorkingCopy} onSaveVersion={saveDraft} />
           <div className="flowhive-plan-metadata">
             <label>Saved FlowHive plan<select value={draftPlan?.planId || ''} onChange={(event) => loadSavedPlan(event.target.value)}><option value="">{enterprise?.workingCopy ? 'Current working copy — not yet versioned' : 'New unsaved plan'}</option>{savedPlans.filter((plan) => !selectedProjectId || plan.projectId === selectedProjectId).map((plan) => <option key={plan.planId} value={plan.planId}>{plan.planName} · v{plan.currentVersion}{plan.baselineVersion ? ` · baseline v${plan.baselineVersion}` : ''}</option>)}</select></label>
             <label>Baseline review note<input value={baselineNote} onChange={(event) => setBaselineNote(event.target.value)} placeholder="Required reviewer decision note" /></label>
@@ -1511,7 +1558,7 @@ export default function ProjectFlowHiveCenter() {
                 })}</div>
               </section>
               {(draftPlan.milestones || []).length ? <details className="flowhive-milestone-disclosure"><summary>Project milestones ({draftPlan.milestones.length})</summary><section className="flowhive-milestone-list"><header><div><h3>Project milestones</h3><p>Source-backed release and acceptance gates. Target dates are calculated from predecessor tasks.</p></div><strong>{draftPlan.milestones.length}</strong></header><div>{draftPlan.milestones.map((milestone) => <article key={milestone.clientMilestoneId}><div><span>{milestone.predecessorWbs}</span><h4>{milestone.name}</h4></div><p>{milestone.description}</p><small>{formatDate(milestone.targetDate)} · {(milestone.citationIds || []).length} citation(s)</small></article>)}</div></section></details> : null}
-              <section className="flowhive-cpm-summary" aria-label="Critical Path Method"><div><strong>Critical Path Method (CPM)</strong><p>{schedule?.valid ? `${schedule.tasks.filter(t=>!t.isSummary && t.isCritical).length} critical tasks · zero total float controls the calculated finish.` : 'Calculate the schedule to refresh dependencies, critical tasks and float after edits.'}</p><small>Weekdays only. Holidays, PTO and resource leveling are not applied.</small></div><div><label><input type="checkbox" checked={criticalOnly && Boolean(schedule?.valid)} disabled={!schedule?.valid} onChange={e=>setCriticalOnly(e.target.checked)} />Critical tasks only</label><button type="button" onClick={()=>setActiveView('timeline')}>View critical path & float</button></div></section>
+              <section className="flowhive-cpm-summary" aria-label="Critical Path Method"><div><strong>Critical Path Method (CPM)</strong><p>{schedule?.valid ? `${schedule.tasks.filter(t=>!t.isSummary && t.isCritical).length} critical tasks · zero total float controls the calculated finish.` : 'Calculate the schedule to refresh dependencies, critical tasks and float after edits.'}</p><small>Weekdays only. Holidays, PTO and resource leveling are not applied.</small></div><div><label><input type="checkbox" checked={criticalOnly && Boolean(schedule?.valid)} disabled={!schedule?.valid} onChange={e=>setCriticalOnly(e.target.checked)} />Critical tasks only</label><button type="button" disabled={Boolean(busy)} onClick={calculateSchedule}>Recalculate schedule</button><button type="button" onClick={()=>{setActiveView('timeline'); if(!schedule && !busy) void calculateSchedule();}}>View critical path & float</button></div></section>
               <div className="flowhive-table-heading"><div><h3>AI Planner work breakdown</h3><p>Expand each phase and task for complete steps, inputs, outputs, validation, acceptance, responsibilities, risks, questions, and private citations. Use the Add task action on the Plan, Design, Implement, Validate, or Release phase header. Drag tasks to reorder or move them between phases.</p></div></div>
               <div className="flowhive-table-wrap">
                 <table className="flowhive-task-table flowhive-planner-table flowhive-smartsheet-table">
@@ -1542,8 +1589,8 @@ export default function ProjectFlowHiveCenter() {
                         <tr className={`flowhive-work-row phase-${String(task.phase || '').toLowerCase()} ${draggedTaskWbs === task.wbsNumber ? 'dragging' : ''}`} draggable={Boolean(enterprise?.access?.canManage)} onDragStart={() => setDraggedTaskWbs(task.wbsNumber)} onDragEnd={() => setDraggedTaskWbs('')} onDragOver={(event) => event.preventDefault()} onDrop={() => dropTask(task.wbsNumber, task.parentWbsNumber, 'before')}>
                           <td><span className="flowhive-wbs-child" title="Drag this row to reorder or move it to another phase"><span aria-hidden="true">⋮⋮</span>{task.wbsNumber}</span></td>
                           <td><div className="flowhive-task-name-control"><input aria-label={`Task ${task.wbsNumber} name`} value={task.name} onChange={(event) => updateTask(index, 'name', event.target.value)} /><button type="button" className="flowhive-inline-detail-button" onClick={() => setExpandedTaskWbs(detailOpen ? '' : task.wbsNumber)} aria-expanded={detailOpen}>{detailOpen ? 'Close details' : 'Task details'}</button><button type="button" className="danger-quiet" disabled={!enterprise?.access?.canManage} onClick={() => deleteTask(task.wbsNumber)}>Delete</button></div><small className="flowhive-task-description-preview" title={task.description}>{task.description}</small>{scheduledTask?.isCritical && schedule?.valid ? <span className="flowhive-cpm-label">Critical path · {scheduledTask.totalFloatWorkingDays}d float</span> : null}</td>
-                          <td><input className="flowhive-date-cell" aria-label={`Start date for ${task.name}`} type="date" value={task.constraintDate || scheduledTask?.startDate || ''} onChange={(event) => updateTaskStartDate(index, event.target.value)} /></td>
-                          <td><input className="flowhive-date-cell" aria-label={`End date for ${task.name}`} type="date" min={task.constraintDate || scheduledTask?.startDate || draftPlan.projectStartDate || undefined} value={scheduledTask?.endDate || ''} onChange={(event) => updateTaskEndDate(index, event.target.value, scheduledTask?.startDate)} /></td>
+                          <td><input className="flowhive-date-cell" aria-label={`Start date for ${task.name}`} type="date" value={task.constraintDate || scheduledTask?.startDate || task.estimatedStartDate || draftPlan.projectStartDate || ''} onChange={(event) => updateTaskStartDate(index, event.target.value)} /></td>
+                          <td><input className="flowhive-date-cell" aria-label={`End date for ${task.name}`} type="date" min={task.constraintDate || scheduledTask?.startDate || draftPlan.projectStartDate || undefined} value={scheduledTask?.endDate || task.estimatedFinishDate || ''} onChange={(event) => updateTaskEndDate(index, event.target.value, scheduledTask?.startDate)} /></td>
                           <td><div className="flowhive-duration-cell"><input aria-label={`Duration for ${task.name}`} type="number" min="1" max="730" value={task.durationWorkingDays} onChange={(event) => updateTask(index, 'durationWorkingDays', Number(event.target.value))} /><span>day(s)</span></div></td>
                           <td><div className="flowhive-duration-cell"><input aria-label={`Progress for ${task.name}`} type="number" min="0" max="100" value={task.percentComplete || 0} onChange={(event) => updateTask(index, 'percentComplete', Number(event.target.value))} /><span>%</span></div></td>
                           <td><select value={dependency?.predecessorWbs || ''} onChange={(event) => updateDependencyForTask(index, 'predecessorWbs', event.target.value)}><option value="">Start</option>{draftPlan.tasks.filter((option) => !option.isSummary && option.wbsNumber !== task.wbsNumber).map((option) => <option key={option.wbsNumber} value={option.wbsNumber}>{option.wbsNumber}</option>)}</select></td>

@@ -8,7 +8,7 @@ internal static partial class ProjectFlowHiveEnterpriseModule
     private static void MapCollaborationEndpoints(WebApplication app)
     {
         app.MapGet("/api/project-flowhive/projects/{projectId:guid}/collaboration",(Func<Guid,HttpContext,CancellationToken,Task<IResult>>)GetCollaborationAsync);
-        app.MapPost("/api/project-flowhive/projects/{projectId:guid}/contacts",(Func<Guid,FlowHiveContactRequest,HttpContext,CancellationToken,Task<IResult>>)SaveProjectContactAsync);
+        app.MapPost("/api/project-flowhive/projects/{projectId:guid}/contacts",(Func<Guid,HttpContext,CancellationToken,Task<IResult>>)SaveProjectContactAsync);
         app.MapPost("/api/project-flowhive/projects/{projectId:guid}/meeting-drafts",(Func<Guid,FlowHiveMeetingDraftRequest,HttpContext,CancellationToken,Task<IResult>>)CreateMeetingDraftAsync);
         app.MapGet("/api/project-flowhive/projects/{projectId:guid}/meeting-drafts/{meetingId:guid}/calendar",(Func<Guid,Guid,HttpContext,CancellationToken,Task<IResult>>)ExportMeetingDraftAsync);
     }
@@ -28,10 +28,13 @@ internal static partial class ProjectFlowHiveEnterpriseModule
             requiredMigration=ready?null:ProjectFlowHiveCollaborationStore.Migration,
             liveInvitationsAvailable=false,externalContactCreatesAccount=false,stateChanged=false});
     }
-    private static async Task<IResult> SaveProjectContactAsync(Guid projectId,FlowHiveContactRequest request,HttpContext context,CancellationToken token)
+    private static async Task<IResult> SaveProjectContactAsync(Guid projectId,HttpContext context,CancellationToken token)
     {
         var opened=await OpenAuthorizedAsync(projectId,context,FlowHiveAccessRequirement.AdministerPlanner,token);
         if(opened.Error is not null)return opened.Error;await using var c=opened.Connection!;
+        var read=await ProjectFlowHiveRequestReader.ReadContactAsync(context,token);
+        if(read.Error is not null)return read.Error;
+        var request=read.Request!;
         if(!await ProjectFlowHiveCollaborationStore.ReadyAsync(c,token))return CollaborationMigrationRequired();
         await using var tx=await c.BeginTransactionAsync(token);
         if(!await ProjectFlowHiveLifecycle.LockActiveAsync(c,tx,projectId,token))return ProjectFlowHiveLifecycle.Archived();
