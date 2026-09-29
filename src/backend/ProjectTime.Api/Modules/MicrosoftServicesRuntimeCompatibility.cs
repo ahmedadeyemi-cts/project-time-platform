@@ -20,10 +20,6 @@ public static class MicrosoftServicesRuntimeCompatibility
         "User.Read.All"
     };
 
-    private static readonly HashSet<string> WritePermissions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "MANAGE_ENTRA_SECRET"
-    };
 
     public static WebApplication MapMicrosoftServicesRuntimeProfileEndpoints(this WebApplication app)
     {
@@ -300,13 +296,13 @@ public static class MicrosoftServicesRuntimeCompatibility
             }
 
             var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
-            if (!administrator && !permissions.Any(WritePermissions.Contains))
+            if (!administrator)
             {
                 return new(null, Results.Json(new
                 {
                     module = "065",
                     status = "microsoft_integration_manage_access_required",
-                    message = "Manage Microsoft Integration authority is required."
+                    message = "Permanent Super Administrator authority is required to change Microsoft identity profiles."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
             return new(new(userId.Value), null);

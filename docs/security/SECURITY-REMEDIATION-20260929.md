@@ -24,6 +24,15 @@ The active protected deployment workflow and its exact registration remain uncha
 - The existing contract approval/funding database suite passes all 41 cases, including wrong-customer and ineligible funding rejection.
 - Further native CI and live acceptance are still required. The deployment access device was offline at the continuation checkpoint; no deployment was attempted.
 
+## Latest authorization verification
+
+- Microsoft services profile activation and SSO profile/secret writes now require permanent Super Administrator authority; delegated mail/system permissions cannot substitute for it.
+- All five production-resilience routes require administrator-role admission. The 83-check frontend/source contract now asserts the stronger boundary.
+- Actual authorization resolvers and contract handlers pass 16 database-backed cases. Coverage includes delegated privilege rejection, authorized reads, View-As, revoked administrator assignments, contract-balance reads and contract usage writes.
+- Full local run:14 authority,16 privileged integration,15 identity/session,64 completion,45 route and58 existing authorization checks passed against an isolated PostgreSQL-compatible engine. Native PostgreSQL validation remains required for this latest change, especially concurrent behavior.
+- The prior pushed checkpoint passed68 of72 returned workflows at inspection; one was running and three historical registration failures are addressed in this follow-up. All121 admission tests passed locally without removing assertions. No live deployment occurred.
+- Current dispositions:37 prior source repairs,92 candidate repairs with incomplete validation,20 further remediation/review. Zero findings are closed through UAT.
+
 ## All-finding disposition
 
 Numbering maps to the restricted report. Source notes and exploit details remain private. Every row requires deployed validation.
@@ -58,11 +67,11 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 026 | Prior source fix; UAT unverified | Not established |
 | 027 | Candidate repair; incomplete validation | Not established |
 | 028 | Prior source fix; UAT unverified | Not established |
-| 029 | Further remediation/review required | Not established |
+| 029 | Candidate repair; incomplete validation | Not established |
 | 030 | Further remediation/review required | Not established |
 | 031 | Candidate repair; incomplete validation | Not established |
 | 032 | Candidate repair; incomplete validation | Not established |
-| 033 | Further remediation/review required | Not established |
+| 033 | Candidate repair; incomplete validation | Not established |
 | 034 | Prior source fix; UAT unverified | Not established |
 | 035 | Candidate repair; incomplete validation | Not established |
 | 036 | Candidate repair; incomplete validation | Not established |
@@ -95,7 +104,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 063 | Further remediation/review required | Not established |
 | 064 | Candidate repair; incomplete validation | Not established |
 | 065 | Further remediation/review required | Not established |
-| 066 | Further remediation/review required | Not established |
+| 066 | Candidate repair; incomplete validation | Not established |
 | 067 | Candidate repair; incomplete validation | Not established |
 | 068 | Candidate repair; incomplete validation | Not established |
 | 069 | Further remediation/review required | Not established |
@@ -106,7 +115,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 074 | Prior source fix; UAT unverified | Not established |
 | 075 | Candidate repair; incomplete validation | Not established |
 | 076 | Candidate repair; incomplete validation | Not established |
-| 077 | Further remediation/review required | Not established |
+| 077 | Candidate repair; incomplete validation | Not established |
 | 078 | Candidate repair; incomplete validation | Not established |
 | 079 | Candidate repair; incomplete validation | Not established |
 | 080 | Candidate repair; incomplete validation | Not established |
@@ -115,10 +124,10 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 083 | Candidate repair; incomplete validation | Not established |
 | 084 | Candidate repair; incomplete validation | Not established |
 | 085 | Candidate repair; incomplete validation | Not established |
-| 086 | Further remediation/review required | Not established |
+| 086 | Candidate repair; incomplete validation | Not established |
 | 087 | Candidate repair; incomplete validation | Not established |
-| 088 | Further remediation/review required | Not established |
-| 089 | Further remediation/review required | Not established |
+| 088 | Candidate repair; incomplete validation | Not established |
+| 089 | Candidate repair; incomplete validation | Not established |
 | 090 | Candidate repair; incomplete validation | Not established |
 | 091 | Candidate repair; incomplete validation | Not established |
 | 092 | Candidate repair; incomplete validation | Not established |
@@ -143,7 +152,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 111 | Candidate repair; incomplete validation | Not established |
 | 112 | Candidate repair; incomplete validation | Not established |
 | 113 | Candidate repair; incomplete validation | Not established |
-| 114 | Further remediation/review required | Not established |
+| 114 | Candidate repair; incomplete validation | Not established |
 | 115 | Candidate repair; incomplete validation | Not established |
 | 116 | Further remediation/review required | Not established |
 | 117 | Candidate repair; incomplete validation | Not established |
@@ -170,7 +179,7 @@ Numbering maps to the restricted report. Source notes and exploit details remain
 | 138 | Candidate repair; incomplete validation | Not established |
 | 139 | Prior source fix; UAT unverified | Not established |
 | 140 | Candidate repair; incomplete validation | Not established |
-| 141 | Further remediation/review required | Not established |
+| 141 | Candidate repair; incomplete validation | Not established |
 | 142 | Candidate repair; incomplete validation | Not established |
 | 143 | Prior source fix; UAT unverified | Not established |
 | 144 | Candidate repair; incomplete validation | Not established |

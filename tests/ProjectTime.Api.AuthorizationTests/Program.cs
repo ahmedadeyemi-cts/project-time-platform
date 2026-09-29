@@ -486,6 +486,7 @@ await ExpectResolutionAsync(
     WorkRegisterProjectIdResolutionStatus.Unsupported);
 
 await SecurityConsolidationTests.RunAsync();
+await PrivilegedIntegrationTests.RunAsync();
 await SecurityDatabaseTests.RunAsync();
 await SecurityCompletionTests.RunAsync();
 await SecurityRouteTests.RunAsync();

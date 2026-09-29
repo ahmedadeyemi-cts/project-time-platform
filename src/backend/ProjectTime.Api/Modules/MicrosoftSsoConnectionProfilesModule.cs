@@ -27,14 +27,6 @@ public static class MicrosoftSsoConnectionProfilesModule
         "MANAGE_GLOBAL_MAIL"
     };
 
-    private static readonly HashSet<string> WritePermissions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "SYSTEM_ADMINISTRATION",
-        "MANAGE_ALL",
-        "MANAGE_ENTRA_SECRET",
-        "MANAGE_GLOBAL_MAIL_CONFIGURATION",
-        "MANAGE_GLOBAL_MAIL"
-    };
 
     public static WebApplication MapMicrosoftSsoConnectionProfileEndpoints(this WebApplication app)
     {
@@ -690,7 +682,7 @@ public static class MicrosoftSsoConnectionProfilesModule
             }
 
             var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
-            var allowed = administrator || permissions.Any((write ? WritePermissions : ReadPermissions).Contains);
+            var allowed = write ? administrator : administrator || permissions.Any(ReadPermissions.Contains);
             if (!allowed)
             {
                 return new(null, Results.Json(new
@@ -698,7 +690,7 @@ public static class MicrosoftSsoConnectionProfilesModule
                     module = ModuleNumber,
                     status = write ? "microsoft_integration_manage_access_required" : "microsoft_integration_access_required",
                     message = write
-                        ? "Manage Microsoft Integration authority is required."
+                        ? "Permanent Super Administrator authority is required to change Microsoft identity profiles."
                         : "Microsoft Integration access is required."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }

@@ -3097,6 +3097,13 @@ public static class ContractsPrepaidManagementModule
 
     private static string ConnectionString()
     {
+        foreach (var name in new[] { "ConnectionStrings__DefaultConnection", "ConnectionStrings__ProjectPulse",
+                     "ConnectionStrings__ProjectTime", "PROJECTPULSE_CONNECTION_STRING", "PROJECTTIME_DATABASE_CONNECTION" })
+        {
+            var configured = Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrWhiteSpace(configured)) return configured;
+        }
+
         var host =
             Environment.GetEnvironmentVariable("PTP_DB_HOST");
         var port =

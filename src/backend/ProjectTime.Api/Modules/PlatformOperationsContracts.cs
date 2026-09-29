@@ -117,7 +117,8 @@ public static partial class PlatformOperationsModule
 
     private static async Task<AuthorizationOutcome> AuthorizeAsync(
         HttpContext context,
-        bool requireOwnSession = false)
+        bool requireOwnSession = false,
+        bool administratorOnly = false)
     {
         var actualUserId = ActualSessionUserId(context);
         if (actualUserId is null)
@@ -176,14 +177,15 @@ public static partial class PlatformOperationsModule
                               'SUPER_ADMINISTRATOR',
                               'ADMINISTRATOR'
                           )
-                          OR upper(COALESCE(p.permission_code, '')) IN (
+                          OR (@allow_delegated AND upper(COALESCE(p.permission_code, '')) IN (
                               'SYSTEM_ADMINISTRATION',
                               'MANAGE_ALL'
-                          )
+                          ))
                       )
                 );
                 """, connection);
             command.Parameters.AddWithValue("user_id", actualUserId.Value);
+            command.Parameters.AddWithValue("allow_delegated", !administratorOnly);
             var allowed = Convert.ToBoolean(
                 await command.ExecuteScalarAsync(context.RequestAborted));
 
