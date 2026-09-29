@@ -90,4 +90,30 @@ foreach (var name in new[] { "word/document.xml", "xl/_rels/workbook.xml.rels" }
     RejectOffice(name, "<!DOCTYPE x [<!ENTITY ext SYSTEM 'file:///etc/passwd'>]><x>&ext;</x>", "external entity");
 RejectOffice("word/document.xml", "<p/>", "entry count", 2048);
 RejectOffice("word/document.xml", "<p>" + new string('a', 2 * 1024 * 1024) + "</p>", "compressed expansion");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><sheetData><row r='1'><c r='IV1'/></row><row r='10000'><c r='A10000'/></row></sheetData></worksheet>", "aggregate sparse rectangle without dimension");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><dimension ref='A1:A1'/><c r='IV1'/><c r='A10000'/></worksheet>", "understated dimension cannot hide sparse rectangle");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><cols><col min='1' max='16384'/></cols></worksheet>", "column metadata budget");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><mergeCells><mergeCell ref='A1:XFD1048576'/></mergeCells></worksheet>", "merged range budget");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><conditionalFormatting sqref='$A$1:$XFD$1048576'/></worksheet>", "conditional range budget");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><sheetData><row>" + string.Concat(Enumerable.Repeat("<c><v>1</v></c>", 257)) + "</row></sheetData></worksheet>", "implicit cell column budget");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><sheetData>" + string.Concat(Enumerable.Repeat("<row/>", 10001)) + "</sheetData></worksheet>", "implicit row budget");
+RejectOffice("xl/worksheets/sheet1.xml", "<worksheet><sheetData><row r='10000'><c r='IV1'/></row></sheetData></worksheet>", "row and cell geometry cannot understate the work budget");
+using (var input = Office("xl/worksheets/sheet1.xml", "<worksheet><sheetData><row><c><v>1</v></c><c><v>2</v></c></row></sheetData></worksheet>"))
+{
+    BoundedOfficeInput.Validate(input);
+    Check(input.Position == 0, "Ordinary implicit references remain supported");
+}
+using (var input = new MemoryStream())
+{
+    using (var archive = new ZipArchive(input, ZipArchiveMode.Create, true))
+        foreach (var name in new[] { "xl/worksheets/sheet1.xml", "xl/worksheets/sheet2.xml" })
+        {
+            using var writer = new StreamWriter(archive.CreateEntry(name).Open());
+            writer.Write("<worksheet><dimension ref='A1:T10000'/></worksheet>");
+        }
+    input.Position = 0;
+    try { BoundedOfficeInput.Validate(input); throw new Exception("Aggregate worksheet budget exceeded"); }
+    catch (InvalidDataException) { count++; }
+    Check(input.Position == 0, "Aggregate rejection restores stream");
+}
 Console.WriteLine($"SECURITY_BOUNDARY_TESTS=PASS assertions={count}");

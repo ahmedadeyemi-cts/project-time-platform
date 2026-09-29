@@ -254,6 +254,8 @@ public static class CrmErpIntegrationModule
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(connection, providerKey, context.RequestAborted);
+        if (providerLease is null) return ProviderBusy();
 
         try
         {
@@ -268,7 +270,12 @@ public static class CrmErpIntegrationModule
                     OR provider.health_check_url IS DISTINCT FROM @health_url
                     OR provider.oauth_authorization_url IS DISTINCT FROM @authorization_url
                     OR provider.oauth_token_url IS DISTINCT FROM @token_url
-                    OR provider.oauth_client_id IS DISTINCT FROM @client_id);
+                    OR provider.oauth_client_id IS DISTINCT FROM @client_id
+                    OR provider.auth_model IS DISTINCT FROM @auth
+                    OR provider.oauth_scopes IS DISTINCT FROM @scopes
+                    OR provider.api_key_header IS DISTINCT FROM @api_key_header
+                    OR provider.api_key_prefix IS DISTINCT FROM @api_key_prefix);
+                DELETE FROM crm_integration_oauth_states WHERE provider_key=@key;
                 """, connection, transaction))
             {
                 BindProvider(credentialBoundary, providerKey, body.Value, ActualUserId(context)!.Value);
@@ -372,6 +379,8 @@ public static class CrmErpIntegrationModule
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(connection, providerKey, context.RequestAborted);
+        if (providerLease is null) return ProviderBusy();
         var authModel = await ReadAuthModelAsync(connection, providerKey, context.RequestAborted);
         if (authModel is null) return Results.NotFound(new { module = ModuleNumber, status = "provider_not_found", message = "The integration provider was not found." });
         var credentialKind = authModel == "api_key" ? "api_key" : "oauth_client_secret";
@@ -446,10 +455,13 @@ public static class CrmErpIntegrationModule
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(connection, providerKey, context.RequestAborted);
+        if (providerLease is null) return ProviderBusy();
         var provider = await ReadProviderConfigurationAsync(connection, providerKey, context.RequestAborted);
         if (provider is null) return Results.NotFound(new { module = ModuleNumber, status = "provider_not_found", message = "The integration provider was not found." });
         if (providerKey == ConnectWiseSellContract.ProviderKey) return Invalid("ConnectWise SELL uses API-key authentication.");
         if (provider.AuthModel != "oauth2") return Invalid("This provider is configured for API-key authentication.");
+        if (!provider.IsEnabled) return Invalid("Enable the provider before connecting.");
         if (string.IsNullOrWhiteSpace(provider.OAuthClientId)
             || !TryHttpsUri(provider.OAuthAuthorizationUrl, out var authorizationUri)
             || !TryHttpsUri(provider.OAuthTokenUrl, out _))
@@ -512,11 +524,25 @@ public static class CrmErpIntegrationModule
         if (connection is null) return OAuthPage(false, "ProjectPulse integration storage is unavailable.");
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return OAuthPage(false, "Module 026 migration 034 has not been applied.");
 
+        string? pendingProvider;
+        await using (var pending = new NpgsqlCommand("""
+            SELECT provider_key FROM crm_integration_oauth_states
+            WHERE state_hash=@state_hash AND used_at IS NULL AND expires_at>NOW();
+            """, connection))
+        {
+            pending.Parameters.AddWithValue("state_hash", Sha256(state));
+            pendingProvider = (await pending.ExecuteScalarAsync(context.RequestAborted)) as string;
+        }
+        if (pendingProvider is null) return OAuthPage(false, "This OAuth request is expired, invalid, or already used.");
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(connection, pendingProvider, context.RequestAborted);
+        if (providerLease is null) return OAuthPage(false, "This provider is busy. Start the connection again after the current operation completes.");
+
         OAuthState? oauthState;
         await using (var command = new NpgsqlCommand("""
             UPDATE crm_integration_oauth_states
             SET used_at = NOW()
             WHERE crm_integration_oauth_states.state_hash = @state_hash
+              AND crm_integration_oauth_states.provider_key = @provider
               AND crm_integration_oauth_states.used_at IS NULL
               AND crm_integration_oauth_states.expires_at > NOW()
             RETURNING crm_integration_oauth_states.provider_key,
@@ -524,6 +550,7 @@ public static class CrmErpIntegrationModule
                       crm_integration_oauth_states.redirect_uri;
             """, connection))
         {
+            command.Parameters.AddWithValue("provider", pendingProvider);
             command.Parameters.AddWithValue("state_hash", Sha256(state));
             await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
             oauthState = await reader.ReadAsync(context.RequestAborted)
@@ -538,7 +565,9 @@ public static class CrmErpIntegrationModule
         if (string.IsNullOrWhiteSpace(code)) return OAuthPage(false, "The provider did not return an authorization code.");
 
         var provider = await ReadProviderConfigurationAsync(connection, oauthState.ProviderKey, context.RequestAborted);
-        if (provider is null || !TryHttpsUri(provider.OAuthTokenUrl, out var tokenUri)) return OAuthPage(false, "The provider token endpoint is not configured.");
+        if (provider is null || !provider.IsEnabled || provider.AuthModel != "oauth2")
+            return OAuthPage(false, "The provider is no longer enabled for OAuth. Start a new connection after updating its configuration.");
+        if (!TryHttpsUri(provider.OAuthTokenUrl, out var tokenUri)) return OAuthPage(false, "The provider token endpoint is not configured.");
         if (!await IsSafeExternalUriAsync(tokenUri!, context.RequestAborted)) return OAuthPage(false, "The provider token endpoint is not an approved public HTTPS address.");
 
         var encryptionKey = ReadEncryptionKey();
@@ -632,6 +661,8 @@ public static class CrmErpIntegrationModule
         await using var connection = await OpenConnectionAsync(context);
         if (connection is null) return DependencyUnavailable();
         if (!await SchemaAvailableAsync(connection, context.RequestAborted)) return SchemaUnavailable();
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(connection, providerKey, context.RequestAborted);
+        if (providerLease is null) return ProviderBusy();
         var provider = await ReadProviderConfigurationAsync(connection, providerKey, context.RequestAborted);
         if (provider is null) return Results.NotFound(new { module = ModuleNumber, status = "provider_not_found", message = "The integration provider was not found." });
         if (!provider.IsEnabled) return Invalid("Enable the provider before testing its connection.");
@@ -825,6 +856,13 @@ public static class CrmErpIntegrationModule
             """, connection);
         return await command.ExecuteScalarAsync(cancellationToken) is true;
     }
+
+    private static IResult ProviderBusy() => Results.Conflict(new
+    {
+        module = ModuleNumber,
+        status = "provider_operation_in_progress",
+        message = "A connection operation is already running for this provider. Try again when it completes."
+    });
 
     private static async Task<ProviderConfiguration?> ReadProviderConfigurationAsync(
         NpgsqlConnection connection,
