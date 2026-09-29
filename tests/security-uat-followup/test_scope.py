@@ -18,8 +18,9 @@ class ScopeTests(unittest.TestCase):
             else: manifest['base']='0'*40
             with self.assertRaises(RuntimeError): scope.verify_paths(self.paths,manifest)
     def test_wrong_identity(self):
-        identity=[scope.BRANCH,scope.REPOSITORY,'main','1210']
+        identity=[scope.BRANCH,scope.REPOSITORY,'main','1211']
         scope.verify_identity(*identity)
+        with self.assertRaises(RuntimeError): scope.verify_identity(*identity[:3], '1212')
         for i in range(4):
             wrong=identity.copy();wrong[i]='other'
             with self.assertRaises(RuntimeError): scope.verify_identity(*wrong)

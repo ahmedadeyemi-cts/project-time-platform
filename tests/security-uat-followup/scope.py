@@ -29,7 +29,7 @@ def frozen(path):
     return False
 
 def verify_identity(branch, repository, base, number):
-    require((branch, repository, base) == (BRANCH, REPOSITORY, 'main') and str(number).isdigit() and int(number)>0, 'Wrong source identity')
+    require((branch, repository, base, str(number)) == (BRANCH, REPOSITORY, 'main', '1211'), 'Wrong source identity')
 
 def verify_paths(paths, manifest):
     require(manifest['base'] == BASE, 'Wrong fixed baseline')
@@ -47,7 +47,7 @@ def verify_content(data, digest, mode):
 def main():
     verify_identity(os.getenv('GITHUB_HEAD_REF') or git('branch', '--show-current').decode().strip(),
                     os.getenv('GITHUB_REPOSITORY', REPOSITORY), os.getenv('GITHUB_BASE_REF', 'main'),
-                    os.getenv('PR_NUMBER', '1210'))
+                    os.getenv('PR_NUMBER', '1211'))
     if os.getenv('GITHUB_EVENT_PATH'):
         event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
         if event.get('pull_request'):

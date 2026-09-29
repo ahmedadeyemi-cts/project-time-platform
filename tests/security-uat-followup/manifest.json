@@ -27,8 +27,8 @@
     "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs": "76562b6f52cc97237f7c83d0ebbc0b6834e88bec4dc4abccdd90749261644f91",
     "tests/security-completion/flowhive-portfolio.test.mjs": "b4619e149d8d5558950304abe7513f6731f2de9298d3cce77aa8b50459d09538",
     "tests/security-release/admission_fixture.py": "9b125006bfde7ff0f69ff8893d5371fefeed5204e8a5c81735356266d9f22d70",
-    "tests/security-uat-followup/scope.py": "c5927d76df98050c4b8bd7099c85a1fc3eed5efcae5e7b4f67adab9799737bda",
-    "tests/security-uat-followup/test_scope.py": "334d9093157f5648774fde09b9dccae4875c18ad7b2ae21aac5ed237bbb6e04b",
+    "tests/security-uat-followup/scope.py": "dbd36b5bb0e2efccffecee277382a3edf893aa00a3b106126a93bc8d9bc916f3",
+    "tests/security-uat-followup/test_scope.py": "5d490477050809a8b0c23d78fb48318ebe575e6f4a95f6f5dbc0502dfbb053f9",
     "tests/validate-systemwide-image-build-controller.mjs": "f00bd94c03837e8601bee5629b4690a4da404e4aa2d5afa41394278cf0030e49"
   }
 }
