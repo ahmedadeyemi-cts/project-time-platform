@@ -678,6 +678,8 @@ try {
   const expectedImage = 'acr.example.invalid/project-time-api@sha256:1234567890abcdef';
   const mockEnv = {
     ...process.env,
+    // Never let mock receipts contaminate the caller's deployment evidence.
+    EVIDENCE_DIR: path.join(mockRoot, 'evidence'),
     PATH: `${mockRoot}:${process.env.PATH ?? ''}`,
     MOCK_EXPECTED_REVISION: expectedRevision,
     MOCK_EXPECTED_IMAGE: expectedImage,
@@ -714,6 +716,8 @@ try {
     { encoding: 'utf8', env: mockEnv }
   );
   assert.equal(genericWaitBehavior.status, 0, genericWaitBehavior.stderr);
+  const mockReceipt = JSON.parse(fs.readFileSync(path.join(mockEnv.EVIDENCE_DIR, 'module001b-revision-reconcile.json'), 'utf8'));
+  assert.equal(mockReceipt.expectedImage, expectedImage, 'mock evidence must remain in its isolated directory');
   assert.match(genericWaitBehavior.stdout, /CONTAINERAPP_CANDIDATE_READY[\s\S]*singleRevisionConverged=true/);
   assert.doesNotMatch(genericWaitBehavior.stderr, /jq: (?:parse )?error/i);
 

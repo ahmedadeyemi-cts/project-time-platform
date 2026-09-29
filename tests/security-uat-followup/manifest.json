@@ -1,0 +1,34 @@
+{
+  "base": "590636b60aad25c7296b32ca3b7d32af86a1e27b",
+  "files": [
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/security-posture-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    "scripts/release-test/validate-module025-governed-release.sh",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs",
+    "tests/security-completion/flowhive-portfolio.test.mjs",
+    "tests/security-release/admission_fixture.py",
+    "tests/security-uat-followup/manifest.json",
+    "tests/security-uat-followup/scope.py",
+    "tests/security-uat-followup/test_scope.py",
+    "tests/validate-systemwide-image-build-controller.mjs"
+  ],
+  "sha256": {
+    ".github/workflows/flowhive-enterprise-psa-ci.yml": "004ab9c6d00a53025c216c9379217312dc3b9236d40e4da1cb3920848b79f21e",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "f4216dc552b81100f9f79e022bf7bc2f3181f9747a7bf0ef2ff04edc4d07698a",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "f6a34555dd267c22caffe0d741bc9b5895d1a9f246ec5b643817fe5b66b2c8a8",
+    ".github/workflows/security-posture-ci.yml": "8931ba97dbf822a923c4d8017eec31425d867e48eed3104126851db820aeb3dc",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "9cd34480b87d9c982c3134201da7602e17bde978cda6dd429d9f4af19279ae53",
+    "scripts/release-test/validate-module025-governed-release.sh": "6b51bd6e7b8974ff00a6e17cab94f7c869dc56cf010ec1894f4587f4f99dc1f5",
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "4b14a144490f79092b960451abb39b836ad8e1cd60f45ad5d740716dd69eae68",
+    "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs": "76562b6f52cc97237f7c83d0ebbc0b6834e88bec4dc4abccdd90749261644f91",
+    "tests/security-completion/flowhive-portfolio.test.mjs": "b4619e149d8d5558950304abe7513f6731f2de9298d3cce77aa8b50459d09538",
+    "tests/security-release/admission_fixture.py": "9b125006bfde7ff0f69ff8893d5371fefeed5204e8a5c81735356266d9f22d70",
+    "tests/security-uat-followup/scope.py": "c5927d76df98050c4b8bd7099c85a1fc3eed5efcae5e7b4f67adab9799737bda",
+    "tests/security-uat-followup/test_scope.py": "334d9093157f5648774fde09b9dccae4875c18ad7b2ae21aac5ed237bbb6e04b",
+    "tests/validate-systemwide-image-build-controller.mjs": "f00bd94c03837e8601bee5629b4690a4da404e4aa2d5afa41394278cf0030e49"
+  }
+}
