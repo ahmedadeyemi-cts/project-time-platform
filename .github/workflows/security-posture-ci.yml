@@ -70,6 +70,7 @@ jobs:
           node tests/security-completion/migrations.test.mjs
           node tests/security-completion/runtime-role.test.mjs
           node tests/security-completion/approval-scope.test.mjs
+          node tests/security-completion/flowhive-portfolio.test.mjs
 
       - name: Start isolated authorization database
         shell: bash
