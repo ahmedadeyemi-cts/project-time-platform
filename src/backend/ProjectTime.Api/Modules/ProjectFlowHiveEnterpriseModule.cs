@@ -60,6 +60,9 @@ internal static class ProjectFlowHiveEnterpriseModule
             "/api/project-flowhive/projects/{projectId:guid}/status-reports",
             (Func<Guid, ProjectFlowHiveStatusReportRequest, HttpContext, CancellationToken, Task<IResult>>)CreateStatusReportAsync);
         app.MapPost(
+            "/api/project-flowhive/projects/{projectId:guid}/customer-sharing/enable",
+            (Func<Guid, HttpContext, CancellationToken, Task<IResult>>)EnableCustomerSharingAsync);
+        app.MapPost(
             "/api/project-flowhive/projects/{projectId:guid}/customer-shares",
             (Func<Guid, ProjectFlowHiveCustomerShareRequest, HttpContext, CancellationToken, Task<IResult>>)CreateCustomerShareAsync);
         app.MapDelete(
@@ -521,6 +524,35 @@ internal static class ProjectFlowHiveEnterpriseModule
             immutable = true,
             stateChanged = true
         }, statusCode: StatusCodes.Status201Created);
+    }
+
+    // Sharing enablement is deliberately not a round-trip of the financial-controls DTO.
+    // Do not accept budgets, notes, project IDs or permission claims from this request body.
+    private static async Task<IResult> EnableCustomerSharingAsync(
+        Guid projectId, HttpContext context, CancellationToken cancellationToken)
+    {
+        var opened = await OpenAuthorizedAsync(projectId, context, FlowHiveAccessRequirement.CustomerShare, cancellationToken);
+        if (opened.Error is not null) return opened.Error;
+        await using var connection = opened.Connection!;
+        var access = opened.Access!;
+        if (!access.CanShare || access.IsViewAs)
+            return Forbidden("Customer sharing requires an assigned Project Manager, authorized PM Lead, or Administrator outside View-As.");
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        var changed = await ProjectFlowHiveCustomerSharingStore.EnableAsync(connection, transaction, projectId, access.ActualUserId, cancellationToken);
+        if (changed)
+            await InsertAuditAsync(connection, transaction, projectId, null, null, "customer_sharing_enabled", access,
+                new { customerSharingEnabled = true, customerLinkCreated = false, financialControlsChanged = false },
+                context.TraceIdentifier, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return Results.Ok(new
+        {
+            status = "flowhive_customer_sharing_enabled",
+            projectId,
+            customerSharingEnabled = true,
+            customerLinkCreated = false,
+            stateChanged = changed,
+            message = "Customer sharing is enabled. No link was created or sent. Choose an approved baseline to create an expiring customer link."
+        });
     }
 
     private static async Task<IResult> CreateCustomerShareAsync(

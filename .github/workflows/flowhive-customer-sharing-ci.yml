@@ -1,0 +1,70 @@
+name: FlowHive customer sharing and Project Home
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveCustomerSharingStore.cs'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveOverview.jsx'
+      - 'src/frontend/project-time-web/src/ProjectFlowHiveEnterprisePanels.jsx'
+      - 'src/frontend/project-time-web/src/flowhive-project-controls.js'
+      - 'src/frontend/project-time-web/src/project-flowhive-home.css'
+      - 'tests/FlowHiveCustomerSharingTests/**'
+      - 'tests/flowhive-sharing/**'
+      - '.github/workflows/flowhive-customer-sharing-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: flowhive-sharing-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  sharing:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: sharing_fixture
+          POSTGRES_DB: flowhive_sharing_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sharing_fixture -d flowhive_sharing_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+      - name: Test sharing request, safe controls DTO and existing overview semantics
+        run: node --test tests/flowhive-sharing/controls.test.mjs tests/flowhive-psa-overview.test.mjs
+      - name: Test actual HTTP binding and isolated PostgreSQL persistence
+        env:
+          FLOWHIVE_SHARING_DB: 'Host=127.0.0.1;Database=flowhive_sharing_test;Username=sharing_fixture;Pooling=false'
+        run: dotnet run --project tests/FlowHiveCustomerSharingTests -c Release -- --database
+      - name: Build the actual Project Home and sharing interface
+        run: |
+          npm ci --prefix src/frontend/project-time-web --ignore-scripts
+          node tests/flowhive-sharing/browser-bundle.mjs
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Exercise real UI requests, permissions, failures and responsive themes
+        run: python tests/flowhive-sharing/browser.py
+      - name: Preserve synthetic Project Home screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flowhive-sharing-synthetic-browser
+          path: /tmp/flowhive-sharing-evidence
+          if-no-files-found: warn
+      - name: Require source stability
+        run: git diff --exit-code

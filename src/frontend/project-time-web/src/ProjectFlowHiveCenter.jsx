@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import ProjectFlowHivePlannerReview from './ProjectFlowHivePlannerReview.jsx';
 import ProjectFlowHiveOverview from './ProjectFlowHiveOverview.jsx';
+import { projectControlsRequest, enableProjectCustomerSharing, customerSharingError } from './flowhive-project-controls.js';
 import ProjectFlowHiveDocumentReadiness from './ProjectFlowHiveDocumentReadiness.jsx';
 import ProjectFlowHiveAutomation from './ProjectFlowHiveAutomation.jsx';
 import { isFlowHiveArchived, filterFlowHiveProjects } from './flowhive-project-lifecycle.js';
@@ -352,6 +353,8 @@ export default function ProjectFlowHiveCenter() {
   const [enterpriseError, setEnterpriseError] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [controls, setControls] = useState(defaultControls);
+  const [sharingError, setSharingError] = useState(null);
+  const sharingRequestInFlight = useRef(false);
   const [dirty, setDirtyState] = useState(false);
   const projectRef = useRef(selectedProjectId);
   projectRef.current = selectedProjectId;
@@ -382,7 +385,7 @@ export default function ProjectFlowHiveCenter() {
       editEpoch.current += 1;
       loadedWorkingVersion.current = null;
       workingCopyReady.current = false; displayingVersion.current = null; selectionEpoch.current += 1;
-      setEnterprise(null); setFinancials(null); setLatestShareUrl(''); setBusy('');
+      setEnterprise(null); setControls(defaultControls); setShareDraft({ ...defaultShareDraft }); setSharingError(null); sharingRequestInFlight.current = false; setFinancials(null); setLatestShareUrl(''); setBusy('');
       setSelectedProjectId(projectId);
       setDraftPlan(null); setSchedule(null); setValidation(null); setAiPreview(null); setDirty(false);
     }
@@ -815,9 +818,11 @@ export default function ProjectFlowHiveCenter() {
     setBusy('controls');
     setError('');
     try {
-      await putJson(`/api/project-flowhive/projects/${selectedProjectId}/controls`, nextControls);
+      const payload = projectControlsRequest(nextControls);
+      const result = await putJson(`/api/project-flowhive/projects/${selectedProjectId}/controls`, payload);
       if (!isCurrent()) return;
-      setControls(nextControls);
+      if (result.controls?.projectId !== selectedProjectId) throw new Error('The saved controls could not be verified for this project.');
+      setControls({ ...defaultControls, ...result.controls });
       setNotice('Project financial and reporting controls were saved.');
       await loadEnterpriseWorkspace(selectedProjectId, false);
       if (!isCurrent()) return;
@@ -927,13 +932,30 @@ export default function ProjectFlowHiveCenter() {
   }
 
   async function enableCustomerSharing() {
-    const next = { ...controls, customerSharingEnabled: true };
-    await saveProjectControls(next);
+    const isCurrent = captureWorkspaceOperation(false);
+    if (sharingRequestInFlight.current || busy || !selectedProjectId || enterprise?.project?.projectId !== selectedProjectId
+        || !enterprise?.access?.canShare || enterprise.access.isViewAs) return;
+    if (!window.confirm('Enable customer sharing for this project? This does not create or send a link. A separate reviewed-baseline link is required for customer access.')) return;
+    sharingRequestInFlight.current = true;
+    setBusy('sharing-enable');
+    setSharingError(null);
+    setError('');
+    await enableProjectCustomerSharing({ projectId: selectedProjectId, enterprise, busy: false, post: postJson, isCurrent,
+      onSaved: (result) => {
+        // Use confirmed server state, while preserving any unsaved financial form edits.
+        setControls(current => ({ ...current, customerSharingEnabled: true }));
+        setEnterprise(current => current?.project?.projectId === selectedProjectId
+          ? { ...current, controls: { ...current.controls, customerSharingEnabled: true } } : current);
+        setNotice(result.message);
+      },
+      onError: actionError => setSharingError(customerSharingError(actionError)),
+      onSettled: () => { sharingRequestInFlight.current = false; setBusy(''); }
+    });
   }
 
   async function createCustomerShare() {
     const isCurrent = captureWorkspaceOperation(false);
-    if (!selectedProjectId) return;
+    if (!selectedProjectId || busy || enterprise?.project?.projectId !== selectedProjectId || !enterprise?.access?.canShare || enterprise.access.isViewAs) return;
     setBusy('customer-share');
     setError('');
     try {
@@ -1281,6 +1303,14 @@ export default function ProjectFlowHiveCenter() {
     }
   }
 
+  const sharingPanel = selectedProjectId ? <FlowHiveCustomerSharingPanel key={`sharing-${selectedProjectId}`}
+    projectId={selectedProjectId} enterprise={enterprise} controls={enterprise?.controls || defaultControls}
+    savedPlans={savedPlans} latestShareUrl={latestShareUrl} setLatestShareUrl={setLatestShareUrl}
+    shareDraft={shareDraft} setShareDraft={setShareDraft}
+    canManage={Boolean(enterprise?.project?.projectId === selectedProjectId && enterprise?.access?.canShare && !enterprise.access.isViewAs)}
+    busy={busy} error={sharingError} onEnableSharing={enableCustomerSharing} onCreateShare={createCustomerShare}
+    onRevoke={revokeCustomerShare} onReviewBaseline={() => setActiveView('planner')} /> : null;
+
   const timelineMaximum = Math.max(1, ...(schedule?.tasks || []).map((task) => task.earliestStartIndex + Math.max(1, task.durationWorkingDays)));
 
   return (
@@ -1322,7 +1352,7 @@ export default function ProjectFlowHiveCenter() {
           <div><span>View-As</span><strong>{portfolio.access.isViewAs ? 'Read-only preview' : 'Not active'}</strong></div>
           <div><span>Planning capability</span><strong>{capabilityLabel}</strong></div>
           <div><span>Persistence</span><strong>{capabilityResponse?.databaseMutationEnabled ? 'Ready' : 'Unavailable'}</strong></div>
-          <div><span>Customer links</span><strong>{enterprise?.access?.canShare ? (controls.customerSharingEnabled ? 'Enabled for reviewed baseline' : 'Available — enable in Financials') : 'Read-only / unavailable'}</strong></div>
+          <div><span>Customer links</span><strong>{enterprise?.access?.canShare ? (controls.customerSharingEnabled ? 'Enabled for reviewed baseline' : 'Off — manage in Project home') : 'Read-only / unavailable'}</strong></div>
         </div>
       ) : null}
 
@@ -1418,7 +1448,7 @@ export default function ProjectFlowHiveCenter() {
         </div>
       ) : null}
 
-      {activeView === 'overview' ? <ProjectFlowHiveOverview key={selectedProjectId} plan={draftPlan} schedule={schedule} dirty={dirty} userId={portfolio?.access?.effectiveUserId} onNavigate={setActiveView} onOpenTask={(wbs) => { setActiveView('planner'); setCollapsedPhases(new Set()); setExpandedTaskWbs(wbs); }} /> : null}
+      {activeView === 'overview' ? <ProjectFlowHiveOverview key={selectedProjectId} sharingPanel={sharingPanel} projectName={selectedProject?.projectName} plan={draftPlan} schedule={schedule} dirty={dirty} userId={portfolio?.access?.effectiveUserId} onNavigate={setActiveView} onOpenTask={(wbs) => { setActiveView('planner'); setCollapsedPhases(new Set()); setExpandedTaskWbs(wbs); }} /> : null}
 
       {activeView === 'planner' ? (
         <div className="flowhive-view-panel">
@@ -1604,7 +1634,7 @@ export default function ProjectFlowHiveCenter() {
           schedule={schedule} setSchedule={setSchedule} financials={financials} controls={controls}
           canManage={Boolean(enterprise?.access?.canManage)} setDirty={setDirty} setNotice={setNotice} setError={setError}
         />
-        <FlowHiveCustomerSharingPanel enterprise={enterprise} controls={controls} savedPlans={savedPlans} draftPlan={draftPlan} latestShareUrl={latestShareUrl} setLatestShareUrl={setLatestShareUrl} shareDraft={shareDraft} setShareDraft={setShareDraft} canManage={Boolean(enterprise?.access?.canManage)} busy={busy} onEnableSharing={enableCustomerSharing} onCreateShare={createCustomerShare} onRevoke={revokeCustomerShare} />
+        {sharingPanel}
       </div> : null}
 
       {activeView === 'governance' ? (
