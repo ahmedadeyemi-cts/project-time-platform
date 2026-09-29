@@ -142,10 +142,9 @@ git = {
 }
 
 if app_root.exists():
-    git_safe = str(app_root)
-    branch = run(["git", "-c", f"safe.directory={git_safe}", "rev-parse", "--abbrev-ref", "HEAD"], cwd=app_root)
-    commit = run(["git", "-c", f"safe.directory={git_safe}", "rev-parse", "--short", "HEAD"], cwd=app_root)
-    dirty = run(["git", "-c", f"safe.directory={git_safe}", "status", "--short"], cwd=app_root)
+    branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=app_root)
+    commit = run(["git", "rev-parse", "--short", "HEAD"], cwd=app_root)
+    dirty = run(["git", "status", "--short"], cwd=app_root)
     dirty_count = len([line for line in dirty["stdout"].splitlines() if line.strip()])
 
     git = {

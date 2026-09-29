@@ -339,6 +339,12 @@ public static class FinancialOperationsRecoveryModule
             var projectIds = build.Context.Truth.Projects.Select(project => project.ProjectId).ToArray();
             var items = await FinancialOperationsRepository.LoadWorkItemsAsync(
                 connection, actor, projectIds, status, limit, context.RequestAborted);
+            var amountVisibleProjects = build.Context.Truth.Projects
+                .Where(project => project.VisibilityLevel == "full_project_financials")
+                .Select(project => project.ProjectId).ToHashSet();
+            items = items.Select(item => item.ProjectId is Guid projectId && !amountVisibleProjects.Contains(projectId)
+                ? item with { Detail = "Review the scoped project workspace for permitted recovery evidence.", ResolutionNote = string.Empty, Metadata = JsonSerializer.SerializeToElement(new { amountDetailsRestricted = true }) }
+                : item).ToList();
             var actions = actor.Broad
                 ? await FinancialOperationsRepository.LoadActionsAsync(
                     connection, 50, context.RequestAborted)

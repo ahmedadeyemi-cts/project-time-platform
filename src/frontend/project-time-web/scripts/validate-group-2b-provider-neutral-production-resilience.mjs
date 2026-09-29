@@ -66,7 +66,8 @@ const documentation = fullRepositoryContext ? read(documentationPath) : optional
 if (fullRepositoryContext) {
   contains(backend, 'public static partial class PlatformOperationsModule', 'Group 2B backend');
   contains(backend, 'BuildSnapshotAsync(context, connection)', 'Group 2A abstraction consumption');
-  contains(backend, 'AuthorizeAsync(context)', 'actual-session administrator authorization');
+  contains(backend, 'AuthorizeAsync(context, administratorOnly: true)', 'explicit administrator-only authorization');
+  assert((backend.match(/AuthorizeAsync\(context, administratorOnly: true\)/g) || []).length === 5, 'All five resilience routes require administrator-only admission');
   contains(backend, 'AccessContract(context)', 'access contract');
   contains(backend, 'SecurityContract()', 'security contract');
   contains(backend, 'not_recorded', 'truthful missing-evidence contract');

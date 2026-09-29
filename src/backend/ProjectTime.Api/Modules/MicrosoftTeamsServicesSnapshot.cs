@@ -68,7 +68,6 @@ internal sealed class MicrosoftTeamsServicesSnapshot
             var nonce = (byte[])reader[1];
             var tag = (byte[])reader[2];
             var configured = Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_INTEGRATION_SECRET_KEY");
-            if (string.IsNullOrWhiteSpace(configured)) configured = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
             if (string.IsNullOrWhiteSpace(configured)) throw new InvalidDataException("Module 065 credential encryption key is unavailable");
             var secret = Decrypt(ciphertext, nonce, tag, configured, profile.Key);
             return new(profile, secret, Convert.ToHexString(SHA256.HashData(ciphertext)));
@@ -96,7 +95,7 @@ internal sealed class MicrosoftTeamsServicesSnapshot
         if (key?.Length != 32)
         {
             if (key is not null) CryptographicOperations.ZeroMemory(key);
-            key = SHA256.HashData(Encoding.UTF8.GetBytes($"ProjectPulse-Microsoft-Integration:{configured}"));
+            throw new InvalidDataException("A dedicated 32-byte Module 065 encryption key is required");
         }
         var plaintext = new byte[ciphertext.Length];
         try

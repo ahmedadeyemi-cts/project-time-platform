@@ -110,7 +110,7 @@ var template = (PulseAiPrivateFlowHivePlan)parser.Invoke(null, [module025Payload
 var project = Guid.NewGuid();
 var sow = new ProjectPlanningDocumentEvidence(project, module025Source.DocumentId, "sow", "Fixture SOW.pdf", "ready", "",
     module025Source.DocumentVersionId, "canonical", "ready", Guid.NewGuid(), "sow", "active", "local_file", "fixture.pdf",
-    DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 1, 1, module025Source.SourceSha256, module025Source.DocumentVersion, true);
+    DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 1, 1, module025Source.SourceSha256, module025Source.DocumentVersion, true, true);
 var gsd = sow with { DocumentId=Guid.NewGuid(), ActiveVersionId=Guid.NewGuid(), Category="gsd", WorkRegisterDocumentType="gsd" };
 var docs = new ProjectPlanningDocumentResolution("fixture", [sow,gsd], sow, gsd, [], [sow,gsd], [], [], 0, [], []);
 var evidence = module025Retrieval with { Chunks = [module025Source with { RankOrder=7 }, module025Source with {

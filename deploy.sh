@@ -23,6 +23,7 @@ COMPOSE="docker compose -f .verity/deploy.compose.yml --env-file .verity/deploy.
 [ -f .verity/release.env ] || { echo "Missing .verity/release.env — run scripts/verity/pin-digests.sh first"; exit 1; }
 # Operator-owned configuration is trusted. Downloaded release metadata is not.
 set -a; . .verity/deploy.env; set +a
+python3 scripts/verity/validate-runtime-config.py
 RELEASE_DATA="$(python3 scripts/verity/release-config.py env .verity/release.env)"
 while IFS='=' read -r key value; do
   case "$key" in
@@ -99,13 +100,72 @@ for f in $(ls database/migrations/*.sql | sort); do
   # Skip anything already covered by the baseline (lexical <=).
   if [[ -n "$BASELINE_MARKER" && ! "$base" > "$BASELINE_MARKER" ]]; then continue; fi
   already="$(psql_db -tAc "SELECT 1 FROM verity_schema_migrations WHERE filename = '${base}';")"
-  if [ "$already" = "1" ]; then continue; fi
+  # Adopt the application's authoritative ledger instead of replaying security grants.
+  migration_id="${base%.sql}"
+  [[ "$migration_id" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "Invalid migration filename" >&2; exit 1; }
+  canonical_table="$(psql_db -tAc "SELECT to_regclass('public.schema_migrations') IS NOT NULL;")"
+  canonical="0"
+  if [[ "$canonical_table" == t ]]; then
+    canonical="$(psql_db -tAc "SELECT count(*) FROM schema_migrations WHERE migration_id='${migration_id}';")"
+  fi
+  if [[ "$already" == 1 ]]; then
+    [[ "$canonical" == 1 ]] || { echo "Migration ledgers disagree for $base; reconcile before deployment." >&2; exit 1; }
+    continue
+  fi
+  if [[ "$canonical" == 1 ]]; then
+    psql_db -c "INSERT INTO verity_schema_migrations(filename) VALUES ('${base}') ON CONFLICT DO NOTHING;"
+    continue
+  fi
   echo "  applying ${base}"
   psql_db < "$f"   # additive-only; stops the deploy on error (never runs rollback/)
   psql_db -c "INSERT INTO verity_schema_migrations(filename) VALUES ('${base}');"
   applied=$((applied+1))
 done
 echo "  ${applied} forward migration(s) applied${BASELINE_MARKER:+ (baseline: ${BASELINE_MARKER})}"
+
+# Reconcile application grants after migrations, using the separate provisioning
+# identity. This rejects pre-existing ownership or elevated role memberships.
+echo "== Provision restricted application database identity =="
+psql_db < scripts/security/provision-runtime-database-role.sql
+# Never place a password in command arguments or public deployment output.
+export SECURITY_RUNTIME_PASSWORD="$RUNTIME_DB_PASSWORD"
+runtime_log="$(mktemp)"
+chmod 0600 "$runtime_log"
+if ! $COMPOSE exec -T -e SECURITY_RUNTIME_PASSWORD db psql -X -q -v ON_ERROR_STOP=1 \
+    -U "${POSTGRES_USER:-projectpulse}" -d "${POSTGRES_DB:-ProjectPulse}" >"$runtime_log" 2>&1 <<'SQL'
+\getenv runtime_password SECURITY_RUNTIME_PASSWORD
+ALTER ROLE ptp_runtime LOGIN PASSWORD :'runtime_password';
+SQL
+then
+  rm -f "$runtime_log"
+  unset SECURITY_RUNTIME_PASSWORD
+  echo "Runtime database credential activation failed; deployment stopped." >&2
+  exit 1
+fi
+rm -f "$runtime_log"
+unset SECURITY_RUNTIME_PASSWORD
+export PGPASSWORD="$RUNTIME_DB_PASSWORD"
+if ! $COMPOSE exec -T -e PGPASSWORD db psql -X -q -v ON_ERROR_STOP=1 \
+    -h 127.0.0.1 -U ptp_runtime -d "${POSTGRES_DB:-ProjectPulse}" >/dev/null 2>&1 <<'SQL'
+BEGIN READ ONLY;
+DO $$ BEGIN
+  IF current_user <> 'ptp_runtime'
+     OR EXISTS (SELECT 1 FROM pg_roles WHERE rolname=current_user
+       AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls))
+     OR has_schema_privilege(current_user,'public','CREATE')
+     OR has_database_privilege(current_user,current_database(),'CREATE')
+     OR has_table_privilege(current_user,'public.verity_schema_migrations','INSERT,UPDATE,DELETE,TRUNCATE') THEN
+    RAISE EXCEPTION 'Runtime authority verification failed';
+  END IF;
+END $$;
+COMMIT;
+SQL
+then
+  unset PGPASSWORD
+  echo "Runtime database authentication or authority validation failed; deployment stopped." >&2
+  exit 1
+fi
+unset PGPASSWORD
 
 # --- up ---
 echo "== Up (web + api on pinned digests) =="

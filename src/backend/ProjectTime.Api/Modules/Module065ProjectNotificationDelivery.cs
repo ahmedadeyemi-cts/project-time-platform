@@ -443,7 +443,8 @@ internal static class Module065ProjectNotificationDelivery
             ? parsed
             : 587;
         var credential = ResolveSmtpCredential(readiness.RuntimeEnvironment);
-        if (!IsEmail(readiness.SenderMailbox)
+        if (!MicrosoftMailRuntimeConfigurationModule.IsApprovedSmtpEndpoint(host, port)
+            || !IsEmail(readiness.SenderMailbox)
             || string.IsNullOrWhiteSpace(credential.Username)
             || string.IsNullOrWhiteSpace(credential.Password))
         {

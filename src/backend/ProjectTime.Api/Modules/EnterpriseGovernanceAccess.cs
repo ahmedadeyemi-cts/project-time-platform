@@ -17,16 +17,19 @@ internal sealed record EnterpriseGovernanceAccess(
     IReadOnlySet<string> Roles,
     IReadOnlySet<string> Permissions)
 {
+    internal bool RequireProjectManagementScope { get; init; }
+
     internal bool CanViewLabEquipment => IsBroadScope
         || Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabViewRoles)
         || Permissions.Contains("VIEW_LAB_EQUIPMENT_081");
 
-    internal bool CanManageLabEquipment => !IsViewAs && (CanManageOrganization
-        || Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabFullAccessRoles)
-        || (!Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabEngineerRoles)
-            && Permissions.Contains("MANAGE_LAB_EQUIPMENT_081")));
+    private bool IsLabAdministrator => Roles.Contains("SUPER_ADMINISTRATOR") || Roles.Contains("ADMINISTRATOR");
 
-    internal bool CanImportLabEquipment => CanManageLabEquipment;
+    internal bool CanManageLabEquipment => !IsViewAs && (IsLabAdministrator
+        || Permissions.Contains("MANAGE_LAB_EQUIPMENT_081"));
+
+    internal bool CanImportLabEquipment => !IsViewAs && (IsLabAdministrator
+        || Permissions.Contains("IMPORT_LAB_EQUIPMENT_081"));
 
     internal bool CanViewRiskRegister => IsBroadScope
         || Roles.Overlaps(EnterpriseGovernanceAccessResolver.RiskViewRoles)
@@ -183,8 +186,9 @@ internal static class EnterpriseGovernanceAccessResolver
     {
         command.Parameters.AddWithValue("user_id", access.EffectiveUserId);
         command.Parameters.AddWithValue("broad_scope", access.IsBroadScope);
-        command.Parameters.AddWithValue("lab_full_scope", access.CanManageLabEquipment);
+        command.Parameters.AddWithValue("lab_full_scope", access.IsBroadScope);
         command.Parameters.AddWithValue("team_scope", access.CanManageTeam);
+        command.Parameters.AddWithValue("project_manage_scope", access.RequireProjectManagementScope);
         command.Parameters.AddWithValue("team_name", access.TeamName ?? string.Empty);
     }
 

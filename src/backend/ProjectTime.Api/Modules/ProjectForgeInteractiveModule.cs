@@ -325,7 +325,7 @@ public static partial class ProjectForgeModule
         await using var connection = opened.Connection!;
         var access = opened.Access!;
         if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
-        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken, "administer")) return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, projectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         if (request.AssigneeUserId.HasValue && !await IsEligibleEngineerReviewerAsync(connection, projectId, request.AssigneeUserId.Value, cancellationToken))
@@ -1590,7 +1590,7 @@ public static partial class ProjectForgeModule
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var state = await LockInteractiveTaskAsync(connection, transaction, envelope.Source!, taskId, request.PlanId, access.EffectiveUserId, cancellationToken);
         if (state is null) return Results.NotFound(new { status = "task_not_found" });
-        if (!await CanAccessProjectAsync(connection, access, state.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        if (!await CanAccessProjectAsync(connection, access, state.ProjectId, null, cancellationToken, "administer")) return Forbidden("project_forge_project_scope");
         if (state.Revision != request.ExpectedRevision)
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -1728,7 +1728,7 @@ public static partial class ProjectForgeModule
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var state = await LockInteractiveTaskAsync(connection, transaction, envelope.Source!, taskId, request.PlanId, access.EffectiveUserId, cancellationToken);
         if (state is null) return Results.NotFound(new { status = "task_not_found" });
-        if (!await CanAccessProjectAsync(connection, access, state.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        if (!await CanAccessProjectAsync(connection, access, state.ProjectId, null, cancellationToken, "administer")) return Forbidden("project_forge_project_scope");
         if (state.Revision != request.ExpectedRevision)
         {
             await transaction.RollbackAsync(cancellationToken);
@@ -1864,7 +1864,7 @@ public static partial class ProjectForgeModule
         await using var connection = opened.Connection!;
         var access = opened.Access!;
         if (!access.CanManage || access.IsViewAs) return WriteForbidden(access);
-        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        if (!await CanAccessProjectAsync(connection, access, projectId, null, cancellationToken, "administer")) return Forbidden("project_forge_project_scope");
         var projectWriteError = await EnsureProjectWritableAsync(connection, projectId, cancellationToken);
         if (projectWriteError is not null) return projectWriteError;
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -1961,7 +1961,7 @@ public static partial class ProjectForgeModule
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var existing = await LockDependencyAsync(connection, transaction, envelope.Source!, dependencyId, request.PlanId, cancellationToken);
         if (existing is null) return Results.NotFound(new { status = "task_dependency_not_found" });
-        if (!await CanAccessProjectAsync(connection, access, existing.ProjectId, null, cancellationToken)) return Forbidden("project_forge_project_scope");
+        if (!await CanAccessProjectAsync(connection, access, existing.ProjectId, null, cancellationToken, "administer")) return Forbidden("project_forge_project_scope");
         if (existing.Revision != request.ExpectedRevision)
             return Results.Conflict(new { status = "dependency_revision_conflict", revision = existing.Revision });
         await LockProjectAsync(connection, transaction, existing.ProjectId, cancellationToken);

@@ -1074,7 +1074,7 @@ public static partial class ProjectFinancialTruthModule
             var sa = JsonGuid(project.Json,
                 "solution_architect_user_id", "sales_architect_user_id");
             var manager = project.ProjectManagerUserId == actor.EffectiveUserId;
-            var salesOwner = ae == actor.EffectiveUserId || sa == actor.EffectiveUserId;
+            var salesOwner = actor.Sales && (ae == actor.EffectiveUserId || sa == actor.EffectiveUserId);
             var related = manager
                 || coordinator == actor.EffectiveUserId
                 || salesOwner
@@ -1114,8 +1114,8 @@ public static partial class ProjectFinancialTruthModule
             return new("full_project_financials", true, true, true,
                 "Full financial visibility is granted by role or project ownership.");
 
-        if (workspace == "sales" || sa == actor.EffectiveUserId
-            || ae == actor.EffectiveUserId || actor.Sales)
+        if (actor.Sales && (workspace == "sales" || sa == actor.EffectiveUserId
+            || ae == actor.EffectiveUserId))
             return new("commercial_summary", false, true, true,
                 "Sales sees commercial status, forecast, variance, team, and ConnectWise SELL context without detailed labor-cost basis.");
 

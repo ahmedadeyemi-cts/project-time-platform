@@ -10,7 +10,7 @@ foreach (var status in new[] { "closed", " Completed ", "CANCELLED", "canceled",
 Check(!ProjectFlowHiveLifecycle.IsArchived("active") && !ProjectFlowHiveLifecycle.IsArchived("on_hold"), "active and on-hold remain outside archive");
 var project = Guid.NewGuid(); var actor = Guid.NewGuid();
 var readySow = new ProjectPlanningDocumentEvidence(project, Guid.NewGuid(), "sow", "Fixture SOW.pdf", "ready", "", Guid.NewGuid(),
-    "canonical", "ready", Guid.NewGuid(), "sow", "active", "local_file", "fixture.pdf", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 4, 2, EngineeringVisible: true);
+    "canonical", "ready", Guid.NewGuid(), "sow", "active", "local_file", "fixture.pdf", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 4, 2, EngineeringVisible: true, AiContextEnabled: true);
 ProjectPlanningDocumentResolution Resolution(ProjectPlanningDocumentEvidence? sow, params ProjectPlanningDocumentEvidence[] more)
 {
     var all = (sow is null ? more : new[] { sow }.Concat(more)).ToArray();
@@ -27,6 +27,11 @@ Check(ProjectPlanningDocumentPreparation.Describe(Resolution(readySow, readySow 
 var restricted = ProjectPlanningDocumentPreparation.Describe(Resolution(readySow with { EngineeringVisible=false }), true, false);
 Check(!restricted.ReadyForAi && restricted.Documents.Count == 0, "private file details never appear in readiness");
 Check(ProjectPlanningDocumentPreparation.Describe(Resolution(readySow), true, true).Status == "archived", "closed projects stop offering AI generation");
+Check(!(readySow with { AiContextEnabled=false }).ReadyForRetrieval, "AI consent is required for retrieval readiness");
+var pending = readySow with { ProcessingStatus="not_requested" };
+Check(pending.ShouldAutoQueue, "Visible consented documents may be queued");
+Check(!(pending with { EngineeringVisible=false }).ShouldAutoQueue, "Restricted documents cannot be automatically queued");
+Check(!(pending with { AiContextEnabled=false }).ShouldAutoQueue, "Documents without AI consent cannot be automatically queued");
 if (args.Contains("--database")) await Database();
 Console.WriteLine($"FLOWHIVE_PREPARATION_ASSERTIONS_PASSED={count}");
 

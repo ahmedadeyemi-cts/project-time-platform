@@ -39,8 +39,11 @@ public static partial class Module005ProjectExpenseUploadModule
         if (!HasRole(actor, CertifyAdminRoles)) return AccessDenied("Certify connection configuration requires Accounting or Super Administrator access.");
 
         var baseUrl = string.IsNullOrWhiteSpace(request.BaseUrl) ? DefaultCertifyBaseUrl : request.BaseUrl.Trim();
-        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        if (!IsApprovedCertifyUrl(baseUrl))
             return Results.BadRequest(new { status = "invalid_certify_url", message = "Certify base URL must be an absolute HTTPS URL." });
+        if ((!string.IsNullOrWhiteSpace(request.ApiKeyEnvironmentName) && request.ApiKeyEnvironmentName.Trim() != "PROJECTPULSE_CERTIFY_API_KEY")
+            || (!string.IsNullOrWhiteSpace(request.ApiSecretEnvironmentName) && request.ApiSecretEnvironmentName.Trim() != "PROJECTPULSE_CERTIFY_API_SECRET"))
+            return Results.BadRequest(new { status = "invalid_certify_credential_reference" });
         var keyEnvironment = NormalizeEnvironmentVariable(request.ApiKeyEnvironmentName, "PROJECTPULSE_CERTIFY_API_KEY");
         var secretEnvironment = NormalizeEnvironmentVariable(request.ApiSecretEnvironmentName, "PROJECTPULSE_CERTIFY_API_SECRET");
         var cadence = request.AutomaticSyncEnabled
@@ -63,7 +66,7 @@ public static partial class Module005ProjectExpenseUploadModule
             """;
         await using var command = new NpgsqlCommand(sql, connection);
         command.Parameters.AddWithValue("environment", request.EnvironmentName?.Equals("production", StringComparison.OrdinalIgnoreCase) == true ? "production" : "test");
-        command.Parameters.AddWithValue("base_url", EnsureTrailingSlash(uri.ToString()));
+        command.Parameters.AddWithValue("base_url", EnsureTrailingSlash(baseUrl));
         command.Parameters.AddWithValue("key_environment", keyEnvironment);
         command.Parameters.AddWithValue("secret_environment", secretEnvironment);
         command.Parameters.AddWithValue("company_id", request.CompanyId?.Trim() ?? string.Empty);
@@ -130,6 +133,14 @@ public static partial class Module005ProjectExpenseUploadModule
         if (project is null) return Results.NotFound(new { status = "project_not_found", message = "The selected project no longer exists." });
         var authorization = await AuthorizeUploadAsync(connection, null, actor, project, request.ExpenseOwnerUserId);
         if (authorization is not null) return authorization;
+        if (!HasRole(actor, SelfRoles) && !HasRole(actor, OnBehalfRoles)) return AccessDenied("Expense import authority is required.");
+        string ownerEmail;
+        await using (var owner = new NpgsqlCommand("SELECT email FROM app_users WHERE user_id=@owner AND is_active=TRUE",connection))
+        {
+            owner.Parameters.AddWithValue("owner",request.ExpenseOwnerUserId);
+            ownerEmail=Convert.ToString(await owner.ExecuteScalarAsync()) ?? string.Empty;
+        }
+        if (string.IsNullOrWhiteSpace(ownerEmail)) return AccessDenied("The selected expense owner is unavailable.");
         var profile = await LoadCertifyProfileAsync(connection);
         if (profile?.ConnectionStatus != "connected")
             return Results.Conflict(new { status = "certify_not_connected", message = "Complete and test the Module 038 Certify connection before importing." });
@@ -170,6 +181,12 @@ public static partial class Module005ProjectExpenseUploadModule
 
         var bytes = Encoding.UTF8.GetBytes(call.Json.Value.GetRawText());
         var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        if (parsed.Lines.Any(line => string.IsNullOrWhiteSpace(line.EmployeeEmail)
+            || !line.EmployeeEmail.Trim().Equals(ownerEmail.Trim(),StringComparison.OrdinalIgnoreCase)))
+        {
+            await CompleteCertifyRunAsync(connection,runId,"failed",null,"Report ownership could not be verified for the selected user.",new { ownerVerified=false });
+            return AccessDenied("Certify report ownership could not be verified for the selected expense owner.");
+        }
         var uploadId = await PersistUploadAsync(connection, actor, project, request.ExpenseOwnerUserId,
             "certify", "certify_api", request.CertifyReportId.Trim(), null,
             "application/json", bytes, hash, parsed,
@@ -219,9 +236,9 @@ public static partial class Module005ProjectExpenseUploadModule
             profile.EnvironmentName,
             profile.BaseUrl,
             profile.ApiKeyEnvironmentName,
-            apiKeyConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(profile.ApiKeyEnvironmentName)),
+            apiKeyConfigured = profile.ApiKeyEnvironmentName == "PROJECTPULSE_CERTIFY_API_KEY" && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPULSE_CERTIFY_API_KEY")),
             profile.ApiSecretEnvironmentName,
-            apiSecretConfigured = !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(profile.ApiSecretEnvironmentName)),
+            apiSecretConfigured = profile.ApiSecretEnvironmentName == "PROJECTPULSE_CERTIFY_API_SECRET" && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("PROJECTPULSE_CERTIFY_API_SECRET")),
             profile.CompanyId,
             profile.AutomaticSyncEnabled,
             profile.SyncCadence,
@@ -234,11 +251,15 @@ public static partial class Module005ProjectExpenseUploadModule
 
     private static async Task<CertifyCall> CallCertifyAsync(CertifyProfile profile, string relativePath, CancellationToken cancellationToken)
     {
+        if (!IsApprovedCertifyUrl(profile.BaseUrl)
+            || profile.ApiKeyEnvironmentName != "PROJECTPULSE_CERTIFY_API_KEY"
+            || profile.ApiSecretEnvironmentName != "PROJECTPULSE_CERTIFY_API_SECRET")
+            return new CertifyCall(false, 0, "Certify configuration requires an approved destination and credential references.", null);
         var key = Environment.GetEnvironmentVariable(profile.ApiKeyEnvironmentName);
         var secret = Environment.GetEnvironmentVariable(profile.ApiSecretEnvironmentName);
         if (string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(secret))
             return new CertifyCall(false, 0, "The configured Certify API key or secret environment value is missing.", null);
-        using var client = new HttpClient { BaseAddress = new Uri(EnsureTrailingSlash(profile.BaseUrl)), Timeout = TimeSpan.FromSeconds(45) };
+        using var client = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { BaseAddress = new Uri(EnsureTrailingSlash(profile.BaseUrl)), Timeout = TimeSpan.FromSeconds(45) };
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes($"{key}:{secret}")));
         client.DefaultRequestHeaders.TryAddWithoutValidation("X-Certify-API-Key", key);
         client.DefaultRequestHeaders.TryAddWithoutValidation("X-Certify-API-Secret", secret);
@@ -271,10 +292,18 @@ public static partial class Module005ProjectExpenseUploadModule
         await command.ExecuteNonQueryAsync();
     }
 
+    private static bool IsApprovedCertifyUrl(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri)
+        && uri.Scheme == Uri.UriSchemeHttps && uri.IsDefaultPort
+        && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Query)
+        && string.IsNullOrEmpty(uri.Fragment)
+        && uri.Host.Equals(new Uri(DefaultCertifyBaseUrl).Host, StringComparison.OrdinalIgnoreCase)
+        && uri.AbsolutePath == new Uri(DefaultCertifyBaseUrl).AbsolutePath;
+
     private static string NormalizeEnvironmentVariable(string? value, string fallback)
     {
         var result = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim().ToUpperInvariant();
-        if (!result.All(character => char.IsLetterOrDigit(character) || character == '_'))
+        if (!result.Equals(fallback, StringComparison.Ordinal))
             throw new InvalidOperationException("Secret environment names may contain only letters, numbers, and underscores.");
         return result;
     }

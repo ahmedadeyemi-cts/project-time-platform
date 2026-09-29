@@ -98,6 +98,10 @@ public static partial class ScopedRolePolicyModule
                 return Results.NotFound(new { status = "time_entry_not_found" });
             }
 
+            if (!await TimeMutationSafety.LockAndAllowAsync(connection, transaction,
+                    original.TimesheetId, request.TargetUserId, original.WorkDate, timeEntryId, context.RequestAborted))
+                return Results.Conflict(new { status = "accounting_time_locked", message = "Accounting-ready, reconciled, locked or invoiced time cannot be reallocated." });
+
             // Module 001B intentionally has no Draft/unsubmit gate. Submitted and
             // approved time stays submitted/approved while its allocation changes.
             var originalStatus = original.Status;

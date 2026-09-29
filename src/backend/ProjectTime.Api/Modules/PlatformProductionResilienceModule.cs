@@ -36,7 +36,7 @@ public static partial class PlatformOperationsModule
 
     private static async Task<IResult> GetProductionPlanningAsync(HttpContext context)
     {
-        var authorization = await AuthorizeAsync(context);
+        var authorization = await AuthorizeAsync(context, administratorOnly: true);
         if (authorization.Failure is not null) return authorization.Failure;
 
         await using var connection = authorization.Connection!;
@@ -46,7 +46,7 @@ public static partial class PlatformOperationsModule
 
     private static async Task<IResult> GetRecoveryContinuityAsync(HttpContext context)
     {
-        var authorization = await AuthorizeAsync(context);
+        var authorization = await AuthorizeAsync(context, administratorOnly: true);
         if (authorization.Failure is not null) return authorization.Failure;
 
         await using var connection = authorization.Connection!;
@@ -56,7 +56,7 @@ public static partial class PlatformOperationsModule
 
     private static async Task<IResult> GetRedundancyFailoverAsync(HttpContext context)
     {
-        var authorization = await AuthorizeAsync(context);
+        var authorization = await AuthorizeAsync(context, administratorOnly: true);
         if (authorization.Failure is not null) return authorization.Failure;
 
         await using var connection = authorization.Connection!;
@@ -66,7 +66,7 @@ public static partial class PlatformOperationsModule
 
     private static async Task<IResult> GetResilienceReportAsync(HttpContext context)
     {
-        var authorization = await AuthorizeAsync(context);
+        var authorization = await AuthorizeAsync(context, administratorOnly: true);
         if (authorization.Failure is not null) return authorization.Failure;
 
         await using var connection = authorization.Connection!;
@@ -76,7 +76,7 @@ public static partial class PlatformOperationsModule
 
     private static async Task<IResult> ExportResilienceReportAsync(HttpContext context)
     {
-        var authorization = await AuthorizeAsync(context);
+        var authorization = await AuthorizeAsync(context, administratorOnly: true);
         if (authorization.Failure is not null) return authorization.Failure;
 
         await using var connection = authorization.Connection!;

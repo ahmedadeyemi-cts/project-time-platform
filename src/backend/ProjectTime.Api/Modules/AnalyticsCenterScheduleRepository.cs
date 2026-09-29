@@ -92,7 +92,7 @@ internal static class AnalyticsCenterScheduleRepository
             ORDER BY enabled DESC, next_run_at NULLS LAST, schedule_name;
             """, connection))
         {
-            command.Parameters.AddWithValue("broad", actor.Broad);
+            command.Parameters.AddWithValue("broad", actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR"));
             command.Parameters.AddWithValue("actual_user_id", actor.ActualUserId);
             command.Parameters.AddWithValue("include_disabled", includeDisabled);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -153,7 +153,7 @@ internal static class AnalyticsCenterScheduleRepository
         {
             command.Parameters.AddWithValue("schedule_id", scheduleId);
             command.Parameters.AddWithValue("ignore_scope", actor is null);
-            command.Parameters.AddWithValue("broad", actor?.Broad ?? false);
+            command.Parameters.AddWithValue("broad", actor?.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR") ?? false);
             command.Parameters.AddWithValue("actual_user_id", actor?.ActualUserId ?? Guid.Empty);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
@@ -252,7 +252,7 @@ internal static class AnalyticsCenterScheduleRepository
                     );
                     """, connection, transaction);
                 ownership.Parameters.AddWithValue("schedule_id", scheduleId);
-                ownership.Parameters.AddWithValue("broad", actor.Broad);
+                ownership.Parameters.AddWithValue("broad", actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR"));
                 ownership.Parameters.AddWithValue("actual_user_id", actor.ActualUserId);
                 if (!Convert.ToBoolean(await ownership.ExecuteScalarAsync(cancellationToken) ?? false))
                     throw new UnauthorizedAccessException("The schedule was not found in the current user's scope.");
@@ -410,7 +410,7 @@ internal static class AnalyticsCenterScheduleRepository
               AND (@broad OR owner_actual_user_id = @actual_user_id);
             """, connection);
         command.Parameters.AddWithValue("schedule_id", scheduleId);
-        command.Parameters.AddWithValue("broad", actor.Broad);
+        command.Parameters.AddWithValue("broad", actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR"));
         command.Parameters.AddWithValue("actual_user_id", actor.ActualUserId);
         return await command.ExecuteNonQueryAsync(cancellationToken) > 0;
     }
@@ -594,7 +594,7 @@ internal static class AnalyticsCenterScheduleRepository
             ORDER BY created_at DESC
             LIMIT @limit;
             """, connection);
-        command.Parameters.AddWithValue("broad", actor.Broad);
+        command.Parameters.AddWithValue("broad", actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR"));
         command.Parameters.AddWithValue("actual_user_id", actor.ActualUserId);
         command.Parameters.AddWithValue("limit", Math.Clamp(limit, 1, 500));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -648,7 +648,7 @@ internal static class AnalyticsCenterScheduleRepository
             ORDER BY attempt.created_at DESC
             LIMIT @limit;
             """, connection);
-        command.Parameters.AddWithValue("broad", actor.Broad);
+        command.Parameters.AddWithValue("broad", actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR"));
         command.Parameters.AddWithValue("actual_user_id", actor.ActualUserId);
         command.Parameters.AddWithValue("limit", Math.Clamp(limit, 1, 500));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);

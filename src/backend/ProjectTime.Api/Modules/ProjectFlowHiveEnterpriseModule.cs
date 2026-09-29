@@ -111,7 +111,7 @@ internal static class ProjectFlowHiveEnterpriseModule
             ? await LoadControlsAsync(connection, projectId, cancellationToken)
             : RedactedControls(projectId);
         var raid = await LoadRaidAsync(connection, projectId, cancellationToken);
-        var statusReports = await LoadStatusReportsAsync(connection, projectId, cancellationToken);
+        var statusReports = await LoadStatusReportsAsync(connection, projectId, access.CanViewFinancials, cancellationToken);
         var shares = await LoadSharesAsync(connection, projectId, cancellationToken);
         var evidence = await LoadSowEvidenceAsync(connection, projectId, cancellationToken);
 
@@ -1312,7 +1312,7 @@ internal static class ProjectFlowHiveEnterpriseModule
         return rows;
     }
 
-    private static async Task<IReadOnlyList<object>> LoadStatusReportsAsync(NpgsqlConnection connection, Guid projectId, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<object>> LoadStatusReportsAsync(NpgsqlConnection connection, Guid projectId, bool canViewFinancials, CancellationToken cancellationToken)
     {
         var rows = new List<object>();
         await using var command = new NpgsqlCommand("""
@@ -1346,7 +1346,7 @@ internal static class ProjectFlowHiveEnterpriseModule
                 nextSteps = ParseJson(reader.GetString(12)),
                 decisionsNeeded = ParseJson(reader.GetString(13)),
                 keyRisks = ParseJson(reader.GetString(14)),
-                financialSnapshot = ParseJson(reader.GetString(15)),
+                financialSnapshot = canViewFinancials ? (JsonElement?)ParseJson(reader.GetString(15)) : null,
                 scheduleSnapshot = ParseJson(reader.GetString(16)),
                 generatedSource = reader.GetString(17),
                 celarAiCorrelationId = reader.GetString(18),

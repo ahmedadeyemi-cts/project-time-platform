@@ -2818,12 +2818,6 @@ public static class ContractsPrepaidManagementModule
             return new AccessResult(false, false);
         }
 
-        var profile = string.Join(
-            " ",
-            Enumerable.Range(0, 4)
-                .Select(reader.GetString))
-            .ToLowerInvariant();
-
         foreach (var role in reader.GetString(4)
             .Split(
                 ',',
@@ -2834,11 +2828,7 @@ public static class ContractsPrepaidManagementModule
         }
 
         var canManage =
-            roles.Overlaps(ManageRoles)
-            || profile.Contains("administrator")
-            || profile.Contains("superadmin")
-            || profile.Contains("project team coordinator")
-            || profile.Contains("project coordinator");
+            roles.Overlaps(ManageRoles);
 
         var canView =
             canManage
@@ -2849,11 +2839,7 @@ public static class ContractsPrepaidManagementModule
                 "ACCOUNT_MANAGER",
                 "EXECUTIVE",
                 "EXECUTIVE_LEADERSHIP"
-            })
-            || profile.Contains("account executive")
-            || profile.Contains("account manager")
-            || profile.Contains("sales")
-            || profile.Contains("executive");
+            });
 
         return new AccessResult(canView, canManage);
     }
@@ -3111,6 +3097,13 @@ public static class ContractsPrepaidManagementModule
 
     private static string ConnectionString()
     {
+        foreach (var name in new[] { "ConnectionStrings__DefaultConnection", "ConnectionStrings__ProjectPulse",
+                     "ConnectionStrings__ProjectTime", "PROJECTPULSE_CONNECTION_STRING", "PROJECTTIME_DATABASE_CONNECTION" })
+        {
+            var configured = Environment.GetEnvironmentVariable(name);
+            if (!string.IsNullOrWhiteSpace(configured)) return configured;
+        }
+
         var host =
             Environment.GetEnvironmentVariable("PTP_DB_HOST");
         var port =

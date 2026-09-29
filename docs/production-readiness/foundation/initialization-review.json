@@ -1142,23 +1142,23 @@
     },
     {
       "path": "database/migrations/062_super_administrator_permanent_full_control.sql",
-      "sha256": "663d970271f13bcfff89d219e3f812da6de3a8d4150fab56335e3dfcdb01dbaa",
+      "sha256": "6a8787030293c6f968d2fab27f4fe814a698141ce5f961d98895ff201a783074",
       "signals": [
         "data_mutation",
         "dynamic_sql"
       ],
       "decision": "review_required",
-      "rationale": ""
+      "rationale": "Security remediation candidate; production application requires separate review and admission."
     },
     {
       "path": "database/migrations/063_project_management_billing_role_access_repair.sql",
-      "sha256": "44e43095763fa974d1939466ec55d0f9df669d9b369e8010fcbb9b68695fd341",
+      "sha256": "9eb52249f3ef0beb9811704c789f06bc320a44dce91bbd5c2c815558faac1351",
       "signals": [
         "data_mutation",
         "dynamic_sql"
       ],
       "decision": "review_required",
-      "rationale": ""
+      "rationale": "Security remediation candidate; production application requires separate review and admission."
     },
     {
       "path": "database/migrations/064_module_065_enterprise_notification_orchestration.sql",
@@ -2004,8 +2004,8 @@
       "signals": [
         "data_mutation"
       ],
-      "decision": "review_required",
-      "rationale": ""
+      "decision": "exclude_from_production",
+      "rationale": "Superseded intake initialization. Authority changes are not part of project intake; use the reviewed canonical replacement migration."
     },
     {
       "path": "deployment/rocky-linux/projectpulse-055d4g-final-save-trigger-and-allocation-sync.sql",
@@ -2041,8 +2041,8 @@
       "signals": [
         "data_mutation"
       ],
-      "decision": "review_required",
-      "rationale": ""
+      "decision": "exclude_from_production",
+      "rationale": "Superseded intake initialization. Authority changes are not part of project intake; use the reviewed canonical replacement migration."
     },
     {
       "path": "deployment/rocky-linux/projectpulse-055d4k-financial-card-and-project-team-notifications.sql",
@@ -2186,6 +2186,15 @@
       "review_default": "review_required",
       "decision": "review_required",
       "rationale": "Notification parity candidate. Requires explicit migration/release review and controlled UAT; no live execution or production activation authorized by this inventory entry."
+    },
+    {
+      "path": "database/migrations/130_security_integrity_boundaries.sql",
+      "sha256": "3d5e762e9f7dcba54f8e58d796016f8ddf6701b8cba926f3ce7e78562765873b",
+      "signals": [
+        "data_mutation"
+      ],
+      "decision": "review_required",
+      "rationale": "Security remediation candidate; production application requires separate review and admission."
     }
   ]
 }

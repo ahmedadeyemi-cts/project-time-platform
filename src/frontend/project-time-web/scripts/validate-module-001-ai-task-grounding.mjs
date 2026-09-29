@@ -262,7 +262,7 @@ check(
   'MODULE001_AI_GROUNDING_FAIL_CLOSED_SCOPE',
   containsAll(groundingService, [
     'CanAccessProjectAsync(',
-    'project_outside_effective_user_scope',
+    'project_not_resolved',
     'task_or_assignment_not_resolved',
     'pa.user_id = @user_id'
   ]),

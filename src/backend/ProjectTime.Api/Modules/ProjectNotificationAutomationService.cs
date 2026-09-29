@@ -494,6 +494,7 @@ internal static class ProjectNotificationAutomationService
                 context.RequestAborted);
             var attempts = await ProjectNotificationRepository.LoadRecentAttemptsAsync(
                 connection,
+                dispatches.Select(dispatch => dispatch.DispatchId).ToArray(),
                 100,
                 context.RequestAborted);
             var schedules = await ProjectNotificationRepository.LoadSchedulesAsync(
@@ -835,7 +836,7 @@ internal static class ProjectNotificationAutomationService
                 textBody,
                 ProjectNotificationEvaluator.Html(textBody),
                 readiness.RecipientBoundary,
-                "queued",
+                actor.CanDeliver && additionalCc.Count == 0 ? "queued" : "held",
                 recipients,
                 new
                 {
@@ -860,7 +861,7 @@ internal static class ProjectNotificationAutomationService
             );
         }
 
-        var delivery = actor.CanDeliver
+        var delivery = actor.CanDeliver && additionalCc.Count == 0
             ? await ProjectNotificationProcessingService.DeliverDispatchAsync(
                 connection,
                 dispatchId,
@@ -870,12 +871,12 @@ internal static class ProjectNotificationAutomationService
                 context.RequestAborted)
             : new ProjectNotificationProcessingService.NotificationDeliveryOutcome(
                 false,
-                "closeout_notification_queued",
+                "closeout_notification_held",
                 "module_065",
                 readiness.RecipientBoundary,
                 string.Empty,
                 string.Empty,
-                "The closeout notification was queued for governed Module 065 delivery.",
+                "The closeout notification requires an authorized operator to review and release it.",
                 dispatchId,
                 0);
 

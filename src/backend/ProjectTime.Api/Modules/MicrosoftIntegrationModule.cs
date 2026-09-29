@@ -799,26 +799,8 @@ public static class MicrosoftIntegrationModule
 
     private static EncryptionKey? ResolveEncryptionKey()
     {
-        var configured = Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_INTEGRATION_SECRET_KEY");
-        var source = "dedicated_environment_key";
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            configured = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
-            source = "database_credential_derived_key";
-        }
-        if (string.IsNullOrWhiteSpace(configured)) return null;
-
-        try
-        {
-            var decoded = Convert.FromBase64String(configured);
-            if (decoded.Length == 32) return new(decoded, source);
-            CryptographicOperations.ZeroMemory(decoded);
-        }
-        catch
-        {
-            // Non-base64 values are stretched with SHA-256 and never returned.
-        }
-        return new(SHA256.HashData(Encoding.UTF8.GetBytes($"ProjectPulse-Microsoft-Integration:{configured}")), source);
+        var key = IntegrationSecretKeys.Microsoft();
+        return key is null ? null : new(key, "dedicated_environment_key");
     }
 
     private static async Task InsertAuditAsync(

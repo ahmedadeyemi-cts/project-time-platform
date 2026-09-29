@@ -172,7 +172,7 @@ if (fullBackendContext) {
     'project_expense_acknowledged_as_included_cost',
     'work_lifecycle_audit_events',
     'deletedUploadsExcluded = true',
-    'staleReadinessBlocked = true',
+    'staleReadinessBlocked = !acknowledgementCurrent',
     "SET review_status = 'blocked'"
   ], 'Module 005 expense billing acknowledgement');
 

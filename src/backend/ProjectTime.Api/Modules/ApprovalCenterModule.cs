@@ -341,6 +341,9 @@ public static class ApprovalCenterModule
                       ON detail_category.non_project_time_category_id = detail.non_project_time_category_id
                     WHERE detail.timesheet_id = tds.timesheet_id
                       AND detail.work_date = tds.work_date
+                      AND (@can_view_all = TRUE
+                        OR (@is_manager = TRUE AND lower(COALESCE(u.manager_email, '')) = lower(@actor_email))
+                        OR (@is_project_manager = TRUE AND detail_project.project_manager_user_id = @actor_user_id))
                 ), '[]'::jsonb)::text
             FROM timesheet_day_statuses tds
             JOIN app_users u ON u.user_id = tds.user_id
@@ -371,6 +374,9 @@ public static class ApprovalCenterModule
                     )
                  )
               )
+              AND (@can_view_all = TRUE
+                OR (@is_manager = TRUE AND lower(COALESCE(u.manager_email, '')) = lower(@actor_email))
+                OR (@is_project_manager = TRUE AND p.project_manager_user_id = @actor_user_id))
               AND (
                     @search = ''
                  OR COALESCE(u.display_name, '') ILIKE '%' || @search || '%'
@@ -384,6 +390,7 @@ public static class ApprovalCenterModule
                 tds.user_id,
                 u.display_name,
                 u.email,
+                u.manager_email,
                 tds.work_date,
                 tds.status,
                 tds.submitted_at,
@@ -905,23 +912,9 @@ public static class ApprovalCenterModule
             return true;
         }
 
-        if (!access.IsProjectManager) return false;
-
-        await using var command = new NpgsqlCommand("""
-            SELECT EXISTS (
-                SELECT 1
-                FROM time_entries te
-                JOIN projects p ON p.project_id = te.project_id
-                WHERE te.timesheet_id = @timesheet_id
-                  AND te.work_date = @work_date
-                  AND p.project_manager_user_id = @actor_user_id
-            );
-            """, connection, transaction);
-
-        command.Parameters.AddWithValue("timesheet_id", timesheetId);
-        command.Parameters.AddWithValue("work_date", workDate);
-        command.Parameters.AddWithValue("actor_user_id", access.UserId);
-        return Convert.ToBoolean(await command.ExecuteScalarAsync() ?? false);
+        // Manager-stage actions may only be taken by the employee's manager or a broad approver.
+        // Project ownership does not grant authority over another manager's whole timesheet day.
+        return false;
     }
 
     private static async Task<int?> GetSubmittedAgeDaysAsync(

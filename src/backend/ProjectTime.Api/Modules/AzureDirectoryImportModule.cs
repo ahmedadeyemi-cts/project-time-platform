@@ -96,6 +96,10 @@ public static class AzureDirectoryImportModule
             var outcomes = new List<ImportOutcome>();
             var requestKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            if (rawCandidates.Count > 200) return InvalidRequest("Select no more than 200 users per import.");
+            string graphToken;
+            try { graphToken = await CalendarCapacityModule.GraphToken(context.RequestAborted); }
+            catch { return Results.Json(new { status = "directory_verification_unavailable" }, statusCode: 503); }
             await using var transaction = await connection.BeginTransactionAsync(context.RequestAborted);
             for (var index = 0; index < rawCandidates.Count; index++)
             {
@@ -105,6 +109,8 @@ public static class AzureDirectoryImportModule
 
                 try
                 {
+                    var verified = await DirectoryIdentitySafety.ReadVerifiedUserAsync(candidate.EntraObjectId, graphToken, context.RequestAborted);
+                    candidate = NormalizeCandidate(verified, sourceDefaults.SourceProvider);
                     if (string.IsNullOrWhiteSpace(candidate.Email))
                     {
                         outcomes.Add(Failed(candidate, "missing_email", "not_attempted"));
@@ -146,6 +152,12 @@ public static class AzureDirectoryImportModule
                     if (existingUserId is not null)
                     {
                         userId = existingUserId.Value;
+                        if (!await DirectoryIdentitySafety.CanRefreshAsync(connection, transaction, userId, candidate.EntraObjectId, context.RequestAborted))
+                        {
+                            outcomes.Add(Skipped(candidate, "existing_identity_protected"));
+                            await ExecuteControlAsync(connection, transaction, $"RELEASE SAVEPOINT {savepoint};", context.RequestAborted);
+                            continue;
+                        }
                         await UpdateUserAsync(connection, transaction, userColumns, userId, candidate, context.RequestAborted);
                         status = "duplicate";
                         resultCode = "existing_user_upserted";
@@ -165,7 +177,7 @@ public static class AzureDirectoryImportModule
                         resultCode = "user_inserted";
                     }
 
-                    var roleAssignment = await EnsureRoleAssignmentAsync(
+                    var roleAssignment = existingUserId is not null ? "existing_assignments_preserved" : await EnsureRoleAssignmentAsync(
                         connection,
                         transaction,
                         assignmentColumns,
@@ -463,6 +475,7 @@ public static class AzureDirectoryImportModule
     {
         var values = UserValues(columns, candidate, string.Empty, includeCreatedAt: false);
         values.Remove("email");
+        values.Remove("is_active"); values.Remove("login_enabled"); values.Remove("is_login_enabled");
         await ExecuteUpdateAsync(connection, transaction, "app_users", "user_id", userId, columns, values, cancellationToken);
     }
 

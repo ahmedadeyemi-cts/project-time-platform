@@ -106,7 +106,7 @@ await Sql("""
     CREATE UNIQUE INDEX ux_test_active_actor ON project_flowhive_ai_planner_runs(project_id,actual_actor_user_id) WHERE status IN ('queued','processing','generating');
     CREATE TABLE project_intake_documents(project_intake_document_id UUID,project_id UUID,document_category TEXT,
         original_file_name TEXT,pulse_ai_processing_status TEXT,pulse_ai_processing_error_code TEXT,pulse_ai_active_version_id UUID,
-        work_register_document_id UUID,pulse_ai_effective_at TIMESTAMPTZ,uploaded_at TIMESTAMPTZ,is_active BOOLEAN,engineering_visible BOOLEAN);
+        work_register_document_id UUID,pulse_ai_effective_at TIMESTAMPTZ,uploaded_at TIMESTAMPTZ,is_active BOOLEAN,engineering_visible BOOLEAN,ai_timesheet_context_enabled BOOLEAN);
     CREATE TABLE work_register_documents(work_register_document_id UUID,document_type TEXT,status TEXT,upload_source TEXT,stored_file_path TEXT);
     CREATE TABLE pulse_ai_document_versions(pulse_ai_document_version_id UUID,authority_status TEXT,index_status TEXT,source_sha256 TEXT,document_version TEXT);
     CREATE TABLE pulse_ai_document_chunks(pulse_ai_document_version_id UUID,is_active BOOLEAN,index_status TEXT,section_title TEXT,citation_anchor TEXT,chunk_text TEXT);
@@ -508,7 +508,7 @@ try
         INSERT INTO work_register_documents VALUES(@register,'sow','active','local_file',@file);
         INSERT INTO pulse_ai_document_versions VALUES(@version,'canonical','ready',@hash,'1');
         INSERT INTO pulse_ai_document_chunks VALUES(@version,TRUE,'ready','Scope','Service Overview','Synthetic scope of services');
-        INSERT INTO project_intake_documents VALUES(@doc,@p,'sow','scope.txt','ready','',@version,@register,NOW(),NOW(),TRUE,TRUE);
+        INSERT INTO project_intake_documents VALUES(@doc,@p,'sow','scope.txt','ready','',@version,@register,NOW(),NOW(),TRUE,TRUE,TRUE);
         """,("register",register),("file",fixtureFile),("version",version),("hash",new string('a',64)),("doc",doc),("p",project));
     await using var phaseDb=new NpgsqlConnection(cs); await phaseDb.OpenAsync();
     var currentDocs=await ProjectPlanningDocumentResolver.ReadCurrentAsync(phaseDb,project,default);

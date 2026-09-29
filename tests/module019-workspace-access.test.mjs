@@ -27,7 +27,8 @@ CREATE TABLE project_assignments(project_assignment_id uuid, project_id uuid, us
 CREATE TABLE engineering_resource_requests(engineering_resource_request_id uuid, project_id uuid, project_intake_request_id uuid, request_number text, request_status text DEFAULT 'assigned', fulfilled_by_user_id uuid, assigned_pm_user_id uuid, requested_function text DEFAULT 'Build', requested_hours numeric DEFAULT 8, priority text DEFAULT 'normal', created_at timestamp DEFAULT NOW());
 CREATE TABLE engineering_resource_request_assignments(engineering_resource_request_id uuid, user_id uuid);
 CREATE TABLE project_intake_requests(project_intake_request_id uuid, request_number text, request_title text, assigned_pm_user_id uuid);
-CREATE TABLE project_intake_documents(project_intake_document_id uuid, project_id uuid, project_intake_request_id uuid, document_type text DEFAULT 'sow', document_category text DEFAULT 'sow', original_file_name text DEFAULT 'SOW.docx', content_type text DEFAULT 'application/octet-stream', size_bytes bigint DEFAULT 4, engineering_visible boolean DEFAULT FALSE, ai_timesheet_context_enabled boolean DEFAULT FALSE, extraction_status text DEFAULT 'not_started', upload_source text DEFAULT 'manual', uploaded_at timestamp DEFAULT NOW(), is_active boolean DEFAULT TRUE, storage_path text DEFAULT 'intake/SOW.docx');
+CREATE TABLE work_register_documents(work_register_document_id uuid,visibility text);
+CREATE TABLE project_intake_documents(project_intake_document_id uuid,work_register_document_id uuid, project_id uuid, project_intake_request_id uuid, document_type text DEFAULT 'sow', document_category text DEFAULT 'sow', original_file_name text DEFAULT 'SOW.docx', content_type text DEFAULT 'application/octet-stream', size_bytes bigint DEFAULT 4, engineering_visible boolean DEFAULT FALSE, ai_timesheet_context_enabled boolean DEFAULT FALSE, extraction_status text DEFAULT 'not_started', upload_source text DEFAULT 'manual', uploaded_at timestamp DEFAULT NOW(), is_active boolean DEFAULT TRUE, storage_path text DEFAULT 'intake/SOW.docx');
 INSERT INTO app_users(user_id,display_name,email,team_name) VALUES
 ('${id(11)}','Engineer A','a@example.test','A'), ('${id(12)}','Engineer B','b@example.test','B'),
 ('${id(14)}','Project Manager','pm@example.test','B'), ('${id(15)}','Lead A','lead@example.test','A'),
@@ -57,23 +58,32 @@ INSERT INTO project_intake_documents(project_intake_document_id,project_id,proje
 ('${id(69)}','${id(1)}',NULL,TRUE);
 UPDATE project_intake_documents SET is_active=FALSE WHERE project_intake_document_id='${id(68)}';
 UPDATE project_intake_documents SET upload_source='celar_ai_chat_attachment' WHERE project_intake_document_id='${id(69)}';
+INSERT INTO work_register_documents VALUES ('${id(80)}','ptc_admin_only'),('${id(81)}','pm_ptc_admin');
+INSERT INTO project_intake_documents(project_intake_document_id,project_id,work_register_document_id,engineering_visible) VALUES
+('${id(70)}','${id(1)}','${id(80)}',TRUE),('${id(71)}','${id(1)}','${id(81)}',TRUE),
+('${id(72)}','${id(1)}',NULL,FALSE),('${id(73)}','${id(4)}','${id(81)}',FALSE),
+('${id(74)}','${id(4)}','${id(80)}',TRUE),('${id(75)}','${id(1)}',NULL,TRUE);
 `);
 const ids = rows => rows.map(row => row.id).sort();
 const cases = [
-  ['Engineer, direct project/request', { user_id: id(11), team_name: 'A' }, [1], [61,65]],
-  ['Engineer, other team', { user_id: id(12), team_name: 'B' }, [2], [62,63,64]],
-  ['Lead, own and additional teams', { user_id: id(15), team_name: 'A', can_view_team_scope: true }, [1,2,4], [62,64,67]],
+  ['Engineer, direct project/request', { user_id: id(11), team_name: 'A' }, [1], [75]],
+  ['Engineer, other team', { user_id: id(12), team_name: 'B' }, [2], [62,64]],
+  ['Lead, own and additional teams', { user_id: id(15), team_name: 'A', can_view_team_scope: true }, [1,2,4], [62,64,67,75]],
   ['Manager, department/team scope', { user_id: id(16), team_name: 'B', can_view_team_scope: true }, [2,4], [62,64,67]],
   ['Lead, inactive additional team', { user_id: id(16), team_name: 'C', can_view_team_scope: true }, [], []],
-  ['Project manager, managed scope', { user_id: id(14), can_view_managed_projects: true, hide_closed_projects: false }, [4], [67]],
+  ['Project manager, managed scope', { user_id: id(14), can_view_managed_projects: true, hide_closed_projects: false }, [4], [67,73]],
   ['Unassigned engineer', { user_id: id(16), team_name: 'B' }, [], []],
-  ['Administrator/coordinator/executive broad scope', { user_id: id(16), is_broad_scope: true, can_view_managed_projects: true, can_view_team_scope: true, hide_closed_projects: false }, [1,2,4,5,6,7], [61,62,63,64,65,66,67]]
+  ['Administrator/coordinator/executive broad scope', { user_id: id(16), is_broad_scope: true, can_view_managed_projects: true, can_view_team_scope: true, hide_closed_projects: false }, [1,2,4,5,6,7], [61,62,63,64,65,66,67,70,71,72,73,74,75]]
 ];
 let assertions = 0;
 for (const [label, access, projects, documents] of cases) {
   assert.deepEqual(ids(await run('LoadProjectsAsync', access)), projects.map(id).sort(), `${label}: projects`); assertions++;
+  if (access.user_id===id(11)) {
+    const visibleProject=(await run('LoadProjectsAsync',access)).find(p=>p.id===id(1));
+    assert.equal(Number(visibleProject.document_count),1,'overview counts only documents the engineer can read');assertions++;
+  }
   assert.deepEqual(ids(await run('LoadDocumentsAsync', access)), documents.map(id).sort(), `${label}: document list`); assertions++;
-  for (let n=61; n<=69; n++) {
+  for (let n=61; n<=75; n++) {
     assert.equal((await run('DownloadDocumentAsync', access, { document_id: id(n) })).length, documents.includes(n) ? 1 : 0, `${label}: download ${n} must match list permission`); assertions++;
   }
 }
@@ -83,11 +93,11 @@ assert.equal((await run('LoadResourceRequestsAsync', { user_id: id(16), team_nam
 // Metadata must remain complete beyond the old 100-project / 250-record cutoffs.
 await db.exec(`
 INSERT INTO projects(project_id,project_code,project_name) SELECT lpad(n::text,32,'0')::uuid, 'BULK-'||n, 'Large portfolio' FROM generate_series(1000,1100) n;
-INSERT INTO project_intake_documents(project_intake_document_id,project_id) SELECT lpad(n::text,32,'0')::uuid, '${id(1)}'::uuid FROM generate_series(2000,2250) n;
+INSERT INTO project_intake_documents(project_intake_document_id,project_id,engineering_visible) SELECT lpad(n::text,32,'0')::uuid, '${id(1)}'::uuid, TRUE FROM generate_series(2000,2250) n;
 INSERT INTO engineering_resource_requests(engineering_resource_request_id,request_number,fulfilled_by_user_id) SELECT lpad(n::text,32,'0')::uuid, 'SR-'||n, '${id(11)}'::uuid FROM generate_series(3000,3250) n;
 `);
 assert.equal((await run('LoadProjectsAsync', { is_broad_scope: true })).length, 107); assertions++;
-assert.equal((await run('LoadDocumentsAsync', { user_id: id(11) })).length, 253); assertions++;
+assert.equal((await run('LoadDocumentsAsync', { user_id: id(11) })).length, 252); assertions++;
 assert.equal((await run('LoadResourceRequestsAsync', { user_id: id(11) })).length, 253); assertions++;
 await db.close();
 console.log(`Module 019 PostgreSQL access scenarios: PASS (${assertions} assertions; scoped lists, matching download permission, larger portfolios)`);

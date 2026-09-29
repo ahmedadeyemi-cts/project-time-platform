@@ -315,6 +315,10 @@ public sealed class PulseAiSystemIntelligenceService
                 cancellationToken)
             : Guid.NewGuid();
 
+        if (persisted && inquiryRunId == Guid.Empty)
+            return Blocked(conversationId, "inquiry_audit_unavailable",
+                "The inquiry audit could not be created. No tools were executed. Please retry.", correlationId);
+
         try
         {
             var accessWarnings = new List<string>();
@@ -1931,16 +1935,6 @@ public sealed class PulseAiSystemIntelligenceService
 
     private static string CorrelationId(HttpContext context)
     {
-        foreach (var name in new[]
-                 {
-                     "X-Correlation-ID",
-                     "X-Request-ID",
-                     "X-ProjectPulse-Correlation-Id"
-                 })
-        {
-            var value = context.Request.Headers[name].ToString().Trim();
-            if (value.Length > 0) return Limit(value, 160);
-        }
         return $"pulse-ai-system-{Guid.NewGuid():N}";
     }
 

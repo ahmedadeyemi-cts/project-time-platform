@@ -25,7 +25,17 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: python3 tests/contracts-release/scope.py && python3 tests/contracts-release/test_scope.py
+      - name: Verify exact source registration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ "${GITHUB_HEAD_REF:-}" == 'fix/security-complete-20260929' ]]; then
+            python3 tests/security-completion/scope.py
+            python3 tests/security-completion/test_scope.py
+          else
+            python3 tests/contracts-release/scope.py
+            python3 tests/contracts-release/test_scope.py
+          fi
       - run: python3 tests/flowhive-migration-package.test.py
       - run: npm install --prefix /tmp/contract-test-runtime @electric-sql/pglite@0.5.8 --no-audit --no-fund
       - run: node tests/contracts-approval-funding.test.mjs

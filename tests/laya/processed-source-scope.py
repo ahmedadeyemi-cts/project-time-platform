@@ -13,6 +13,17 @@ def current_branch():
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
 # The security inventory includes no Laya authority or schema changes.
+if current_branch() == 'fix/security-complete-20260929':
+    subprocess.run([sys.executable, str(ROOT/'tests/security-completion/scope.py')], cwd=ROOT, check=True)
+    for path in ['database/migrations/125_automatic_document_admission_laya.sql',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs']:
+        expected = subprocess.check_output(['git','-C',str(ROOT),'show','e01f559e0bb7df91e233fd885c837f666802cb98:'+path])
+        if (ROOT/path).read_bytes() != expected:
+            raise SystemExit('Security repair changed inherited Laya authority: '+path)
+    print('LAYA_SECURITY_INHERITED_SOURCE=PASS')
+    raise SystemExit(0)
+
 if current_branch() == 'fix/security-team-findings-20260928':
     subprocess.run([sys.executable, str(ROOT/'tests/security-release/scope.py')], cwd=ROOT, check=True)
     for path in ['database/migrations/125_automatic_document_admission_laya.sql',

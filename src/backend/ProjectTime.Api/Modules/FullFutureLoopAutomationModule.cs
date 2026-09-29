@@ -1487,14 +1487,12 @@ public static class FullFutureLoopAutomationModule
         || access.Permissions.Contains("MANAGE_ALL"));
 
     private static bool CanManage(EnterpriseGovernanceAccess access) =>
-        !access.IsViewAs && (access.CanManageOrganization
-        || access.Roles.Overlaps(ManageRoles)
+        !access.IsViewAs && (access.Roles.Overlaps(ManageRoles)
         || access.Permissions.Contains("MANAGE_FULL_FUTURE_LOOP_AUTOMATION_083")
         || access.Permissions.Contains("MANAGE_ALL"));
 
     private static bool CanApprove(EnterpriseGovernanceAccess access) =>
-        !access.IsViewAs && (access.CanManageOrganization
-        || access.Roles.Overlaps(ManageRoles)
+        !access.IsViewAs && (access.Roles.Overlaps(ManageRoles)
         || access.Permissions.Contains("APPROVE_FULL_FUTURE_LOOP_AUTOMATION_083")
         || access.Permissions.Contains("MANAGE_ALL"));
 

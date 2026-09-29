@@ -44,7 +44,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
-          if [[ "$GITHUB_HEAD_REF" == 'fix/security-team-findings-20260928' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-complete-20260929' ]]; then
+            python3 tests/security-completion/scope.py
+            python3 tests/security-completion/test_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/security-team-findings-20260928' ]]; then
             python3 tests/security-release/scope.py
             python3 tests/security-release/test_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'codex/module060-approval-contract-funding' ]]; then

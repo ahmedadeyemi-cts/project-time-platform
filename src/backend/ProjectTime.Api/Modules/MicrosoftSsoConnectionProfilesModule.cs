@@ -27,14 +27,6 @@ public static class MicrosoftSsoConnectionProfilesModule
         "MANAGE_GLOBAL_MAIL"
     };
 
-    private static readonly HashSet<string> WritePermissions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "SYSTEM_ADMINISTRATION",
-        "MANAGE_ALL",
-        "MANAGE_ENTRA_SECRET",
-        "MANAGE_GLOBAL_MAIL_CONFIGURATION",
-        "MANAGE_GLOBAL_MAIL"
-    };
 
     public static WebApplication MapMicrosoftSsoConnectionProfileEndpoints(this WebApplication app)
     {
@@ -690,7 +682,7 @@ public static class MicrosoftSsoConnectionProfilesModule
             }
 
             var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
-            var allowed = administrator || permissions.Any((write ? WritePermissions : ReadPermissions).Contains);
+            var allowed = write ? administrator : administrator || permissions.Any(ReadPermissions.Contains);
             if (!allowed)
             {
                 return new(null, Results.Json(new
@@ -698,7 +690,7 @@ public static class MicrosoftSsoConnectionProfilesModule
                     module = ModuleNumber,
                     status = write ? "microsoft_integration_manage_access_required" : "microsoft_integration_access_required",
                     message = write
-                        ? "Manage Microsoft Integration authority is required."
+                        ? "Permanent Super Administrator authority is required to change Microsoft identity profiles."
                         : "Microsoft Integration access is required."
                 }, statusCode: StatusCodes.Status403Forbidden));
             }
@@ -752,25 +744,8 @@ public static class MicrosoftSsoConnectionProfilesModule
 
     private static EncryptionKey? ResolveEncryptionKey()
     {
-        var configured = Environment.GetEnvironmentVariable("PROJECTPULSE_MICROSOFT_INTEGRATION_SECRET_KEY");
-        var source = "dedicated_environment_key";
-        if (string.IsNullOrWhiteSpace(configured))
-        {
-            configured = Environment.GetEnvironmentVariable("PTP_DB_PASSWORD");
-            source = "database_credential_derived_key";
-        }
-        if (string.IsNullOrWhiteSpace(configured)) return null;
-        try
-        {
-            var decoded = Convert.FromBase64String(configured);
-            if (decoded.Length == 32) return new(decoded, source);
-            CryptographicOperations.ZeroMemory(decoded);
-        }
-        catch
-        {
-            // Non-base64 values are stretched without being returned.
-        }
-        return new(SHA256.HashData(Encoding.UTF8.GetBytes($"ProjectPulse-Microsoft-SSO:{configured}")), source);
+        var key = IntegrationSecretKeys.Microsoft();
+        return key is null ? null : new(key, "dedicated_environment_key");
     }
 
     private static byte[] AssociatedData(string environmentMode, string tenantKey) =>

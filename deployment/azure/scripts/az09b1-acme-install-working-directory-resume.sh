@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+# Both values must come from the operator's reviewed checkpoint, never a mutable branch.
+REVIEWED_SCRIPT_COMMIT="${PHD_REVIEWED_SCRIPT_COMMIT:?set the reviewed 40-character source commit}"
+REVIEWED_SCRIPT_SHA256="${PHD_REVIEWED_SCRIPT_SHA256:?set the reviewed canonical script SHA-256}"
+[[ "$REVIEWED_SCRIPT_COMMIT" =~ ^[0-9a-f]{40}$ && "$REVIEWED_SCRIPT_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+  echo 'Invalid reviewed script identity' >&2; exit 1;
+}
+
 REPOSITORY="ahmedadeyemi-cts/project-time-platform"
 BRANCH="azure-migration/project-health-dashboard-foundation"
 ORIGINAL_SCRIPT_PATH="deployment/azure/scripts/az09b-configure-west-custom-domain-tls.sh"
@@ -39,8 +46,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 is required."
 
 gh api \
   -H "Accept: application/vnd.github.raw+json" \
-  "repos/${REPOSITORY}/contents/${ORIGINAL_SCRIPT_PATH}?ref=${BRANCH}" \
+  "repos/${REPOSITORY}/contents/${ORIGINAL_SCRIPT_PATH}?ref=${REVIEWED_SCRIPT_COMMIT}" \
   > "$ORIGINAL_SCRIPT"
+    printf '%s  %s\n' "$REVIEWED_SCRIPT_SHA256" "$ORIGINAL_SCRIPT" | sha256sum --check --status || { echo 'Canonical script digest mismatch' >&2; exit 1; }
+
 
 [ -s "$ORIGINAL_SCRIPT" ] || fail "Original AZ-09B script download failed."
 

@@ -724,6 +724,12 @@ public static class MicrosoftDirectorySyncModule
                 else
                 {
                     userId = existing.Value;
+                    if (!await DirectoryIdentitySafety.CanRefreshAsync(connection, transaction, userId, candidate.ObjectId, cancellationToken))
+                    {
+                        skipped++;
+                        await ExecuteControlAsync(connection, transaction, $"RELEASE SAVEPOINT {savepoint};", cancellationToken);
+                        continue;
+                    }
                     await UpdateUserAsync(
                         connection,
                         transaction,
@@ -734,7 +740,7 @@ public static class MicrosoftDirectorySyncModule
                     updated++;
                 }
 
-                await EnsureRoleAssignmentAsync(
+                if (existing is null) await EnsureRoleAssignmentAsync(
                     connection,
                     transaction,
                     assignmentColumns,
@@ -1357,6 +1363,7 @@ public static class MicrosoftDirectorySyncModule
     {
         var values = UserValues(columns, candidate, string.Empty, includeCreatedAt: false);
         values.Remove("email");
+        values.Remove("is_active"); values.Remove("login_enabled"); values.Remove("is_login_enabled");
         await ExecuteUpdateAsync(
             connection,
             transaction,

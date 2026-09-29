@@ -63,9 +63,8 @@ public static partial class Module005ProjectExpenseUploadModule
         var project = projects.FirstOrDefault(item => item.ProjectId == projectId);
         if (project is null) return AccessDenied("The selected project is outside the current role scope.");
 
-        await BlockStaleExpenseReadinessAsync(connection, null, context.RequestAborted);
-        var snapshot = await LoadCurrentExpenseSnapshotAsync(connection, null, projectId, context.RequestAborted);
-        var acknowledgement = await LoadExpenseAcknowledgementAsync(connection, null, projectId, context.RequestAborted);
+        var snapshot = await LoadCurrentExpenseSnapshotAsync(connection, null, projectId, context.RequestAborted, HasRole(actor, BillingRoles) ? null : actor.EffectiveUserId);
+        var acknowledgement = HasRole(actor, BillingRoles) ? await LoadExpenseAcknowledgementAsync(connection, null, projectId, context.RequestAborted) : null;
         var treatment = BillingTreatment(project.ContractType);
         var expectedAmount = treatment == "pass_through_invoice"
             ? snapshot.ReimbursableAmount
@@ -123,7 +122,7 @@ public static partial class Module005ProjectExpenseUploadModule
                 acknowledgement.UpdatedAt
             },
             deletedUploadsExcluded = true,
-            staleReadinessBlocked = true
+            staleReadinessBlocked = !acknowledgementCurrent
         });
     }
 
@@ -168,7 +167,7 @@ public static partial class Module005ProjectExpenseUploadModule
                 await advisory.ExecuteNonQueryAsync(context.RequestAborted);
             }
 
-            await BlockStaleExpenseReadinessAsync(connection, transaction, context.RequestAborted);
+            await BlockStaleExpenseReadinessAsync(connection, transaction, context.RequestAborted, projectId);
             var snapshot = await LoadCurrentExpenseSnapshotAsync(
                 connection,
                 transaction,
@@ -368,10 +367,10 @@ public static partial class Module005ProjectExpenseUploadModule
         }
     }
 
-    private static async Task BlockStaleExpenseReadinessAsync(
+    internal static async Task BlockStaleExpenseReadinessAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? projectId = null)
     {
         await using var command = new NpgsqlCommand("""
             UPDATE work_billing_readiness_reviews review
@@ -381,7 +380,8 @@ public static partial class Module005ProjectExpenseUploadModule
                     ELSE review.notes || E'\nAutomatically blocked because the acknowledged Module 005 expense evidence is no longer current.'
                 END,
                 updated_at = NOW()
-            WHERE review.evidence_source_type = 'expense'
+            WHERE (@project_id::uuid IS NULL OR review.project_id=@project_id)
+              AND review.evidence_source_type = 'expense'
               AND review.review_status = 'ready'
               AND review.package_type LIKE 'expense-%'
               AND (
@@ -417,6 +417,7 @@ public static partial class Module005ProjectExpenseUploadModule
                     )
               );
             """, connection, transaction);
+        command.Parameters.AddWithValue("project_id", (object?)projectId ?? DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
@@ -424,7 +425,7 @@ public static partial class Module005ProjectExpenseUploadModule
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
         Guid projectId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Guid? ownerUserId = null)
     {
         var uploads = new List<ExpenseBillingUpload>();
         await using var command = new NpgsqlCommand("""
@@ -442,11 +443,13 @@ public static partial class Module005ProjectExpenseUploadModule
             FROM project_expense_uploads upload
             JOIN app_users owner_user ON owner_user.user_id = upload.expense_owner_user_id
             WHERE upload.project_id = @project_id
+              AND (@owner_id::uuid IS NULL OR upload.expense_owner_user_id=@owner_id)
               AND upload.is_current = TRUE
               AND upload.deleted_at IS NULL
             ORDER BY upload.uploaded_at DESC, upload.version_number DESC;
             """, connection, transaction);
         command.Parameters.AddWithValue("project_id", projectId);
+        command.Parameters.AddWithValue("owner_id", (object?)ownerUserId ?? DBNull.Value);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {

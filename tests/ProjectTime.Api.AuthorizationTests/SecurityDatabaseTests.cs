@@ -25,7 +25,7 @@ internal static class SecurityDatabaseTests
             CREATE TEMP TABLE app_users (user_id uuid PRIMARY KEY, email text, is_active boolean DEFAULT true, login_enabled boolean DEFAULT true, entra_object_id text, entra_tenant_id text);
             CREATE TEMP TABLE app_roles (app_role_id integer PRIMARY KEY, role_code text, is_active boolean DEFAULT true);
             CREATE TEMP TABLE app_user_role_assignments (user_id uuid, app_role_id integer, is_active boolean DEFAULT true);
-            CREATE TEMP TABLE auth_sessions (auth_session_id uuid, user_id uuid, provider_code text, session_token_hash text, created_at timestamptz, expires_at timestamptz, revoked_at timestamptz);
+            CREATE TEMP TABLE auth_sessions (auth_session_id uuid, user_id uuid, provider_code text, session_token_hash text, created_at timestamptz, expires_at timestamptz, revoked_at timestamptz,last_seen_at timestamptz);
             CREATE TEMP TABLE auth_local_accounts (user_id uuid, password_hash_updated_at timestamptz);
             INSERT INTO app_roles VALUES (1,'SUPER_ADMINISTRATOR',true),(2,'ADMINISTRATOR',true),(3,'ENGINEERING',true);
             INSERT INTO app_users (user_id,email) VALUES
@@ -81,7 +81,7 @@ internal static class SecurityDatabaseTests
             return await command.ExecuteScalarAsync() is Guid;
         }
         await Execute("""
-            INSERT INTO auth_sessions VALUES ('44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333','LOCAL','synthetic-token-hash',NOW()-INTERVAL '1 hour',NOW()+INTERVAL '1 hour',NULL);
+            INSERT INTO auth_sessions VALUES ('44444444-4444-4444-4444-444444444444','33333333-3333-3333-3333-333333333333','LOCAL','synthetic-token-hash',NOW()-INTERVAL '1 hour',NOW()+INTERVAL '1 hour',NULL,NULL);
             INSERT INTO auth_local_accounts VALUES ('33333333-3333-3333-3333-333333333333',NOW()-INTERVAL '2 hours');
             """);
         Check(await SessionValid(), "Current session admitted");
@@ -94,6 +94,21 @@ internal static class SecurityDatabaseTests
         await Execute("UPDATE app_users SET login_enabled=true; UPDATE app_user_role_assignments SET is_active=false WHERE app_role_id=3");
         Check(!await SessionValid(), "Role removal invalidates session");
 
+        // Execute the actual session-extension SQL, including password rotation and absolute cap.
+        var extensionQuery=QueryContaining("SET expires_at = LEAST(@expires_at, created_at + INTERVAL '12 hours')");
+        async Task<DateTime?> Extend()
+        {
+            await using var command=new NpgsqlCommand(extensionQuery,connection);
+            command.Parameters.AddWithValue("expires_at",DateTime.UtcNow.AddDays(7));
+            command.Parameters.AddWithValue("session_token_hash","synthetic-token-hash");
+            return await command.ExecuteScalarAsync() as DateTime?;
+        }
+        await Execute("UPDATE app_user_role_assignments SET is_active=TRUE; UPDATE auth_sessions SET created_at=NOW()-INTERVAL '11 hours',expires_at=NOW()+INTERVAL '1 hour'; UPDATE auth_local_accounts SET password_hash_updated_at=NOW()-INTERVAL '1 day'");
+        var capped=await Extend();Check(capped is not null && capped<=DateTime.UtcNow.AddMinutes(61),"Extension cannot exceed the absolute lifetime");
+        await Execute("UPDATE auth_local_accounts SET password_hash_updated_at=NOW()");
+        Check(await Extend() is null,"Password rotation prevents stolen-token extension");
+        await Execute("UPDATE auth_local_accounts SET password_hash_updated_at=NOW()-INTERVAL '1 day'; UPDATE auth_sessions SET created_at=NOW()-INTERVAL '13 hours',expires_at=NOW()+INTERVAL '1 hour'");
+        Check(await Extend() is null,"Expired absolute lifetime cannot be extended");
         await Execute("UPDATE app_users SET entra_object_id='bound-object',entra_tenant_id='bound-tenant' WHERE email='super@example.invalid'");
         var lookupQuery = QueryContaining("AND ((entra_object_id = @entra_object_id AND entra_tenant_id = @tenant_id)");
         async Task<Guid?> Lookup(string objectId, string tenantId, string email)

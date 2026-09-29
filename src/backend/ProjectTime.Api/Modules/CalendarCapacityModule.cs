@@ -159,19 +159,23 @@ public static class CalendarCapacityModule
 
             await connection.OpenAsync();
 
+            var access = await EnterpriseGovernanceAccessResolver.ResolveAsync(context, connection, context.RequestAborted);
+            if (access is null) return Results.Unauthorized();
+
             var presenceResources =
                 new List<PresenceResourceRow>();
 
             await using (var command = new NpgsqlCommand(
-                "SELECT u.user_id, "
+                "WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + " SELECT u.user_id, "
                 + "NULLIF(to_jsonb(u)->>'entra_object_id', ''), "
                 + "u.email "
                 + "FROM app_users u "
                 + "WHERE u.is_active = TRUE "
                 + "AND COALESCE(u.login_enabled, TRUE) = TRUE "
-                + "AND u.user_id = ANY(@ids);",
+                + "AND u.user_id = ANY(@ids) AND (@broad_scope OR u.user_id=@user_id OR (@team_scope AND u.user_id IN (SELECT user_id FROM scoped_team_members)));",
                 connection))
             {
+                EnterpriseGovernanceAccessResolver.AddScopeParameters(command, access);
                 command.Parameters.AddWithValue(
                     "ids",
                     requestedIds);
@@ -371,7 +375,7 @@ public static class CalendarCapacityModule
 
             await using var connection = new NpgsqlConnection(ConnectionString());
             await connection.OpenAsync();
-            var resources = await ResolveResources(connection, request, actor.Value);
+            var resources = await ResolveResources(connection, request, actor.Value, context);
             if (resources.Count == 0)
                 return Results.BadRequest(new { status = "no_resources", message = "Select a user, team, or department." });
 
@@ -435,7 +439,8 @@ public static class CalendarCapacityModule
                                 var graphSubject =
                                     Str(item, "subject")?.Trim();
 
-                                var displaySubject = isPrivate
+                                var hideDetails = isPrivate || resource?.UserId != actor.Value;
+                                var displaySubject = hideDetails
                                     ? "Private appointment"
                                     : string.IsNullOrWhiteSpace(graphSubject)
                                         ? CalendarFallbackSubject(status)
@@ -457,9 +462,9 @@ public static class CalendarCapacityModule
                                         Nested(item, "end", "timeZone") ?? "",
                                     subject = displaySubject,
                                     subjectAvailable =
-                                        !string.IsNullOrWhiteSpace(graphSubject),
+                                        !hideDetails && !string.IsNullOrWhiteSpace(graphSubject),
                                     isPrivate,
-                                    location = isPrivate
+                                    location = hideDetails
                                         ? ""
                                         : Str(item, "location") ?? "",
                                     durationHours =
@@ -516,7 +521,7 @@ public static class CalendarCapacityModule
                 return Results.Ok(new
                 {
                     status = "calendar_schedule_loaded",
-                    privacyMode = "subject_when_available",
+                    privacyMode = "self_details_other_resources_availability_only",
                     request.Start,
                     request.End,
                     timeZone = TimeZone(request.TimeZone),
@@ -534,10 +539,12 @@ public static class CalendarCapacityModule
         return app;
     }
 
-    private static async Task<List<ResourceRow>> ResolveResources(NpgsqlConnection connection, ScheduleRequest request, Guid actor)
+    private static async Task<List<ResourceRow>> ResolveResources(NpgsqlConnection connection, ScheduleRequest request, Guid actor, HttpContext context)
     {
         var rows = new List<ResourceRow>();
-        await using var command = new NpgsqlCommand("""
+        var access = await EnterpriseGovernanceAccessResolver.ResolveAsync(context, connection, context.RequestAborted);
+        if (access is null) return rows;
+        await using var command = new NpgsqlCommand("WITH " + EnterpriseGovernanceAccessResolver.TeamMembersCte + " " + """
             SELECT u.user_id, COALESCE(u.display_name,u.email), u.email,
                    NULLIF(to_jsonb(u)->>'entra_object_id',''),
                    COALESCE(NULLIF(to_jsonb(u)->>'team_name',''),NULLIF(to_jsonb(u)->>'department_name',''),NULLIF(to_jsonb(u)->>'department',''),'Unassigned'),
@@ -546,7 +553,8 @@ public static class CalendarCapacityModule
                    COALESCE(NULLIF(to_jsonb(u)->>'profile_photo_data_url',''),''),
                    u.profile_photo_updated_at
             FROM app_users u
-            WHERE u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
+            WHERE (@broad_scope OR u.user_id=@user_id OR (@team_scope AND u.user_id IN (SELECT user_id FROM scoped_team_members)))
+              AND u.is_active=TRUE AND COALESCE(u.login_enabled,TRUE)=TRUE
               AND u.email IS NOT NULL AND u.email<>'' AND lower(u.email) NOT LIKE '%.local'
                   AND lower(u.email) NOT LIKE '%.cloud'
               AND (
@@ -557,6 +565,7 @@ public static class CalendarCapacityModule
               )
             ORDER BY COALESCE(u.display_name,u.email);
             """, connection);
+        EnterpriseGovernanceAccessResolver.AddScopeParameters(command, access);
         command.Parameters.AddWithValue("ids", request.ResourceIds?.Distinct().ToArray() ?? Array.Empty<Guid>());
         command.Parameters.AddWithValue("team", request.TeamName?.Trim() ?? "");
         command.Parameters.AddWithValue("department", request.DepartmentName?.Trim() ?? "");

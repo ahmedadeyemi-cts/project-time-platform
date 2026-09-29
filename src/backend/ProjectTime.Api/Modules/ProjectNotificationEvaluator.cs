@@ -30,7 +30,6 @@ internal static class ProjectNotificationEvaluator
 
     internal static bool CanQueueCloseout(ProjectNotificationActor actor) => !actor.IsViewAs && (
         actor.CanDeliver
-        || actor.Permissions.Contains("VIEW_CLOSEOUT_NOTIFICATION_ROUTING")
         || actor.Roles.Contains("PROJECT_MANAGER")
         || actor.Roles.Contains("PROJECT_MANAGEMENT")
         || actor.Roles.Contains("PROJECT_MANAGEMENT_LEAD")
@@ -414,17 +413,10 @@ internal static class ProjectNotificationEvaluator
         + $"Project: {project.ProjectCode} — {project.ProjectName}\n"
         + $"Project Manager: {project.ProjectManager?.DisplayName ?? "Not assigned"}\n"
         + $"Financial status: {Label(project.BudgetStatus)}\n"
-        + $"Reason: {evaluation.Reason}\n\n"
         + $"Planned hours: {project.PlannedHours:0.##}\n"
         + $"Used hours: {project.UsedHours:0.##}\n"
         + $"Remaining hours: {project.RemainingHours:0.##}\n"
-        + $"Labor budget: {Money(project.LaborBudget)}\n"
-        + $"Expense budget: {Money(project.ExpenseBudget)}\n"
-        + $"Calculated labor cost: {Money(project.LaborCost)}\n"
-        + $"Uploaded expenses: {Money(project.UploadedExpenses)}\n"
-        + $"Forecasted final cost: {Money(project.ForecastedFinalCost)}\n"
-        + $"Current variance: {Money(project.CurrentVariance)}\n\n"
-        + "Open ProjectPulse to review the authoritative calculation and source evidence.";
+        + "Open ProjectPulse to review the calculation and source evidence permitted by your project role.";
 
     internal static string BuildCloseoutBody(ProjectNotificationFinancialSnapshot project) =>
         $"Project {project.ProjectCode} — {project.ProjectName} for {project.CustomerName} is ready for closeout communication.\n\n"

@@ -486,7 +486,12 @@ await ExpectResolutionAsync(
     WorkRegisterProjectIdResolutionStatus.Unsupported);
 
 await SecurityConsolidationTests.RunAsync();
+await PrivilegedIntegrationTests.RunAsync();
 await SecurityDatabaseTests.RunAsync();
+await SecurityCompletionTests.RunAsync();
+await SecurityRouteTests.RunAsync();
+await CanonicalMiddlewareTests.RunAsync();
+await HtmlExtractionBudgetTests.RunAsync();
 Console.WriteLine($"WORK_REGISTER_AUTHORIZATION_CHECKS={checks}");
 Console.WriteLine("WORK_REGISTER_AUTHORIZATION_CONTRACT=PASSED");
 return 0;

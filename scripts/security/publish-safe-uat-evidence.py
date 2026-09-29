@@ -87,7 +87,7 @@ def project_receipt(name, obj):
     for key, rule in RECEIPTS[name].items():
         if key in obj:
             if not valid(obj[key], rule):
-                raise ValueError("Invalid deployment receipt field")
+                raise ValueError(f"Invalid deployment receipt field: {name}:{key}")
             result[key] = obj[key]
     return result
 

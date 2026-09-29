@@ -3,6 +3,12 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+if [[ "$HEAD_BRANCH" == 'fix/security-complete-20260929' ]]; then
+  python3 tests/security-completion/scope.py
+  python3 tests/security-completion/test_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
   python3 tests/security-release/scope.py
   python3 tests/security-release/test_scope.py

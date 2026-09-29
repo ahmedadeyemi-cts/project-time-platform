@@ -143,8 +143,7 @@ internal static class ProjectNotificationRepository
     internal static bool IsBroad(ProjectNotificationActor actor) =>
         actor.Roles.Any(role => BroadRoles.Contains(role, StringComparer.OrdinalIgnoreCase))
         || actor.Permissions.Contains("SYSTEM_ADMINISTRATION")
-        || actor.Permissions.Contains("MANAGE_ALL")
-        || actor.Permissions.Contains("VIEW_NOTIFICATION_DELIVERY_MONITOR");
+        || actor.Permissions.Contains("MANAGE_ALL");
 
     internal static async Task<List<ProjectCostRoutingRule>> LoadRulesAsync(
         NpgsqlConnection connection,
@@ -614,7 +613,6 @@ internal static class ProjectNotificationRepository
             (@status='' OR dispatch.delivery_status=@status)
             AND (
                 @broad
-                OR dispatch.project_id IS NULL
                 OR EXISTS (
                     SELECT 1
                     FROM projects project
@@ -651,6 +649,7 @@ internal static class ProjectNotificationRepository
 
     internal static async Task<List<DeliveryAttemptView>> LoadRecentAttemptsAsync(
         NpgsqlConnection connection,
+        Guid[] authorizedDispatchIds,
         int limit,
         CancellationToken cancellationToken)
     {
@@ -669,9 +668,11 @@ internal static class ProjectNotificationRepository
                 COALESCE(diagnostic_message,''),
                 attempted_at
             FROM project_notification_delivery_attempts
+            WHERE project_notification_dispatch_id=ANY(@dispatch_ids)
             ORDER BY attempted_at DESC
             LIMIT @limit;
             """, connection);
+        command.Parameters.AddWithValue("dispatch_ids", authorizedDispatchIds);
         command.Parameters.AddWithValue("limit", Math.Clamp(limit, 1, 500));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))

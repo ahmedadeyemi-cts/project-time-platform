@@ -707,6 +707,9 @@ public static class ProjectFlowHiveModule
                     SELECT 1
                     FROM project_assignments self_assignment
                     WHERE self_assignment.project_id = p.project_id
+                      AND self_assignment.effective_start_date <= CURRENT_DATE
+                      AND (self_assignment.effective_end_date IS NULL OR self_assignment.effective_end_date >= CURRENT_DATE)
+                      AND COALESCE(to_jsonb(self_assignment)->>\'module001a_closeout_status\', \'active\') = \'active\'
                       AND self_assignment.user_id = @user_id
                 )
                 OR (
@@ -717,6 +720,9 @@ public static class ProjectFlowHiveModule
                             SELECT 1
                             FROM project_assignments team_assignment
                             WHERE team_assignment.project_id = p.project_id
+                              AND team_assignment.effective_start_date <= CURRENT_DATE
+                              AND (team_assignment.effective_end_date IS NULL OR team_assignment.effective_end_date >= CURRENT_DATE)
+                              AND COALESCE(to_jsonb(team_assignment)->>\'module001a_closeout_status\', \'active\') = \'active\'
                               AND team_assignment.user_id IN (SELECT user_id FROM team_members)
                         )
                     )
@@ -823,6 +829,9 @@ public static class ProjectFlowHiveModule
                         SELECT 1
                         FROM project_assignments self_assignment
                         WHERE self_assignment.project_id = p.project_id
+                          AND self_assignment.effective_start_date <= CURRENT_DATE
+                          AND (self_assignment.effective_end_date IS NULL OR self_assignment.effective_end_date >= CURRENT_DATE)
+                          AND COALESCE(to_jsonb(self_assignment)->>\'module001a_closeout_status\', \'active\') = \'active\'
                           AND self_assignment.user_id = @user_id
                     )
                     OR (
@@ -833,6 +842,9 @@ public static class ProjectFlowHiveModule
                                 SELECT 1
                                 FROM project_assignments team_assignment
                                 WHERE team_assignment.project_id = p.project_id
+                                  AND team_assignment.effective_start_date <= CURRENT_DATE
+                                  AND (team_assignment.effective_end_date IS NULL OR team_assignment.effective_end_date >= CURRENT_DATE)
+                                  AND COALESCE(to_jsonb(team_assignment)->>\'module001a_closeout_status\', \'active\') = \'active\'
                                   AND team_assignment.user_id IN (SELECT user_id FROM team_members)
                             )
                         )
@@ -886,6 +898,9 @@ public static class ProjectFlowHiveModule
                       SELECT 1
                       FROM project_assignments self_task_assignment
                       WHERE self_task_assignment.project_id = task.project_id
+                        AND self_task_assignment.effective_start_date <= CURRENT_DATE
+                        AND (self_task_assignment.effective_end_date IS NULL OR self_task_assignment.effective_end_date >= CURRENT_DATE)
+                        AND COALESCE(to_jsonb(self_task_assignment)->>\'module001a_closeout_status\', \'active\') = \'active\'
                         AND self_task_assignment.user_id = @user_id
                         AND (
                             self_task_assignment.task_id = task.task_id

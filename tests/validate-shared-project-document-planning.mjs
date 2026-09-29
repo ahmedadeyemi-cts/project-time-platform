@@ -71,7 +71,7 @@ for (const token of [
   'pulse_ai_processing_error_code',
   'ProcessingErrorCode',
   'ProcessingTerminalFailure',
-  'public bool ShouldAutoQueue => !ProcessingReady && !ProcessingTerminalFailure;',
+  'public bool ShouldAutoQueue => EngineeringVisible && AiContextEnabled && !ProcessingReady && !ProcessingTerminalFailure;',
   'terminal states are not automatically requeued',
   'retryTerminalSow',
   'allowTerminalRetry: true',

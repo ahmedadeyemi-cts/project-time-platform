@@ -12,6 +12,8 @@ path and not a training endpoint.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from PIL import Image
 import hmac
 import json
 import os
@@ -446,12 +448,27 @@ def _run_bounded(command: list[str], deadline: float, maximum_seconds: int) -> s
     )
 
 
+@contextmanager
+def _safe_ocr_image(path: Path):
+    with tempfile.TemporaryDirectory(prefix="celar-ocr-decoded-") as directory:
+        clean = Path(directory) / "image.png"
+        with Image.open(path) as image:
+            if image.format not in {"PNG", "JPEG", "TIFF", "BMP", "PPM", "GIF", "WEBP"}:
+                raise ValueError("image_format_rejected")
+            width, height = image.size
+            if min(width, height) < 1 or max(width, height) > 12000 or width * height > 40000000:
+                raise ValueError("image_dimensions_rejected")
+            image.convert("RGB").save(clean, format="PNG")
+        yield clean
+
+
 def _ocr_image(path: Path, deadline: float) -> str:
-    result = _run_bounded(
-        ["/usr/bin/tesseract", str(path), "stdout", "-l", "eng", "--psm", "3"],
-        deadline,
-        60,
-    )
+    with _safe_ocr_image(path) as clean:
+        result = _run_bounded(
+            ["/usr/bin/tesseract", str(clean), "stdout", "-l", "eng", "--psm", "3"],
+            deadline,
+            60,
+        )
     if result.returncode != 0:
         raise RuntimeError("ocr_failed")
     return result.stdout.decode("utf-8", errors="replace").replace("\x00", "").strip()

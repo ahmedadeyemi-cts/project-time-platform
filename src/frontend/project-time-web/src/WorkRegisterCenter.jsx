@@ -142,7 +142,7 @@ function userHasAnyRole(user, roleCodes) {
 function activeUsersByRole(users, roleCodes) {
   const activeUsers = users.filter((user) => user.isActive !== false);
   const filtered = activeUsers.filter((user) => userHasAnyRole(user, roleCodes));
-  return filtered.length ? filtered : activeUsers;
+  return filtered;
 }
 
 function dateOnly(value) {
@@ -1837,7 +1837,12 @@ function updateRosterEngineer(task, index, field, value) {
 
         const blob = await response.blob();
         const blobUrl = URL.createObjectURL(blob);
-        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        const download = window.document.createElement('a');
+        download.href = blobUrl;
+        download.download = document?.originalFileName || document?.documentName || 'document';
+        window.document.body.appendChild(download);
+        download.click();
+        download.remove();
         window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
         setDocumentStatus('');
       } catch (error) {
@@ -4464,29 +4469,41 @@ async function createWorkRegisterFromReviewedIntake() {
 
                       <label>
                         AE
-                        <input
-                          type="text"
+                        <select
                           value={intakeReviewForm.accountExecutiveName}
                           onChange={(event) => updateIntakeReviewForm('accountExecutiveName', event.target.value)}
-                        />
+                        >
+                          <option value="">Select an active role holder</option>
+                          {aeOptions.map((user) => (
+                            <option value={user.userId} key={user.userId}>{user.displayName}</option>
+                          ))}
+                        </select>
                       </label>
 
                       <label>
                         SA
-                        <input
-                          type="text"
+                        <select
                           value={intakeReviewForm.solutionArchitectName}
                           onChange={(event) => updateIntakeReviewForm('solutionArchitectName', event.target.value)}
-                        />
+                        >
+                          <option value="">Select an active role holder</option>
+                          {saOptions.map((user) => (
+                            <option value={user.userId} key={user.userId}>{user.displayName}</option>
+                          ))}
+                        </select>
                       </label>
 
                       <label>
                         SAA / Inside Sales
-                        <input
-                          type="text"
+                        <select
                           value={intakeReviewForm.insideSalesName}
                           onChange={(event) => updateIntakeReviewForm('insideSalesName', event.target.value)}
-                        />
+                        >
+                          <option value="">Select an active role holder</option>
+                          {saaOptions.map((user) => (
+                            <option value={user.userId} key={user.userId}>{user.displayName}</option>
+                          ))}
+                        </select>
                       </label>
 
                       <label>

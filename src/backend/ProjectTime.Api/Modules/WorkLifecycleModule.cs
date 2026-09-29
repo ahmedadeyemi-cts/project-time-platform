@@ -349,7 +349,7 @@ public static partial class WorkLifecycleModule
         }
 
         var capabilities = BuildCapabilities(access, project);
-        if (!capabilities.CanManageBillingReadiness || project.IsArchived)
+        if (!capabilities.CanManageBillingReadiness || project.IsArchived || project.Status.ToLowerInvariant() is "completed" or "closed")
         {
             await transaction.RollbackAsync(context.RequestAborted);
             return Results.Json(new

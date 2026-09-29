@@ -363,6 +363,8 @@ public static partial class InvoiceBillingModule
                 }, statusCode: StatusCodes.Status403Forbidden);
             }
 
+            await Module005ProjectExpenseUploadModule.BlockStaleExpenseReadinessAsync(connection, transaction, httpContext.RequestAborted, projectId);
+
             var project = await LoadProjectForInvoiceAsync(connection, transaction, projectId);
 
             if (project is null)

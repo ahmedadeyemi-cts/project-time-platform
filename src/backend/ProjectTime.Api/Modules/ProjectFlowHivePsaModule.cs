@@ -785,7 +785,7 @@ internal static partial class ProjectFlowHivePsaModule
                 FlowHiveWriteOperation.TaskReminders => "MANAGE_FLOWHIVE_TASK_REMINDERS_066",
                 _ => throw new ArgumentOutOfRangeException()
             };
-            var hasOperationPermission = !isViewAs
+            var hasOperationPermission = canManage && !isViewAs
                 && actual == effective
                 && await HasFlowHivePermissionAsync(connection, effective.Value, requiredPermission, cancellationToken);
             if (hasOperationPermission)

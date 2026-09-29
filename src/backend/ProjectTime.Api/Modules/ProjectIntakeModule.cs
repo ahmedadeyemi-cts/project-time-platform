@@ -156,6 +156,11 @@ public static class ProjectIntakeModule
         await using var connection = authorized.Connection!;
         var actor = authorized.Actor!;
 
+        if (!await HasActiveRoleAsync(connection, request.AssignedPmUserId, ["PROJECT_MANAGER", "PROJECT_MANAGEMENT", "PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGEMENT_TEAM_LEAD", "PM_TEAM_LEAD"])
+            || !await HasActiveRoleAsync(connection, request.AccountExecutiveUserId, ["ACCOUNT_EXECUTIVE", "ACCOUNT_EXECUTIVES", "SALES", "INSIDE_SALES"])
+            || !await HasActiveRoleAsync(connection, request.SolutionArchitectUserId, ["SOLUTION_ARCHITECT", "SA", "SAA"]))
+            return Results.BadRequest(new { status = "invalid_owner", message = "Select active owners holding the corresponding role." });
+
         var resolvedClientName = request.ClientName?.Trim() ?? string.Empty;
 
         if (request.ClientId is not null)
@@ -740,6 +745,31 @@ public static class ProjectIntakeModule
         await using var connection = authorized.Connection!;
         var actor = authorized.Actor!;
 
+        if (request.ProjectId is null && request.ProjectIntakeRequestId is null)
+            return Results.BadRequest(new { status = "project_or_intake_required" });
+        await using var transaction = await connection.BeginTransactionAsync();
+        await using (var scope = new NpgsqlCommand("""
+            SELECT (@project_id::uuid IS NULL OR EXISTS (
+                SELECT 1 FROM projects WHERE project_id=@project_id
+                  AND (@broad OR project_manager_user_id=@actor) FOR UPDATE
+            )) AND (@intake_id::uuid IS NULL OR EXISTS (
+                SELECT 1 FROM project_intake_requests WHERE project_intake_request_id=@intake_id
+                  AND (@broad OR assigned_pm_user_id=@actor) FOR UPDATE
+            ));
+            """, connection, transaction))
+        {
+            scope.Parameters.AddWithValue("project_id", request.ProjectId is null ? DBNull.Value : request.ProjectId.Value);
+            scope.Parameters.AddWithValue("intake_id", request.ProjectIntakeRequestId is null ? DBNull.Value : request.ProjectIntakeRequestId.Value);
+            scope.Parameters.AddWithValue("broad", actor.IsAdministrator || actor.IsCoordinator);
+            scope.Parameters.AddWithValue("actor", actor.ActualUserId);
+            if (await scope.ExecuteScalarAsync() is not true)
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+        if (!(actor.IsAdministrator || actor.IsCoordinator) && request.AssignedPmUserId != actor.ActualUserId)
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        if (!await HasActiveRoleAsync(connection, request.AssignedPmUserId, ["PROJECT_MANAGER", "PROJECT_MANAGEMENT", "PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGEMENT_TEAM_LEAD", "PM_TEAM_LEAD"]))
+            return Results.BadRequest(new { status = "invalid_project_manager" });
+
         var requestNumber = $"ERR-{DateTime.UtcNow:yyyyMMddHHmmss}";
 
         const string sql = """
@@ -791,6 +821,7 @@ public static class ProjectIntakeModule
 
         await InsertAuditLogAsync(connection, "engineering_resource_request_created", "engineering_resource_request", id, actor.ActualUserId);
 
+        await transaction.CommitAsync();
         return Results.Ok(new
         {
             status = "created",
@@ -812,16 +843,22 @@ public static class ProjectIntakeModule
         await using var connection = authorized.Connection!;
         var actor = authorized.Actor!;
 
+        await using var transaction = await connection.BeginTransactionAsync();
         const string sql = """
             UPDATE engineering_resource_requests
             SET fulfilled_by_user_id = @fulfilled_by_user_id,
                 request_status = 'assigned',
                 assignment_notes = COALESCE(NULLIF(@assignment_notes, ''), assignment_notes),
                 updated_at = NOW()
-            WHERE engineering_resource_request_id = @request_id;
+            WHERE engineering_resource_request_id = @request_id
+              AND (@broad OR assigned_pm_user_id=@actor
+                OR EXISTS (SELECT 1 FROM projects p WHERE p.project_id=engineering_resource_requests.project_id AND p.project_manager_user_id=@actor)
+                OR EXISTS (SELECT 1 FROM project_intake_requests i WHERE i.project_intake_request_id=engineering_resource_requests.project_intake_request_id AND i.assigned_pm_user_id=@actor));
             """;
 
         await using var command = new NpgsqlCommand(sql, connection);
+        command.Parameters.AddWithValue("broad", actor.IsAdministrator || actor.IsCoordinator);
+        command.Parameters.AddWithValue("actor", actor.ActualUserId);
         command.Parameters.AddWithValue("request_id", requestId);
         command.Parameters.AddWithValue("fulfilled_by_user_id", request.UserId);
         command.Parameters.AddWithValue("assignment_notes", request.Notes ?? string.Empty);
@@ -866,6 +903,7 @@ public static class ProjectIntakeModule
 
         await InsertAuditLogAsync(connection, "engineering_resource_request_assigned", "engineering_resource_request", requestId, actor.ActualUserId);
 
+        await transaction.CommitAsync();
         return Results.Ok(new
         {
             status = "assigned",
@@ -1330,6 +1368,20 @@ public static class ProjectIntakeModule
         command.Parameters.AddWithValue("entity_id", entityId);
 
         await command.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> HasActiveRoleAsync(NpgsqlConnection connection, Guid? userId, string[] roles)
+    {
+        if (userId is null) return true;
+        await using var command = new NpgsqlCommand("""
+            SELECT EXISTS (SELECT 1 FROM app_users u
+                JOIN app_user_role_assignments a ON a.user_id=u.user_id AND a.is_active
+                JOIN app_roles r ON r.app_role_id=a.app_role_id AND r.is_active
+                WHERE u.user_id=@user_id AND u.is_active AND upper(r.role_code)=ANY(@roles));
+            """, connection);
+        command.Parameters.AddWithValue("user_id", userId.Value);
+        command.Parameters.AddWithValue("roles", roles);
+        return await command.ExecuteScalarAsync() is true;
     }
 
     private static bool CanViewIntake(ProjectNotificationActor actor) =>

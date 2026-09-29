@@ -133,6 +133,9 @@ public static class MicrosoftMailRuntimeConfigurationModule
         }
     }
 
+    internal static bool IsApprovedSmtpEndpoint(string host, int port) =>
+        string.Equals(host, "smtp.office365.com", StringComparison.OrdinalIgnoreCase) && port == 587;
+
     private static RuntimeResult ApplyRuntime(MailRuntimeConfiguration configuration)
     {
         var servicesSecret = ServicesSecret(configuration.EnvironmentMode);
@@ -144,8 +147,7 @@ public static class MicrosoftMailRuntimeConfigurationModule
             && Guid.TryParse(configuration.ClientId, out _)
             && servicesSecretAvailable
             && IsEmail(configuration.SenderAddress);
-        var smtpReady = configuration.SmtpHost.Equals("smtp.office365.com", StringComparison.OrdinalIgnoreCase)
-            && configuration.SmtpPort is > 0 and <= 65535
+        var smtpReady = IsApprovedSmtpEndpoint(configuration.SmtpHost, configuration.SmtpPort)
             && IsEmail(configuration.SenderAddress)
             && smtpCredentialAvailable;
         var configuredReady = configuration.ProviderTarget switch
@@ -235,6 +237,8 @@ public static class MicrosoftMailRuntimeConfigurationModule
         var replyToAddress = (request?.ReplyToAddress ?? string.Empty).Trim().ToLowerInvariant();
         var smtpHost = First((request?.SmtpHost ?? string.Empty).Trim().ToLowerInvariant(), "smtp.office365.com");
         var smtpPort = request?.SmtpPort ?? 587;
+        if (!IsApprovedSmtpEndpoint(smtpHost, smtpPort))
+            return new(null, InvalidRequest("SMTP delivery requires the approved Microsoft relay on port 587."));
 
         if (string.IsNullOrWhiteSpace(environmentMode)) return new(null, InvalidRequest("Environment must be Test or Production."));
         if (provider is not ("microsoft_graph" or "smtp_relay" or "locked")) return new(null, InvalidRequest("Provider must be Microsoft Graph, Microsoft 365 SMTP relay, or Locked."));
@@ -322,27 +326,11 @@ public static class MicrosoftMailRuntimeConfigurationModule
         {
             await using var connection = new NpgsqlConnection(connectionString);
             await connection.OpenAsync(context.RequestAborted);
-            await using var command = new NpgsqlCommand("""
-                SELECT COALESCE(role.role_code,''), COALESCE(permission.permission_code,'')
-                FROM app_user_role_assignments assignment
-                JOIN app_roles role ON role.app_role_id=assignment.app_role_id AND role.is_active=TRUE
-                LEFT JOIN app_role_permissions role_permission ON role_permission.app_role_id=role.app_role_id
-                LEFT JOIN app_permissions permission ON permission.app_permission_id=role_permission.app_permission_id
-                WHERE assignment.user_id=@user_id AND assignment.is_active=TRUE;
-                """, connection);
-            command.Parameters.AddWithValue("user_id", userId.Value);
-            var roles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var permissions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            await using var reader = await command.ExecuteReaderAsync(context.RequestAborted);
-            while (await reader.ReadAsync(context.RequestAborted))
-            {
-                if (!reader.IsDBNull(0)) roles.Add(reader.GetString(0));
-                if (!reader.IsDBNull(1)) permissions.Add(reader.GetString(1));
-            }
-            var administrator = ProjectPulseActualSessionAuthority.HasPermanentAdministratorAuthority(context, roles);
+            var administrator = await ProjectPulseActualSessionAuthority.IsSuperAdministratorAsync(
+                context, connection, cancellationToken: context.RequestAborted);
             if (!administrator)
             {
-                return Results.Json(new { module = ModuleNumber, status = "microsoft_integration_manage_access_required", message = "Manage Microsoft Integration or global-mail authority is required." }, statusCode: StatusCodes.Status403Forbidden);
+                return Results.Json(new { module = ModuleNumber, status = "microsoft_integration_manage_access_required", message = "Permanent Super Administrator authority is required." }, statusCode: StatusCodes.Status403Forbidden);
             }
             return null;
         }

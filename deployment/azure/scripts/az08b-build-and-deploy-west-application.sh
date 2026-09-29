@@ -16,7 +16,7 @@ ACR_NAME="acrphdtest7825cc"
 KEY_VAULT_NAME="kv-phd-t-w3-7825cc"
 POSTGRES_SERVER="pg-phd-test-w3-7825cc"
 POSTGRES_DATABASE="project_health_dashboard"
-POSTGRES_ADMIN="phdpgadmin"
+POSTGRES_RUNTIME_USER="ptp_runtime"
 APP_INSIGHTS="appi-phd-test-westus3"
 
 API_APP="ca-phd-test-api-westus3"
@@ -198,22 +198,12 @@ ensure_role() {
     POSTGRES_FQDN="$(az postgres flexible-server show -g "$RG_DATA" -n "$POSTGRES_SERVER" --query fullyQualifiedDomainName -o tsv)"
     [ -n "$POSTGRES_FQDN" ] || fail "PostgreSQL FQDN could not be resolved."
 
-    POSTGRES_PASSWORD="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name postgres-admin-password --query value -o tsv)"
-    [ -n "$POSTGRES_PASSWORD" ] || fail "PostgreSQL administrator password secret is empty."
-
-    POSTGRES_CONNECTION_STRING="Host=$POSTGRES_FQDN;Port=5432;Database=$POSTGRES_DATABASE;Username=$POSTGRES_ADMIN;Password=$POSTGRES_PASSWORD;SSL Mode=VerifyFull;Timeout=15;Command Timeout=60;"
-
-    az keyvault secret set \
-        --vault-name "$KEY_VAULT_NAME" \
-        --name postgres-connection-string \
-        --value "$POSTGRES_CONNECTION_STRING" \
-        --only-show-errors \
-        --output none
-
-    unset POSTGRES_PASSWORD POSTGRES_CONNECTION_STRING
-
-    PASSWORD_SECRET_URI="https://${KEY_VAULT_NAME}.vault.azure.net/secrets/postgres-admin-password"
-    CONNECTION_SECRET_URI="https://${KEY_VAULT_NAME}.vault.azure.net/secrets/postgres-connection-string"
+    # Provision the restricted runtime role and its two dedicated secrets first.
+    # Migration administrators are never installed into the API environment.
+    PASSWORD_SECRET_URI="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name postgres-runtime-password --query id -o tsv --only-show-errors)"
+    CONNECTION_SECRET_URI="$(az keyvault secret show --vault-name "$KEY_VAULT_NAME" --name postgres-runtime-connection-string --query id -o tsv --only-show-errors)"
+    [ -n "$PASSWORD_SECRET_URI" ] && [ -n "$CONNECTION_SECRET_URI" ] \
+        || fail "Provision and validate the restricted runtime database credentials before deployment."
     APP_INSIGHTS_CONNECTION="$(az monitor app-insights component show -g "$RG_APP" -a "$APP_INSIGHTS" --query connectionString -o tsv 2>/dev/null || true)"
 
     echo "POSTGRES_FQDN=$POSTGRES_FQDN"
@@ -227,13 +217,13 @@ ensure_role() {
         "PTP_DB_HOST=$POSTGRES_FQDN"
         "PTP_DB_PORT=5432"
         "PTP_DB_NAME=$POSTGRES_DATABASE"
-        "PTP_DB_USER=$POSTGRES_ADMIN"
-        "PTP_DB_PASSWORD=secretref:postgres-admin-password"
-        "ConnectionStrings__DefaultConnection=secretref:postgres-connection-string"
-        "ConnectionStrings__ProjectPulse=secretref:postgres-connection-string"
-        "ConnectionStrings__ProjectTime=secretref:postgres-connection-string"
-        "PROJECTPULSE_CONNECTION_STRING=secretref:postgres-connection-string"
-        "PROJECTTIME_DATABASE_CONNECTION=secretref:postgres-connection-string"
+        "PTP_DB_USER=$POSTGRES_RUNTIME_USER"
+        "PTP_DB_PASSWORD=secretref:postgres-runtime-password"
+        "ConnectionStrings__DefaultConnection=secretref:postgres-runtime-connection-string"
+        "ConnectionStrings__ProjectPulse=secretref:postgres-runtime-connection-string"
+        "ConnectionStrings__ProjectTime=secretref:postgres-runtime-connection-string"
+        "PROJECTPULSE_CONNECTION_STRING=secretref:postgres-runtime-connection-string"
+        "PROJECTTIME_DATABASE_CONNECTION=secretref:postgres-runtime-connection-string"
         "PROJECTPULSE_DATA_DIR=/tmp/project-health-dashboard/data"
         "PROJECT_PULSE_UPLOAD_ROOT=/tmp/project-health-dashboard/uploads"
     )
@@ -259,8 +249,8 @@ ensure_role() {
         --cpu 0.5 \
         --memory 1.0Gi \
         --secrets \
-            "postgres-admin-password=keyvaultref:$PASSWORD_SECRET_URI,identityref:$IDENTITY_ID" \
-            "postgres-connection-string=keyvaultref:$CONNECTION_SECRET_URI,identityref:$IDENTITY_ID" \
+            "postgres-runtime-password=keyvaultref:$PASSWORD_SECRET_URI,identityref:$IDENTITY_ID" \
+            "postgres-runtime-connection-string=keyvaultref:$CONNECTION_SECRET_URI,identityref:$IDENTITY_ID" \
         --env-vars "${API_ENV_VARS[@]}" \
         --tags \
             application="Pulse" \
