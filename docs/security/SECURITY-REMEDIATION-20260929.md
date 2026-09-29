@@ -15,6 +15,15 @@ The active protected deployment workflow and its exact registration remain uncha
 - Module019 overview counts, lists and downloads now enforce document visibility consistently, including restricted bridged records.
 - Native feature/controller scope gates rejected this combined branch. Required native CI, reviewed release scope and live authenticated UAT acceptance remain mandatory.
 
+## Continued validation and CI registration
+
+- Retried only the prior main build failure caused by Docker Hub HTTP502; that native workflow now passes.
+- Added an exact PR1210 file/content registration with negative tests for wrong identities, extra/missing files, modified bytes, symlinks and deployment-control changes. This registration grants no deployment authority. Existing protected controller bytes and approval paths remain frozen.
+- Fixed the FlowHive database fixture adding an already-existing consent column; the production consent requirement is unchanged.
+- Removed implicit lab mutation authority from organization-wide scope; explicit module grants and administrator authority are required.
+- The existing contract approval/funding database suite passes all 41 cases, including wrong-customer and ineligible funding rejection.
+- Further native CI and live acceptance are still required. The deployment access device was offline at the continuation checkpoint; no deployment was attempted.
+
 ## All-finding disposition
 
 Numbering maps to the restricted report. Source notes and exploit details remain private. Every row requires deployed validation.

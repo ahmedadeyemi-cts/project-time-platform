@@ -32,11 +32,13 @@ internal static class SecurityCompletionTests
         Check(!SafeDocumentMedia.IsAllowed("payload.html") && !SafeDocumentMedia.IsAllowed("payload.svg"),"Active document formats are rejected");
         Check(SafeDocumentMedia.IsAllowed("report.PDF"),"Supported documents remain accepted");
         Check(SafeDocumentMedia.DownloadContentType=="application/octet-stream","Stored caller MIME cannot select an active download type");
-        foreach (var role in new[] { "ENGINEER", "PROJECT_MANAGER", "MANAGER", "SOLUTION_ARCHITECT", "ACCOUNT_EXECUTIVE", "EXECUTIVE" })
+        foreach (var role in new[] { "ENGINEER", "PROJECT_MANAGER", "MANAGER", "SOLUTION_ARCHITECT", "ACCOUNT_EXECUTIVE", "EXECUTIVE", "PROJECT_TEAM_COORDINATOR", "SYSTEM_ADMINISTRATOR" })
         {
             var access = new EnterpriseGovernanceAccess(Guid.NewGuid(), Guid.NewGuid(), "Test", "test.invalid", "", false,
                 false, false, false, false, false, new HashSet<string> { role }, new HashSet<string>());
             Check(!access.CanManageLabEquipment && !access.CanImportLabEquipment, "A business role alone cannot write/import lab equipment");
+            var broad = access with { IsBroadScope = true, CanManageOrganization = true };
+            Check(!broad.CanManageLabEquipment && !broad.CanImportLabEquipment, "Organization scope cannot substitute for explicit lab authority");
             var manage = access with { Permissions = new HashSet<string> { "MANAGE_LAB_EQUIPMENT_081" } };
             Check(manage.CanManageLabEquipment && !manage.CanImportLabEquipment, "Manage does not imply import authority");
             var import = access with { Permissions = new HashSet<string> { "IMPORT_LAB_EQUIPMENT_081" } };

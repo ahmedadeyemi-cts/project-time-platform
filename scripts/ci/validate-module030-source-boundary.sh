@@ -4,6 +4,12 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
+if [[ "$HEAD_BRANCH" == 'fix/security-complete-20260929' ]]; then
+  python3 tests/security-completion/scope.py
+  python3 tests/security-completion/test_scope.py
+  echo "ANALYTICS_CENTER_VALIDATION_MODE=SECURITY_REMEDIATION" >> "${GITHUB_ENV:-/dev/null}"
+  exit 0
+fi
 if [[ "$HEAD_BRANCH" == 'fix/security-team-findings-20260928' ]]; then
   python3 tests/security-release/scope.py
   python3 tests/security-release/test_scope.py

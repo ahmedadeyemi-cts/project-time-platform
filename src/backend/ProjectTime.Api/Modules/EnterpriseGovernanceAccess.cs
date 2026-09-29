@@ -23,10 +23,12 @@ internal sealed record EnterpriseGovernanceAccess(
         || Roles.Overlaps(EnterpriseGovernanceAccessResolver.LabViewRoles)
         || Permissions.Contains("VIEW_LAB_EQUIPMENT_081");
 
-    internal bool CanManageLabEquipment => !IsViewAs && (CanManageOrganization
+    private bool IsLabAdministrator => Roles.Contains("SUPER_ADMINISTRATOR") || Roles.Contains("ADMINISTRATOR");
+
+    internal bool CanManageLabEquipment => !IsViewAs && (IsLabAdministrator
         || Permissions.Contains("MANAGE_LAB_EQUIPMENT_081"));
 
-    internal bool CanImportLabEquipment => !IsViewAs && (CanManageOrganization
+    internal bool CanImportLabEquipment => !IsViewAs && (IsLabAdministrator
         || Permissions.Contains("IMPORT_LAB_EQUIPMENT_081"));
 
     internal bool CanViewRiskRegister => IsBroadScope

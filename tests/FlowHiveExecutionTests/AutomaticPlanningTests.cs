@@ -30,7 +30,7 @@ internal static class AutomaticPlanningTests
                 ADD COLUMN text_template TEXT,ADD COLUMN producer_contract TEXT,ADD COLUMN source_state TEXT;
             ALTER TABLE enterprise_notification_events ALTER COLUMN enterprise_notification_event_id SET DEFAULT gen_random_uuid();
             ALTER TABLE enterprise_notification_event_history ALTER COLUMN enterprise_notification_event_history_id SET DEFAULT gen_random_uuid();
-            ALTER TABLE project_intake_documents ADD COLUMN document_type TEXT,ADD COLUMN ai_timesheet_context_enabled BOOLEAN DEFAULT TRUE,
+            ALTER TABLE project_intake_documents ADD COLUMN document_type TEXT,ADD COLUMN IF NOT EXISTS ai_timesheet_context_enabled BOOLEAN DEFAULT TRUE,
                 ADD COLUMN upload_source TEXT DEFAULT 'local_file',ADD COLUMN pulse_ai_processing_updated_at TIMESTAMPTZ;
             CREATE TABLE pulse_ai_document_processing_jobs(pulse_ai_document_processing_job_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 project_intake_document_id UUID,project_id UUID,actual_user_id UUID,effective_user_id UUID,requested_by_user_id UUID,
