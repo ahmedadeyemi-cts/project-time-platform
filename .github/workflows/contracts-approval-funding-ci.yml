@@ -32,6 +32,9 @@ jobs:
           if [[ "${GITHUB_HEAD_REF:-}" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py
+          elif [[ "${GITHUB_HEAD_REF:-}" == 'fix/security-audit-followup-20260929' ]]; then
+            python3 tests/security-audit-followup/scope.py
+            python3 tests/security-audit-followup/test_scope.py
           elif [[ "${GITHUB_HEAD_REF:-}" == 'fix/security-complete-20260929' ]]; then
             python3 tests/security-completion/scope.py
             python3 tests/security-completion/test_scope.py

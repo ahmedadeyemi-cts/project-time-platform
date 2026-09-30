@@ -231,8 +231,10 @@ public static class CustomerSourceAuthorityModule
         if (!source.ProviderReady)
             return SourceNotReady(source);
 
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(connection, source.ProviderKey!, context.RequestAborted);
+        if (providerLease is null) return Results.Conflict(new { status = "provider_operation_in_progress", message = "The provider is busy. Try again when its current operation completes." });
         var provider = await LoadProviderRecordAsync(connection, source.ProviderKey!, null, context.RequestAborted);
-        if (provider is null) return SourceNotReady(source);
+        if (provider is null || !provider.IsEnabled) return SourceNotReady(source);
         var mapping = ParseCustomerImportMapping(provider);
         if (!mapping.PreviewConfigured)
             return MappingMissing(source, "Configure customerListUrl, itemsPath, idPath, and namePath in the selected Module 026 provider import mapping.");
@@ -383,8 +385,10 @@ public static class CustomerSourceAuthorityModule
             return Results.Json(new { module = ModuleNumber, status = "sell_native_sync_active", useNativeSellEndpoints = true, message = "Use the existing governed ConnectWise SELL import controls for the ConnectWise SELL source." }, statusCode: StatusCodes.Status409Conflict);
         if (!source.ProviderReady) return SourceNotReady(source);
 
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(connection, source.ProviderKey!, context.RequestAborted);
+        if (providerLease is null) return Results.Conflict(new { status = "provider_operation_in_progress", message = "The provider is busy. Try again when its current operation completes." });
         var provider = await LoadProviderRecordAsync(connection, source.ProviderKey!, null, context.RequestAborted);
-        if (provider is null) return SourceNotReady(source);
+        if (provider is null || !provider.IsEnabled) return SourceNotReady(source);
         var mapping = ParseCustomerImportMapping(provider);
         if (!mapping.ImportConfigured)
             return MappingMissing(source, "Configure customerRecordUrlTemplate (or recordLookupUrlTemplate), idPath, and namePath in Module 026 before importing customers.");
@@ -891,7 +895,11 @@ public static class CustomerSourceAuthorityModule
         string search,
         string? sourceRecordId)
     {
-        if (string.IsNullOrWhiteSpace(template)) return null;
+        if (string.IsNullOrWhiteSpace(template)
+            || !Uri.TryCreate(provider.BaseUrl, UriKind.Absolute, out var configured)
+            || configured.Scheme != Uri.UriSchemeHttps
+            || string.IsNullOrWhiteSpace(configured.Host)
+            || !string.IsNullOrEmpty(configured.UserInfo)) return null;
         var value = template
             .Replace("{page}", page.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{pageSize}", pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
@@ -903,14 +911,14 @@ public static class CustomerSourceAuthorityModule
         {
             uri = absolute;
         }
-        else if (Uri.TryCreate(provider.BaseUrl, UriKind.Absolute, out var baseUri))
+        else
         {
-            uri = new Uri(baseUri, value);
+            uri = new Uri(configured, value);
         }
 
-        if (uri is null || uri.Scheme != Uri.UriSchemeHttps) return null;
-        if (Uri.TryCreate(provider.BaseUrl, UriKind.Absolute, out var configured)
-            && !configured.Host.Equals(uri.Host, StringComparison.OrdinalIgnoreCase)) return null;
+        if (uri is null || uri.Scheme != Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo)) return null;
+        if (!configured.Host.Equals(uri.Host, StringComparison.OrdinalIgnoreCase)
+            || configured.Port != uri.Port) return null;
         return uri;
     }
 
