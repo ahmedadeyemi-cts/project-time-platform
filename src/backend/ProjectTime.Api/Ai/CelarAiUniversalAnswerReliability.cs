@@ -448,7 +448,9 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 "Ask the listed clarification when authoritative resolution cannot be completed safely."));
         }
         if ((string.Equals(result.ModelProvider, CelarAiCapabilityTargets.Claude, StringComparison.OrdinalIgnoreCase)
-                || string.Equals(result.ModelProvider, CelarAiCapabilityTargets.OpenAi, StringComparison.OrdinalIgnoreCase))
+                || string.Equals(result.ModelProvider, CelarAiCapabilityTargets.OpenAi, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(result.ModelProvider, CelarAiCapabilityTargets.Gemini, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(result.ModelProvider, CelarAiCapabilityTargets.Copilot, StringComparison.OrdinalIgnoreCase))
             && plan.QuestionClass is not CelarAiAnswerQuestionClass.PublicCurrent
             and not CelarAiAnswerQuestionClass.PublicStable
             && successfulSources.Length == 0
@@ -492,6 +494,8 @@ public sealed class CelarAiUniversalAnswerReliabilityService
                 or CelarAiCapabilityTargets.CelarAi
                 or CelarAiCapabilityTargets.Claude
                 or CelarAiCapabilityTargets.OpenAi
+                or CelarAiCapabilityTargets.Gemini
+                or CelarAiCapabilityTargets.Copilot
             && result.Sources.Any(source =>
                 source.SourceType.Equals("governed_public_ai", StringComparison.OrdinalIgnoreCase)
                 || source.SourceType.Equals("governed_private_ai", StringComparison.OrdinalIgnoreCase)
