@@ -1,0 +1,16 @@
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS isolation
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libseccomp-dev linux-libc-dev
+COPY deployment/pulse-services/sandbox.c /src/sandbox.c
+RUN gcc -O2 -Wall -Wextra -Werror /src/sandbox.c -lseccomp -o /pulse-sandbox && gcc -O2 -Wall -Wextra -Werror -fPIC -shared -DPULSE_SHARED /src/sandbox.c -lseccomp -o /libpulse-sandbox.so
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 TZ=UTC
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 python3-flask python3-pil gunicorn tesseract-ocr tesseract-ocr-eng poppler-utils fonts-dejavu-core libseccomp2 && rm -rf /var/lib/apt/lists/*
+COPY --from=isolation /pulse-sandbox /usr/local/bin/pulse-sandbox
+COPY --from=isolation /libpulse-sandbox.so /usr/local/lib/libpulse-sandbox.so
+COPY deployment/pulse-document-processing/clamd_client.py deployment/pulse-document-processing/gateway.py deployment/pulse-document-processing/ocr_job.py /opt/pulse-documents/
+COPY deployment/pulse-services/runtime.py deployment/pulse-services/docs_wsgi.py deployment/pulse-services/gunicorn.conf.py /opt/pulse-services/
+ENV PYTHONPATH=/opt/pulse-documents:/opt/pulse-services
+WORKDIR /opt/pulse-services
+USER 65534:65534
+EXPOSE 8082
+CMD ["python3","runtime.py","documents"]

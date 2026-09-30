@@ -1,0 +1,12 @@
+{
+  "origin": "user-provided install-celar-laya-service.sh",
+  "modelRevision": "1c5edc17a7acd8701df6fc341c0d179f1c62c982",
+  "changes": [
+    "host-only preflight replaced with pinned file hashing",
+    "systemd notify replaced with content-free container readiness",
+    "mandatory kernel isolation",
+    "owned stale Unix socket cleanup",
+    "socket group access"
+  ],
+  "inferenceQuestionsAndBudgetPreserved": true
+}

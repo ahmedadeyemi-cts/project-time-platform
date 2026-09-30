@@ -1,0 +1,118 @@
+name: Pulse services cutover and Laya containers
+on:
+  pull_request:
+    paths:
+      - 'deployment/pulse-services/**'
+      - 'tests/pulse_services/**'
+      - 'tests/PulseServiceCutoverTests/**'
+      - 'src/backend/ProjectTime.Api/Ai/PulseLaya*'
+      - 'src/backend/ProjectTime.Api/Ai/LayaDecisionTransport.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseDocumentReadinessPolicy.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs'
+      - 'src/backend/ProjectTime.Api/Ai/CelarAiRealProbeService.cs'
+      - '.github/workflows/pulse-services*'
+permissions:
+  contents: read
+concurrency:
+  group: pulse-services-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+      - run: python3 tests/pulse_services/test_contracts.py
+      - run: dotnet run --project tests/PulseServiceCutoverTests -c Release
+      - run: dotnet run --project tests/PulseDocumentServiceTests -c Release
+  containers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Build managed-service candidates
+        run: |
+          set -Eeuo pipefail
+          for component in documents scanner laya-gateway laya; do
+            docker build -t "pulse-services-$component:ci" -f "deployment/pulse-services/Dockerfile.$component" .
+          done
+      - name: Verify mandatory nonroot process isolation
+        run: |
+          set -Eeuo pipefail
+          for component in documents laya-gateway laya; do
+            docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --mount "type=bind,src=$PWD/tests/pulse_services,dst=/checks,readonly" "pulse-services-$component:ci" python3 /checks/native_isolation.py
+          done
+      - name: Verify real offline Laya checkpoint and bounded inference
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/laya-socket"
+          chmod 777 "$RUNNER_TEMP/laya-socket"
+          docker run -d --name pulse-laya-native --network none --cap-drop ALL --security-opt no-new-privileges --cpus 2 --memory 4g --mount "type=bind,src=$RUNNER_TEMP/laya-socket,dst=/run/celar-laya" pulse-services-laya:ci
+          docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges --mount "type=bind,src=$RUNNER_TEMP/laya-socket,dst=/run/celar-laya,readonly" --mount "type=bind,src=$PWD/tests/pulse_services,dst=/checks,readonly" pulse-services-laya-gateway:ci python3 /checks/native_laya.py
+      - name: Record exact candidate image identities and inventories
+        run: |
+          mkdir -p "$RUNNER_TEMP/services-evidence"
+          for component in documents scanner laya-gateway laya; do
+            docker image inspect "pulse-services-$component:ci" --format '{{.Id}}' > "$RUNNER_TEMP/services-evidence/$component.config-id.txt"
+            docker run --rm --network none "pulse-services-$component:ci" dpkg-query -W > "$RUNNER_TEMP/services-evidence/$component.packages.txt"
+          done
+          printf '%s
+' '${{ github.event.pull_request.head.sha }}' > "$RUNNER_TEMP/services-evidence/source.txt"
+      - name: Scan Laya image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-laya:ci
+          format: json
+          output: ${{ runner.temp }}/services-evidence/laya-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Scan document image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-documents:ci
+          format: json
+          output: ${{ runner.temp }}/services-evidence/documents-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Scan scanner image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-scanner:ci
+          format: json
+          output: ${{ runner.temp }}/services-evidence/scanner-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Scan Laya gateway image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-laya-gateway:ci
+          format: json
+          output: ${{ runner.temp }}/services-evidence/laya-gateway-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: pulse-services-candidate-${{ github.run_id }}
+          path: ${{ runner.temp }}/services-evidence
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove isolated test runtime
+        if: always()
+        run: docker rm -f pulse-laya-native || true

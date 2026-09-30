@@ -12,7 +12,8 @@ public sealed class LayaDecisionFailure(string code, int status = 503) : Excepti
     public int Status { get; } = status;
 }
 
-/// <summary>Two fixed Test-only paths on the existing approved Celar host.
+/// <summary>Two fixed Test-only paths on the deployment-selected private Laya service,
+/// or the existing approved Celar host when legacy mode remains selected.
 /// Reuses the existing runtime approval, bearer credential, DNS validation and
 /// address-pin policy. No configurable URL, proxy, redirect, retry or cloud fallback.
 /// </summary>
@@ -23,6 +24,8 @@ public static class LayaDecisionTransport
     public static bool DeploymentAllowed()
     {
         var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();
+        var local = PulseLayaServiceOptions.FromEnvironment();
+        if (local.Requested) return !release.IsCandidate && local.Valid;
         return !release.IsCandidate
             && string.Equals(Environment.GetEnvironmentVariable("PROJECTPULSE_ENVIRONMENT"), "test", StringComparison.OrdinalIgnoreCase)
             && PulseAiExternalHttpsRuntimePolicy.Evaluate().Active;
@@ -34,11 +37,14 @@ public static class LayaDecisionTransport
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         deadline.CancelAfter(TimeSpan.FromSeconds(text is null ? 6 : 15));
         var token = deadline.Token;
-        var snapshot = PulseAiExternalHttpsRuntimePolicy.Evaluate();
-        if (snapshot.ReadinessEndpoint is null) throw new LayaDecisionFailure("decision_runtime_not_configured");
-        var endpoint = new Uri(snapshot.ReadinessEndpoint, Paths[text is null ? 0 : 1]);
+        var local = PulseLayaServiceOptions.FromEnvironment();
+        var snapshot = local.Requested ? null : PulseAiExternalHttpsRuntimePolicy.Evaluate();
+        if (!local.Requested && snapshot?.ReadinessEndpoint is null) throw new LayaDecisionFailure("decision_runtime_not_configured");
+        var approvedHost = local.Requested ? local.ExpectedHost : PulseAiExternalHttpsRuntimePolicy.ApprovedHost;
+        var endpoint = local.Requested ? local.Endpoint(Paths[text is null ? 0 : 1])
+            : new Uri(snapshot!.ReadinessEndpoint!, Paths[text is null ? 0 : 1]);
         bool Allowed(Uri? uri) => uri is not null && uri.Scheme == "https" && uri.IsDefaultPort
-            && uri.Host == PulseAiExternalHttpsRuntimePolicy.ApprovedHost
+            && uri.Host == approvedHost
             && Paths.Contains(uri.AbsolutePath, StringComparer.Ordinal)
             && uri.Query.Length == 0 && uri.Fragment.Length == 0 && uri.UserInfo.Length == 0;
         if (!Allowed(endpoint)) throw new LayaDecisionFailure("decision_endpoint_rejected");
@@ -50,12 +56,16 @@ public static class LayaDecisionTransport
             ConnectCallback = async (context, ct) =>
             {
                 if (!DeploymentAllowed() || !Allowed(context.InitialRequestMessage.RequestUri)
-                    || context.DnsEndPoint.Host != PulseAiExternalHttpsRuntimePolicy.ApprovedHost
+                    || context.DnsEndPoint.Host != approvedHost
                     || context.DnsEndPoint.Port != 443)
                     throw new HttpRequestException("decision_endpoint_rejected");
                 // Validate the SAME approved host through its existing policy. This
                 // new capability explicitly authorizes only the two paths above.
-                var addresses = await PulseAiExternalHttpsRuntimePolicy.ResolveConnectAddressesAsync(snapshot.ReadinessEndpoint, ct);
+                var addresses = local.Requested
+                    ? await Dns.GetHostAddressesAsync(approvedHost, ct)
+                    : await PulseAiExternalHttpsRuntimePolicy.ResolveConnectAddressesAsync(snapshot!.ReadinessEndpoint!, ct);
+                if (local.Requested && !PulseLayaServiceOptions.AddressesApproved(addresses))
+                    throw new HttpRequestException("decision_private_destination_rejected");
                 foreach (var address in addresses)
                 {
                     var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
@@ -73,7 +83,8 @@ public static class LayaDecisionTransport
         using var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         using var request = new HttpRequestMessage(text is null ? HttpMethod.Get : HttpMethod.Post, endpoint);
         if (text is not null) request.Content = JsonContent.Create(new { text });
-        var bearer = Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN")?.Trim();
+        var bearer = local.Requested ? local.BearerToken
+            : Environment.GetEnvironmentVariable("PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN")?.Trim();
         if (string.IsNullOrEmpty(bearer) || bearer.Length < 32)
             throw new LayaDecisionFailure("decision_runtime_not_configured");
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
