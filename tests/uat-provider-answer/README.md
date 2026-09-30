@@ -34,3 +34,13 @@ hashes. It authorizes no deployment and does not waive native protections.
 
 No security finding is newly closed by this source regression. The private
 planner and remaining installed/browser acceptance paths still need live proof.
+
+## Inherited migration regression compatibility
+
+The newly triggered Module064 catalog CI exposed an older 123/124 test that did
+not recognize the already merged 131/132 collaboration/approval packages. The
+Test runner itself remains byte-identical to baseline. The regression recognizes
+only its fixed SHA-256 and commit, then runs every original negative mutation
+and 123/124 package test against the previously reviewed source. The full current
+package test also executes, preserving coverage of the inherited 131/132 additions.
+No live migration, deployment behavior, acceptance assertion or runner is changed.
