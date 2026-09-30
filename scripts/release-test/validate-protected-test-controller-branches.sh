@@ -15,6 +15,12 @@ if [[ "$HEAD_BRANCH" == 'codex/approval-routing-bulk-review' ]]; then
   node tests/validate-systemwide-image-build-controller.mjs
   return
 fi
+if [[ "$HEAD_BRANCH" == 'feature/pulse-documents-integration-20260930' ]]; then
+  python3 tests/pulse-document-integration/scope.py
+  python3 tests/pulse-document-integration/test_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'fix/uat-provider-answer-contract-20260930' ]]; then
   python3 tests/uat-provider-answer/scope.py
   python3 tests/uat-provider-answer/test_scope.py

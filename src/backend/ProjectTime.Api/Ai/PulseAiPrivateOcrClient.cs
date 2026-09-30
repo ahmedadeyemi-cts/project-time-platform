@@ -22,6 +22,12 @@ public sealed class PulseAiPrivateOcrClient
         PulseAiPrivateRuntimeOptions runtimeOptions,
         CancellationToken cancellationToken = default)
     {
+        if (runtimeOptions.DocumentService.Requested)
+        {
+            using var documents = new PulseDocumentServiceClient(runtimeOptions.DocumentService,
+                _httpClientFactory.CreateClient("PulseDocumentService"));
+            return await documents.ExtractAsync(source, pipelineOptions, cancellationToken);
+        }
         var completedAt = DateTimeOffset.UtcNow;
         if (!runtimeOptions.OcrConfigured)
         {

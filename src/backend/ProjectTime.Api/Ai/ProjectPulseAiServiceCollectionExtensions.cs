@@ -35,6 +35,9 @@ public static class ProjectPulseAiServiceCollectionExtensions
                 UseCookies = false,
                 UseProxy = false
             });
+        services.AddHttpClient("PulseDocumentService", client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler(() =>
+                PulseDocumentServiceClient.CreateHandler(PulseDocumentServiceOptions.FromEnvironment()));
         services.AddHttpClient("PulseAiPrivateOcr", client =>
         {
             client.Timeout = TimeSpan.FromMinutes(5);
