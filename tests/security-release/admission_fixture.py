@@ -16,7 +16,7 @@ TARGET = ROOT / 'tests/security-admission.generated.test.mjs'
 SOURCE_BLOB = 'bef62ea96a938107be17c2a83cbbaf7549bdd7ba'
 # Pin the security implementation's artifact minimization; candidate/approval stay frozen.
 FIXTURE_REF = 'c107f17195db6aaed16daff596d123d7a31c8a67'
-BRANCHES = {'fix/security-audit-followup-20260929', 'fix/installed-acceptance-browser-evidence-20260929', 'codex/approval-routing-bulk-review', 'fix/security-team-findings-20260928', 'fix/security-complete-20260929', 'fix/security-uat-followup-20260929', 'fix/security-uat-acceptance-20260929'}
+BRANCHES = {'codex/flowhive-save-schedule-approval-polish', 'fix/security-audit-followup-20260929', 'fix/installed-acceptance-browser-evidence-20260929', 'codex/approval-routing-bulk-review', 'fix/security-team-findings-20260928', 'fix/security-complete-20260929', 'fix/security-uat-followup-20260929', 'fix/security-uat-acceptance-20260929'}
 
 
 def blob(content):
@@ -27,7 +27,7 @@ def prepare():
     branch = os.environ.get('GITHUB_HEAD_REF', '')
     if branch not in BRANCHES or os.environ.get('GITHUB_BASE_REF', 'main') != 'main':
         raise RuntimeError('Historical fixture selection is restricted to the exact security remediation inventory')
-    subprocess.run([sys.executable, str(ROOT / ('tests/security-audit-followup/scope.py' if branch == 'fix/security-audit-followup-20260929' else 'tests/installed-browser-resolution/scope.py' if branch == 'fix/installed-acceptance-browser-evidence-20260929' else 'tests/combined-release/scope.py' if branch == 'codex/approval-routing-bulk-review' else 'tests/security-uat-acceptance/scope.py' if branch == 'fix/security-uat-acceptance-20260929' else 'tests/security-uat-followup/scope.py' if branch == 'fix/security-uat-followup-20260929' else 'tests/security-completion/scope.py' if branch == 'fix/security-complete-20260929' else 'tests/security-release/scope.py'))], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(ROOT / ('tests/flowhive-save-release/scope.py' if branch == 'codex/flowhive-save-schedule-approval-polish' else 'tests/security-audit-followup/scope.py' if branch == 'fix/security-audit-followup-20260929' else 'tests/installed-browser-resolution/scope.py' if branch == 'fix/installed-acceptance-browser-evidence-20260929' else 'tests/combined-release/scope.py' if branch == 'codex/approval-routing-bulk-review' else 'tests/security-uat-acceptance/scope.py' if branch == 'fix/security-uat-acceptance-20260929' else 'tests/security-uat-followup/scope.py' if branch == 'fix/security-uat-followup-20260929' else 'tests/security-completion/scope.py' if branch == 'fix/security-complete-20260929' else 'tests/security-release/scope.py'))], cwd=ROOT, check=True)
     original = SOURCE.read_bytes()
     if blob(original) != SOURCE_BLOB:
         raise RuntimeError('Historical test source changed; its assertions must be reviewed before fixture selection')

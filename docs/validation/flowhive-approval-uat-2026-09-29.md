@@ -50,3 +50,14 @@ The browser control service subsequently timed out on state reads and its docume
 5. Require current CI and protected release admission. The previous head had FlowHive browser/database failures plus existing admission/scope failures. No scope allowlist or release protection is relaxed by this review.
 
 The PR was reconciled with main `9796b4cb` during this follow-up. No deployment was started.
+
+## Follow-up — 2026-09-30 UTC
+
+- PR head at inspection: `435931f720b5ad77baea9f19e6c180fec523071c`, still draft.
+- Browser service responds again, but Pulse displays sign-in; the earlier authenticated session is unavailable. No new live mutation or acceptance claim was made.
+- Diagnosed three failed jobs: governed scope rejects the unregistered PR inventory; admission contracts send this application branch through a historical control-only check; frontend fails three historical admission fixture assertions against newer main.
+- Register this PR's exact inventory, hashes, branch, PR number and fixed main baseline using the existing repository pattern. Deployment controllers, admission runtime, candidate/approval records, migrations and Production authority remain frozen.
+- Reuse the historical fixture runner with all assertions retained and source-blob verification. It supplies no current-candidate or installed acceptance evidence.
+- Incorporated merged security follow-up PR #1218 without conflicts.
+- Latest three protected deployment runs were complete when inspected; no deployment was dispatched.
+- All five remaining release gates above still apply, including authenticated working-copy/contact/financial-control persistence, role/self-approval and baseline/sharing verification.
