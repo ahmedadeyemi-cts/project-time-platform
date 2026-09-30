@@ -3,6 +3,7 @@ import copy,hashlib,json,os,re,secrets,subprocess,sys,tempfile,time,urllib.error
 from pathlib import Path
 from test_resources import *
 from activation_contracts import acceptance_job_name, validate_document_runtime
+from state_preservation import revision_is_ready, require_cleanup_ownership, require_new_service_names
 REPO='ahmedadeyemi-cts/project-time-platform'
 ORIGIN='https://phd-west-test.onenecklab.com'
 PREFIXES=('PROJECTPULSE_DOCUMENT_SERVICE_','PROJECTPULSE_LAYA_SERVICE_')
@@ -43,14 +44,12 @@ def source_matches(app):
     check('@sha256:' in app['properties']['template']['containers'][0]['image'],'api_image_not_pinned')
     check(app['properties']['latestRevisionName']==app['properties']['latestReadyRevisionName'],'api_revision_not_ready')
 
-def wait_app(name,expected_images=None):
+def wait_app(name,expected_images=None,*,expected_revision):
     end=time.monotonic()+900
     while time.monotonic()<end:
         a=get_app(name);p=a['properties']
         if p.get('provisioningState')=='Failed':raise CutoverError('service_provisioning_failed')
-        if p.get('latestRevisionName') and p.get('latestRevisionName')==p.get('latestReadyRevisionName'):
-            if expected_images is not None:
-                check({x['image'] for x in p['template']['containers']}==set(expected_images),'service_image_mismatch')
+        if revision_is_ready(a,name,expected_revision,expected_images):
             return a
         time.sleep(10)
     raise CutoverError('service_readiness_deadline')
@@ -105,6 +104,7 @@ def local_admin(after=False):
 def preflight():
     check(os.environ.get('GITHUB_REPOSITORY')==REPO and os.environ.get('GITHUB_REF')=='refs/heads/main','trusted_main_required')
     check(os.environ.get('GITHUB_ACTOR')=='ahmedadeyemi-cts','owner_request_required')
+    check(os.environ.get('GITHUB_RUN_ATTEMPT')=='1','new_explicit_run_required')
     check(re.fullmatch(r'[0-9a-f]{40}',SHA) is not None and RUN.isdigit(),'release_identity')
     check(os.environ.get('PULSE_CONFIRMATION')=='SWITCH PULSE TEST DOCUMENTS AND LAYA','confirmation_required')
     check(gh('git/ref/heads/main')['object']['sha']==SHA,'main_changed')
@@ -161,25 +161,26 @@ def cleanup_staged():
         if item['kind']=='application':
             check(item['name'] in APPS.values(),'cleanup_application_scope')
             current=get_app(item['name'])
-            check(current.get('tags',{}).get('source')==SHA and current.get('tags',{}).get('managedBy')=='pulse-services-reviewed-cutover','cleanup_ownership_mismatch')
+            require_cleanup_ownership(current,SHA,RUN,application=True)
             rest('DELETE',ROOT+'/providers/Microsoft.App/containerApps/'+item['name'])
         elif item['kind']=='job':
             check(item['name']==acceptance_job_name(RUN),'cleanup_job_scope')
-            rest('DELETE',ROOT+'/providers/Microsoft.App/jobs/'+item['name'])
+            job_resource=ROOT+'/providers/Microsoft.App/jobs/'+item['name']
+            current=rest('GET',job_resource)
+            require_cleanup_ownership(current,SHA,RUN,application=False)
+            rest('DELETE',job_resource)
         else:raise CutoverError('cleanup_resource_scope')
     print('PULSE_STAGED_RESOURCE_CLEANUP=PASS existing_apps_untouched=true')
 
 def prepare():
     preflight()
     images=json.loads(Path(os.environ['PULSE_IMAGE_MANIFEST']).read_text());validate_images(images)
-    signatures()
     app_names={x['name'] for x in az('containerapp','list','-g',GROUP)}
+    require_new_service_names(app_names,set(APPS.values()))
+    signatures()
     credentials={};created=[]
     for kind,name in APPS.items():
-        if name in app_names:
-            current=get_app(name)
-            check(current.get('tags',{}).get('managedBy')=='pulse-services-reviewed-cutover','foreign_service_name_collision')
-        else:created.append(name)
+        created.append(name)
         token=secrets.token_urlsafe(48);secret=('pulse-documents-' if kind=='documents' else 'pulse-laya-')+RUN
         credentials[kind]={'token':token,'secret':secret}
         body=application(kind,images,token,secret,SHA,RUN)
@@ -189,7 +190,7 @@ def prepare():
     write_private(PRIVATE/'credentials.json',credentials);write_private(PRIVATE/'created.json',created)
     for kind,name in APPS.items():
         images_for_app=[images['documents'],images['scanner']] if kind=='documents' else [images['laya-gateway'],images['laya']]
-        a=wait_app(name,images_for_app)
+        a=wait_app(name,images_for_app,expected_revision=name+'--svc-'+RUN)
         check(a['properties']['configuration'].get('ingress',{}).get('external') is False,'service_ingress_drift')
         check(runtime_identity_isolated(a['properties']['configuration']),'service_identity_drift')
         print('PULSE_SERVICE_READY='+kind)
@@ -199,7 +200,7 @@ def prepare():
     for kind,c in credentials.items():
         job_secrets.append({'name':c['secret'],'value':c['token']});job_env.append({'name':'PULSE_'+kind.upper()+'_TOKEN','secretRef':c['secret']})
     body={'location':'westus3','identity':{'type':'UserAssigned','userAssignedIdentities':{IDENTITY:{}}},
-          'tags':{'environment':'test','managedBy':'pulse-services-reviewed-cutover','source':SHA},
+          'tags':{'environment':'test','managedBy':'pulse-services-reviewed-cutover','source':SHA,'deploymentRun':RUN},
           'properties':{'environmentId':ENV,'workloadProfileName':'Consumption',
             'configuration':{'triggerType':'Manual','replicaTimeout':900,'replicaRetryLimit':0,
                 'manualTriggerConfig':{'parallelism':1,'replicaCompletionCount':1},
@@ -237,7 +238,7 @@ def switch():
     template['containers'][0]['env']=env;template['revisionSuffix']='psvc-'+RUN
     write_private(PRIVATE/'switch-started.json',{'source':SHA})
     rest('PATCH',ROOT+'/providers/Microsoft.App/containerApps/'+API,{'properties':{'template':template}})
-    after=wait_app(API);source_matches(after)
+    after=wait_app(API,expected_revision=API+'--psvc-'+RUN);source_matches(after)
     check(after['properties']['template']['containers'][0]['image']==before['properties']['template']['containers'][0]['image'],'api_image_changed')
     check(local_admin(after=True)==pre['adminIdentity'],'local_superadmin_identity_changed')
     status,health=public_api('/health');check(status==200 and health.get('status')=='healthy','public_health_failed')
@@ -260,7 +261,7 @@ def rollback():
     template['containers'][0]['env']=[v for v in template['containers'][0].get('env',[]) if not v['name'].startswith(PREFIXES)]+list(old.values())
     template['revisionSuffix']='psvcr-'+RUN
     rest('PATCH',ROOT+'/providers/Microsoft.App/containerApps/'+API,{'properties':{'template':template}})
-    wait_app(API);check(local_admin()==json.loads((PRIVATE/'preflight.json').read_text())['adminIdentity'],'rollback_admin_check_failed')
+    wait_app(API,expected_revision=API+'--psvcr-'+RUN);check(local_admin()==json.loads((PRIVATE/'preflight.json').read_text())['adminIdentity'],'rollback_admin_check_failed')
     cleanup_staged()
     print('PULSE_SERVICE_ROLLBACK=PASS verified_legacy_route_restored=true')
 

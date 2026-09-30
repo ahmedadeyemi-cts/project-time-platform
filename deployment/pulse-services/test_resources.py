@@ -50,7 +50,7 @@ def application(kind,images,token,secret,sha,run):
         volumes.append({'name':'signatures','storageName':STORAGE,'storageType':'AzureFile','mountOptions':'uid=65534,gid=65534,dir_mode=0750,file_mode=0640,nosuid,nodev,noexec'})
     else:containers.append({'name':'laya-model','image':images['laya'],'resources':{'cpu':2,'memory':'4Gi'},'volumeMounts':[mount]})
     resource={'location':'westus3','identity':{'type':'UserAssigned','userAssignedIdentities':{IDENTITY:{}}},
-        'tags':{'owner':'Pulse','environment':'test','source':sha,'managedBy':'pulse-services-reviewed-cutover'},
+        'tags':{'owner':'Pulse','environment':'test','source':sha,'managedBy':'pulse-services-reviewed-cutover','deploymentRun':str(run)},
         'properties':{'environmentId':ENV,'workloadProfileName':'Consumption','configuration':{
             'activeRevisionsMode':'Single','maxInactiveRevisions':2,'identitySettings':[{'identity':IDENTITY,'lifecycle':'None'}],
             'secrets':[{'name':secret,'value':token}],'registries':[{'server':ACR,'identity':IDENTITY}],
