@@ -64,8 +64,7 @@ jobs:
             docker image inspect "pulse-services-$component:ci" --format '{{.Id}}' > "$RUNNER_TEMP/services-evidence/$component.config-id.txt"
             docker run --rm --network none "pulse-services-$component:ci" dpkg-query -W > "$RUNNER_TEMP/services-evidence/$component.packages.txt"
           done
-          printf '%s
-' '${{ github.event.pull_request.head.sha }}' > "$RUNNER_TEMP/services-evidence/source.txt"
+          printf '%s\n' '${{ github.event.pull_request.head.sha }}' > "$RUNNER_TEMP/services-evidence/source.txt"
       - name: Scan Laya image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:

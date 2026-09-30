@@ -21,6 +21,8 @@ public static class LayaDecisionTransport
 {
     private static readonly string[] Paths = ["/v1/decisions/health", "/v1/decisions/document-type"];
 
+    public static string RuntimeLocation => PulseLayaServiceOptions.FromEnvironment().Requested ? "pulse_container" : "oracle_legacy";
+
     public static bool DeploymentAllowed()
     {
         var release = ProjectPulseAiReleaseRuntimePolicy.RequireValid();

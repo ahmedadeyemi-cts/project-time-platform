@@ -61,7 +61,7 @@ public static class LayaDecisionModule
             if (action == "configuration") return Results.Ok(new
             {
                 module = "064", capability = "document_classification", provider = "celar_ai",
-                engine = "laya", runtimeLocation = PulseLayaServiceOptions.FromEnvironment().Requested ? "pulse_container" : "oracle_legacy", enabled = policy.Enabled, version = policy.Version,
+                engine = "laya", runtimeLocation = LayaDecisionTransport.RuntimeLocation, enabled = policy.Enabled, version = policy.Version,
                 deploymentAllowed = allowed, effectiveEnabled = allowed && policy.Enabled,
                 mode = "human_review_only", configurationSource = "module064_database",
                 modelRevision = LayaDecisionContract.Revision, labels = LayaDecisionContract.Labels,
@@ -98,7 +98,7 @@ public static class LayaDecisionModule
                     || health["state_token_budget"]?.GetValue<int>() != 450)
                     return Fail("decision_runtime_not_ready", 503);
                 return Results.Ok(new { status = "ready", runtimeConnected = true,
-                    runtimeLocation = PulseLayaServiceOptions.FromEnvironment().Requested ? "pulse_container" : "oracle_legacy",
+                    runtimeLocation = LayaDecisionTransport.RuntimeLocation,
                     effectiveEnabled = policy.Enabled, modelRevision = LayaDecisionContract.Revision,
                     inferenceBusy = health["inference_busy"]?.GetValue<bool>() == true,
                     stateTokenBudget = 450, productionAccuracyValidated = false });
