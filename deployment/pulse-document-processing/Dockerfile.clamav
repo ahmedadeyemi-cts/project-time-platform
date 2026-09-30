@@ -1,0 +1,10 @@
+# Candidate scanner/updater image; no account changes are performed.
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 TZ=UTC
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates clamav-daemon clamav-freshclam python3
+RUN install -d -m 0770 -o nobody -g nogroup /run/clamav && install -d -m 0750 -o nobody -g nogroup /var/lib/clamav && install -d /usr/share/pulse-build && dpkg-query -W > /usr/share/pulse-build/packages.txt
+COPY clamd.conf freshclam.conf /etc/clamav/
+COPY clamd_client.py probe.py /opt/pulse-documents/
+USER 65534:65534
+HEALTHCHECK --interval=30s --timeout=8s --start-period=120s --retries=3 CMD ["python3", "/opt/pulse-documents/probe.py", "clamav"]
+CMD ["clamd", "--foreground=true", "--config-file=/etc/clamav/clamd.conf"]

@@ -1,0 +1,11 @@
+*
+!clamd_client.py
+!config_contract.py
+!gateway.py
+!ocr_job.py
+!wsgi.py
+!probe.py
+!clamd.conf
+!freshclam.conf
+!Dockerfile.worker
+!Dockerfile.clamav

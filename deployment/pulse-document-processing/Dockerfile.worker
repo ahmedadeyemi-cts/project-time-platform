@@ -1,0 +1,11 @@
+# Candidate image only; not part of a live deployment.
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
+ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 TZ=UTC OMP_THREAD_LIMIT=1
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates python3 python3-flask python3-pil gunicorn tesseract-ocr tesseract-ocr-eng poppler-utils fonts-dejavu-core
+RUN install -d /usr/share/pulse-build && dpkg-query -W > /usr/share/pulse-build/packages.txt
+WORKDIR /opt/pulse-documents
+COPY clamd_client.py config_contract.py gateway.py ocr_job.py wsgi.py probe.py ./
+USER 65534:65534
+EXPOSE 8082
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD ["python3", "probe.py"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8082", "--workers", "1", "--threads", "2", "--timeout", "210", "--keep-alive", "2", "--limit-request-line", "2048", "--limit-request-fields", "32", "--limit-request-field_size", "8190", "wsgi:app"]
