@@ -610,10 +610,7 @@ public sealed class PulseAiSystemIntelligenceService
                             : ragOptions.InferenceModel;
                     }
                 }
-                else if ((routed.Provider is CelarAiCapabilityTargets.Claude
-                    or CelarAiCapabilityTargets.OpenAi)
-                    && routed.Outcome == ProjectPulseAiOutcomes.Success
-                    && !string.IsNullOrWhiteSpace(routed.Content))
+                else if (CanPromoteExternalModelAnswer(routed.Provider, routed.Outcome, routed.Content))
                 {
                     if (plan.IntentCode == "general_knowledge")
                     {
@@ -1455,6 +1452,14 @@ public sealed class PulseAiSystemIntelligenceService
             DataAsOf = privateRag.DataAsOf
         };
     }
+
+    // Router success alone is not enough: preserve refusal/failure/empty-content
+    // behavior and accept only the external providers already governed by Module 064.
+    internal static bool CanPromoteExternalModelAnswer(string provider, string outcome, string? content) =>
+        provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+            or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot
+        && outcome == ProjectPulseAiOutcomes.Success
+        && !string.IsNullOrWhiteSpace(content);
 
     private static PulseAiSystemDetailedAnswer BuildPublicGeneralKnowledgeAnswer(
         string content,

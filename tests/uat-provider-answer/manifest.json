@@ -1,0 +1,42 @@
+{
+  "base": "98f80675b50e72c450f96f278c87168939a0ad2e",
+  "files": [
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    "scripts/release-test/validate-module025-governed-release.sh",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs",
+    "src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs",
+    "tests/CelarAiUniversalAnswerReliabilityTests/Program.cs",
+    "tests/module064-migration-rollout.test.py",
+    "tests/security-release/admission_fixture.py",
+    "tests/uat-provider-answer/README.md",
+    "tests/uat-provider-answer/manifest.json",
+    "tests/uat-provider-answer/scope.py",
+    "tests/uat-provider-answer/test_scope.py",
+    "tests/validate-celar-ai-pr630-consolidated-legacy.mjs",
+    "tests/validate-celar-ai-pr630-consolidated.mjs"
+  ],
+  "sha256": {
+    ".github/workflows/flowhive-enterprise-psa-ci.yml": "563903079d46b440d5f5c726f84b001e99d10c109573a3c60172fb6fbf2830fc",
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "297cb98ac2e92c3e97887fa311a661aaf6a889dbb3d28b1b66b401dee9cb26d3",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "00f6caac257639c67f8a7afbbc2e8ad37ce188f62415a1b2b7ff570a868fe2f6",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "11884d3f3aca4e875dbf118e8fc880692650c44f20ba48f8996551da166ebc13",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "43b9d635518e512d074b3082137254ff944786a8f1266820f6fb0da187a1c8b9",
+    "scripts/release-test/validate-module025-governed-release.sh": "36f0d2ac716dc237b9b3a79c01c040d2165d44a5888b8efb5283b58b7a7961de",
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "40bdf85d38e3a11606eda9f497a9cac9acf2049017754d7630a1ab93d55df832",
+    "src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs": "42d917fdce40d81959ecd85840b24236d4ae9f66abcaf4a95b0b80758b119181",
+    "src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs": "dde0b3353bab08d0641c2243581223f65b4a421fee38b52856ba246b80c84984",
+    "tests/CelarAiUniversalAnswerReliabilityTests/Program.cs": "440dd82c495f3fbbbfc9ebf836b3f1a3b76d10652695a35f8ece7e49882b52a9",
+    "tests/module064-migration-rollout.test.py": "9f3a48b7afa07710c46c6315d514a8499ed28ad1cb84b0eb093f2a1143ee724c",
+    "tests/security-release/admission_fixture.py": "6ab775460514481d50beda3a10f1b285c29197d09829e6cc292fe8d40622413a",
+    "tests/uat-provider-answer/README.md": "eceb572f89df68071bced0d5c55513b7b54cf5521cfdc86cb3b4db66aa858e21",
+    "tests/uat-provider-answer/scope.py": "9d29b61396f065dbc9916eb26dc0053701a53988c106f7345f0055831a316db7",
+    "tests/uat-provider-answer/test_scope.py": "2000d881ea21894803d69d081665ef416c9eb586846c34b9029dea6f0b3a2876",
+    "tests/validate-celar-ai-pr630-consolidated-legacy.mjs": "cbdcc0fa493dca0b7d47ca52cfcfed7633fe7b3aaaec4e8229a5c8519ccc9631",
+    "tests/validate-celar-ai-pr630-consolidated.mjs": "ac48a15838185bfe6dacaae98a6ac5a13776b4722adba05c2def398ba5758330"
+  }
+}

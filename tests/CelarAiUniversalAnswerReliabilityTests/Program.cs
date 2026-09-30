@@ -235,6 +235,80 @@ Require(stablePublic.Result.Answer.DirectConclusion == stableProviderResult.Answ
     "stable public explanation remains useful without claiming authoritative verification");
 Require(!stablePublic.Assessment.Passed && stablePublic.Result.Status == "partial",
     "provider memory is still explicitly evidence-limited");
+// Exercise the production answer-selection predicate, not a test-side provider copy.
+var promotion = typeof(PulseAiSystemIntelligenceService).GetMethod("CanPromoteExternalModelAnswer",
+    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+    ?? throw new InvalidOperationException("Production answer promotion predicate is missing.");
+foreach (var provider in CelarAiCapabilityTargets.All.Concat(["unknown_provider", ""]))
+{
+    var expected = provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+        or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot;
+    Require((bool)promotion.Invoke(null, [provider, ProjectPulseAiOutcomes.Success, "Synthetic explanation."])! == expected,
+        $"{provider}: production predicate recognizes only governed external models");
+    foreach (var outcome in new[] { ProjectPulseAiOutcomes.Refusal, "timeout", "unavailable", "failure", "" })
+        Require(!(bool)promotion.Invoke(null, [provider, outcome, "Non-success content."])!,
+            $"{provider}: {outcome} cannot promote content");
+    foreach (var content in new string?[] { null, "", "  " })
+        Require(!(bool)promotion.Invoke(null, [provider, ProjectPulseAiOutcomes.Success, content])!,
+            $"{provider}: empty success cannot promote content");
+}
+Console.WriteLine("CELAR_AI_EXTERNAL_ANSWER_PROMOTION=PASS (81 assertions)");
+
+// Every governed model must preserve useful stable public explanations without
+// elevating model memory to verified evidence or allowing unsupported Pulse facts.
+foreach (var provider in new[]
+{
+    CelarAiCapabilityTargets.DeepSeek, CelarAiCapabilityTargets.CelarAi,
+    CelarAiCapabilityTargets.Claude, CelarAiCapabilityTargets.OpenAi,
+    CelarAiCapabilityTargets.Gemini, CelarAiCapabilityTargets.Copilot
+})
+{
+    var generated = stableProviderResult with { ModelProvider = provider };
+    var preserved = reliability.Enforce(generated, stablePublicPlan, true, true);
+    Require(preserved.Result.Answer.DirectConclusion == generated.Answer.DirectConclusion,
+        $"{provider}: stable model content is not replaced by a placeholder");
+    Require(preserved.Result.Answer.DetailedAnalysis.SequenceEqual(generated.Answer.DetailedAnalysis),
+        $"{provider}: model explanation is retained");
+    Require(preserved.Result.ModelProvider == provider,
+        $"{provider}: provider identity is never relabeled");
+    Require(!preserved.Assessment.Passed && preserved.Result.Status == "partial",
+        $"{provider}: unverified model memory remains evidence limited");
+    Require(preserved.Result.Answer.Confidence <= 0.40m,
+        $"{provider}: confidence cap is unchanged");
+    var current = reliability.Enforce(generated, currentPublicPlan, true, true);
+    Require(!current.Assessment.Passed
+        && current.Result.Answer.DirectConclusion == currentPublicPlan.FailClosedConclusion,
+        $"{provider}: changing public facts still require live evidence");
+    var conflict = reliability.Enforce(generated with
+    {
+        Answer = generated.Answer with { Conflicts = ["Sources disagree."] }
+    }, stablePublicPlan, true, true);
+    Require(!conflict.Assessment.Passed
+        && conflict.Result.Answer.DirectConclusion == stablePublicPlan.FailClosedConclusion,
+        $"{provider}: conflict still prevents model-answer promotion");
+    var refusal = reliability.Enforce(generated with { Status = "blocked" },
+        stablePublicPlan, true, true);
+    Require(refusal.Result.Status == "blocked", $"{provider}: refusal stays terminal");
+    var unsupported = reliability.Enforce(
+        Result("completed", "projects_and_delivery", "An unsupported project count.", provider: provider),
+        internalPlan, true, true);
+    Require(!unsupported.Assessment.Passed
+        && unsupported.Result.Answer.DirectConclusion == internalPlan.FailClosedConclusion,
+        $"{provider}: unsupported enterprise facts fail closed");
+    if (provider is CelarAiCapabilityTargets.Claude or CelarAiCapabilityTargets.OpenAi
+        or CelarAiCapabilityTargets.Gemini or CelarAiCapabilityTargets.Copilot)
+        Require(HasFinding(unsupported, "external_model_cannot_establish_internal_fact"),
+            $"{provider}: explicit external/internal boundary is enforced");
+}
+foreach (var provider in new[] { CelarAiCapabilityTargets.Local, "unknown_provider", "" })
+{
+    var rejected = reliability.Enforce(stableProviderResult with { ModelProvider = provider },
+        stablePublicPlan, true, true);
+    Require(rejected.Result.Answer.DirectConclusion == stablePublicPlan.FailClosedConclusion,
+        $"{provider}: local or unknown output cannot impersonate model evidence");
+}
+Console.WriteLine("CELAR_AI_PROVIDER_ANSWER_PARITY=PASS (61 assertions; six governed models)");
+
 var conflictingPublic = reliability.Enforce(stableProviderResult with
 {
     Answer = stableProviderResult.Answer with { Conflicts = ["Sources disagree."] }

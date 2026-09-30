@@ -41,7 +41,21 @@ LAYA_BASE = '14f9850a12868ed7f821fb96d2edf715a3ab92b1'
 LAYA_RUNNER_EDITS = [(937, 937, '.sql"\nAUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE="$ROOT/database/migrations/125_automatic_document_admission_laya'), (2224, 2224, ' source is missing."\n[[ -s "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" ]] || fail "Automatic document admission migration 125'), (6345, 6345, '.sha256)\ninstall -m 0444 "$AUTOMATIC_ADMISSION_LAYA_MIGRATION_FILE" "$CONTEXT/database/migrations/125_automatic_document_admission_laya.sql"\n(cd "$CONTEXT" && sha256sum database/migrations/125_automatic_document_admission_laya.sql > database/automatic-admission-laya'), (11716, 11716, '\n\n(cd "$ROOT" && sha256sum --check --status database/automatic-admission-laya.sha256)\npsql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/125_automatic_document_admission_laya.sql"'), (18941, 18941, 'automatic_admission_laya_verification="$(psql -X -At -v ON_ERROR_STOP=1 <<\'SQL\'\nSELECT\n  EXISTS(SELECT 1 FROM schema_migrations WHERE migration_id=\'125_automatic_document_admission_laya\')::text || \'|\' ||\n  (to_regclass(\'public.pulse_ai_laya_classification_jobs\') IS NOT NULL)::text || \'|\' ||\n  EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema=\'public\' AND table_name=\'project_intake_documents\' AND column_name=\'pulse_ai_laya_classification_status\')::text || \'|\' ||\n  EXISTS(SELECT 1 FROM pg_indexes WHERE schemaname=\'public\' AND indexname=\'ux_pulse_ai_laya_classification_jobs_identity\')::text;\nSQL\n)"\n[[ "$automatic_admission_laya_verification" == \'true|true|true|true\' ]] || {\n  echo "ERROR: Automatic document admission/Laya migration 125 verification failed: $automatic_admission_laya_verification" >&2\n  exit 1\n}\n'), (19302, 19302, "=APPLIED_AND_VERIFIED'\necho 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA"), (21792, 21792, "echo 'MIGRATION_125_AUTOMATIC_DOCUMENT_ADMISSION_LAYA=APPLIED_AND_VERIFIED'\n"), (22795, 22795, '\n\nif [[ -n "$EVIDENCE_ROOT" ]]; then\n  install -d -m 0700 "$EVIDENCE_ROOT"\n  automatic_admission_laya_sha256="$(sha256sum "$ROOT/database/migrations/125_automatic_document_admission_laya.sql" | cut -d \' \' -f 1)"\n  jq -n --arg releaseCommit "$RELEASE_COMMIT" --arg image "$RELIABILITY_MIGRATION_IMAGE" --arg sha256 "$automatic_admission_laya_sha256" \\\n    \'{status:"applied_and_verified",migration:"125_automatic_document_admission_laya",sha256:$sha256,releaseCommit:$releaseCommit,image:$image,environment:"protected-test",privateNetworkJob:true,deliveryBoundary:"test_only_or_locked",productionMutation:false}\' \\\n    > "$EVIDENCE_ROOT/migration-125.json"\nfi')]
 
 
+# PR1213 already added the hash-verified 131/132 packages to this runner.
+# Accept only those exact inherited bytes; do not relax any mutation assertion.
+# The current complete package is also exercised below before legacy normalization.
+INHERITED_RUNNER_BASE = '98f80675b50e72c450f96f278c87168939a0ad2e'
+INHERITED_RUNNER_SHA256 = 'a9520006f889813b5734007bd45ea68dbb0376829d62b864e7173bdb4d718634'
+PRE_COLLABORATION_RUNNER_BASE = 'cb5450391c8435e1325aaec853d88243a86516d0'
+
+
 def without_laya_additions(source):
+    if hashlib.sha256(source.encode()).hexdigest() == INHERITED_RUNNER_SHA256:
+        inherited = subprocess.check_output(
+            ['git', 'show', INHERITED_RUNNER_BASE + ':' + RUNNER], cwd=ROOT, text=True)
+        assert source == inherited, 'Inherited collaboration runner differs from the pinned source'
+        source = subprocess.check_output(
+            ['git', 'show', PRE_COLLABORATION_RUNNER_BASE + ':' + RUNNER], cwd=ROOT, text=True)
     if '# SECURITY_130_PACKAGE_BEGIN' in source:
         spec = importlib.util.spec_from_file_location('security_completion_scope', ROOT/'tests/security-completion/scope.py')
         scope = importlib.util.module_from_spec(spec); spec.loader.exec_module(scope)
@@ -108,10 +122,25 @@ def main():
         print('MODULE064_MIGRATION_ROLLOUT=PASS inherited_runner_unchanged=true')
         return
     verify_source(source)
+    # Validate the full current immutable package as well as the historical
+    # 123/124 contract. No host SQL or live job is executed by this offline test.
+    subprocess.run(['python3', str(ROOT / 'tests/flowhive-migration-package.test.py')],
+                   cwd=ROOT, check=True)
     mutations = [source + '\npsql unauthorized\n', source.replace('ON_ERROR_STOP=1', 'ON_ERROR_STOP=0', 1)]
     for spec in PACKAGES:
         package, apply, marker = fragments(spec)
         mutations.extend([source.replace(package, '', 1), source.replace(apply, '', 1), source.replace(marker, '', 1)])
+    for name, manifest, marker in (
+        ('131_flowhive_project_collaboration', 'flowhive-project-collaboration', 'FLOWHIVE_PROJECT_COLLABORATION_131=APPLIED'),
+        ('132_time_approval_routing', 'time-approval-routing', 'TIME_APPROVAL_ROUTING_132=APPLIED'),
+    ):
+        for fragment in (
+            f'install -m 0444 "$ROOT/database/migrations/{name}.sql" "$CONTEXT/database/migrations/{name}.sql"',
+            f'psql -X -v ON_ERROR_STOP=1 --file "$ROOT/database/migrations/{name}.sql"',
+            f"echo '{marker}'",
+        ):
+            assert source.count(fragment) == 1, 'Inherited package fragment is missing or duplicated'
+            mutations.append(source.replace(fragment, '', 1))
     for broken in mutations:
         try:
             verify_source(broken)
