@@ -1,0 +1,167 @@
+# INACTIVE proposal. Deployment-governance owner approval is required before installation.
+name: Protected Test Pulse document and Laya cutover
+'on':
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact merged PR1222 source already accepted by Protected Test
+        required: true
+        type: string
+      deployment_run_id:
+        description: Successful protected application deployment for that source
+        required: true
+        type: string
+      confirmation:
+        description: SWITCH PULSE TEST DOCUMENTS AND LAYA
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+  id-token: write
+concurrency:
+  group: projectpulse-deploy-test
+  queue: max
+  cancel-in-progress: false
+jobs:
+  cutover:
+    if: github.ref == 'refs/heads/main' && github.actor == 'ahmedadeyemi-cts'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: test
+    env:
+      PULSE_SOURCE_SHA: ${{ inputs.source_sha }}
+      PULSE_ACCEPTED_DEPLOYMENT_RUN: ${{ inputs.deployment_run_id }}
+      PULSE_CONFIRMATION: ${{ inputs.confirmation }}
+      PULSE_PRIVATE_EVIDENCE: ${{ runner.temp }}/pulse-services-private
+      PULSE_SAFE_EVIDENCE: ${{ runner.temp }}/pulse-services-safe
+      PULSE_IMAGE_MANIFEST: ${{ runner.temp }}/pulse-services-safe/registry-images.json
+    steps:
+    - name: Validate exact owner-requested main source
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: 'set -Eeuo pipefail
+
+        [[ "$GITHUB_REF" == refs/heads/main && "$GITHUB_ACTOR" == ahmedadeyemi-cts ]]
+
+        [[ "$PULSE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ && "$PULSE_SOURCE_SHA" == "$GITHUB_SHA" ]]
+
+        [[ "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)" == "$PULSE_SOURCE_SHA" ]]
+
+        [[ "$PULSE_CONFIRMATION" == ''SWITCH PULSE TEST DOCUMENTS AND LAYA'' ]]
+
+        '
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+      with:
+        client-id: ${{ vars.AZURE_CLIENT_ID }}
+        tenant-id: ${{ vars.AZURE_TENANT_ID }}
+        subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    - name: Verify accepted application, preserved local administrator and existing environment
+      env:
+        PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+        PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+        GH_TOKEN: ${{ github.token }}
+      run: python3 deployment/pulse-services/cutover.py preflight
+    - name: Build exact reviewed service images
+      run: "set -Eeuo pipefail\nfor component in documents scanner laya-gateway laya; do\n  docker build --label\
+        \ \"org.opencontainers.image.revision=$PULSE_SOURCE_SHA\" -t \"pulse-services-$component:cutover\" -f \"\
+        deployment/pulse-services/Dockerfile.$component\" .\ndone\nmkdir -p \"$PULSE_SAFE_EVIDENCE\"\n"
+    - name: Require image scan for documents
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        version: v0.74.0
+        image-ref: pulse-services-documents:cutover
+        format: json
+        output: ${{ runner.temp }}/pulse-services-safe/documents-scan.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: '1'
+    - name: Require image scan for scanner
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        version: v0.74.0
+        image-ref: pulse-services-scanner:cutover
+        format: json
+        output: ${{ runner.temp }}/pulse-services-safe/scanner-scan.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: '1'
+    - name: Require image scan for laya-gateway
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        version: v0.74.0
+        image-ref: pulse-services-laya-gateway:cutover
+        format: json
+        output: ${{ runner.temp }}/pulse-services-safe/laya-gateway-scan.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: '1'
+    - name: Require image scan for laya
+      uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+      with:
+        version: v0.74.0
+        image-ref: pulse-services-laya:cutover
+        format: json
+        output: ${{ runner.temp }}/pulse-services-safe/laya-scan.json
+        severity: HIGH,CRITICAL
+        ignore-unfixed: true
+        exit-code: '1'
+    - name: Publish scanned immutable images to existing private registry
+      run: "set -Eeuo pipefail\naz acr login --name acrphdtest7825cc --only-show-errors\nfor component in documents\
+        \ scanner laya-gateway laya; do\n  target=\"acrphdtest7825cc.azurecr.io/pulse-services-$component:svc-$GITHUB_RUN_ID\"\
+        \n  docker tag \"pulse-services-$component:cutover\" \"$target\"\n  docker push \"$target\"\ndone\npython3\
+        \ - <<'PY_IMAGES'\nimport json,os,subprocess\nfrom pathlib import Path\nimages={}\nfor c in ('documents','scanner','laya-gateway','laya'):\n\
+        \ p=subprocess.run(['az','acr','repository','show','-n','acrphdtest7825cc','--image','pulse-services-'+c+':svc-'+os.environ['GITHUB_RUN_ID'],'--query','digest','-o','tsv','--only-show-errors'],capture_output=True,text=True,check=True)\n\
+        \ images[c]='acrphdtest7825cc.azurecr.io/pulse-services-'+c+'@'+p.stdout.strip()\nPath(os.environ['PULSE_IMAGE_MANIFEST']).write_text(json.dumps(images,indent=2)+'\\\
+        n')\nPY_IMAGES\n"
+    - name: Stage private containers, current signatures and native acceptance
+      env:
+        PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+        PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+        GH_TOKEN: ${{ github.token }}
+      run: python3 deployment/pulse-services/cutover.py prepare
+    - name: Switch only verified Test service routes and verify local Super Administrator
+      env:
+        PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+        PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+        GH_TOKEN: ${{ github.token }}
+      run: python3 deployment/pulse-services/cutover.py switch
+    - name: Restore verified legacy routes on failed cutover
+      if: failure()
+      env:
+        PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+        PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+        GH_TOKEN: ${{ github.token }}
+      run: python3 deployment/pulse-services/cutover.py rollback
+    - name: Publish content-free cutover evidence
+      if: always()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+      with:
+        name: pulse-services-cutover-${{ github.run_id }}
+        path: ${{ runner.temp }}/pulse-services-safe
+        if-no-files-found: ignore
+        retention-days: 7
+    - name: Remove ephemeral deployment credentials
+      if: always()
+      run: 'python3 - <<''PY_CLEAN''
+
+        import os,shutil
+
+        from pathlib import Path
+
+        root=Path(os.environ[''RUNNER_TEMP'']).resolve()
+
+        p=Path(os.environ[''PULSE_PRIVATE_EVIDENCE'']).resolve()
+
+        if p.parent!=root or p.name!=''pulse-services-private'':raise SystemExit(''unexpected_cleanup_path'')
+
+        shutil.rmtree(p,ignore_errors=True)
+
+        PY_CLEAN
+
+        '

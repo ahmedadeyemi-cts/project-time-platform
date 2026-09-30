@@ -160,6 +160,8 @@ const branchName = process.env.GITHUB_HEAD_REF || (() => {
     return '';
   }
 })();
+const pulseServicesScope = branchName === 'feature/pulse-services-cutover-laya-20260930';
+if (pulseServicesScope) execFileSync('python3', ['tests/pulse-services-release/scope.py'], { cwd: root, stdio: 'inherit' });
 const documentIntegrationScope = branchName === 'feature/pulse-documents-integration-20260930';
 if (documentIntegrationScope) execFileSync('python3', ['tests/pulse-document-integration/scope.py'], { cwd: root, stdio: 'inherit' });
 const providerAnswerScope = branchName === 'fix/uat-provider-answer-contract-20260930';
@@ -178,7 +180,7 @@ const unexpected = changed.filter((file) => {
   }
   return !allowedExact.has(file) && !allowedPrefixes.some((prefix) => file.startsWith(prefix));
 });
-requireValue(documentIntegrationScope || providerAnswerScope || securityAuditFollowupScope || securityUatAcceptanceScope || securityRemediationScope || enterpriseCompletionScope || unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
+requireValue(pulseServicesScope || documentIntegrationScope || providerAnswerScope || securityAuditFollowupScope || securityUatAcceptanceScope || securityRemediationScope || enterpriseCompletionScope || unexpected.length === 0, 'CELAR_PR630_SOURCE_SCOPE', unexpected.length ? unexpected.join(', ') : `${changed.length} governed files`);
 const migrationScope = flowHiveSowSuccessorScope
   ? changed.includes('database/migrations/103_module_066_flowhive_enterprise_psa_revamp.sql')
     && changed.includes('database/migrations/104_flowhive_bounded_ai_execution.sql')
@@ -195,7 +197,9 @@ const unchangedProviderAnswerMigrations = providerAnswerScope && requiredFiles.s
   fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `98f80675b50e72c450f96f278c87168939a0ad2e:${file}`], { cwd: root })));
 const unchangedDocumentIntegrationMigrations = documentIntegrationScope && requiredFiles.slice(0, 2).every((file) =>
   fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `bb2c9cccaf4d95cbfe32818e3f55ccb58cf029dc:${file}`], { cwd: root })));
-requireValue(unchangedDocumentIntegrationMigrations || unchangedProviderAnswerMigrations || unchangedAuditMigrations || unchangedUatMigrations || inheritedSecurityMigrations || migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessorScope ? 'combined FlowHive/SOW migrations 103-106' : 'Migration 084 and guarded rollback');
+const unchangedPulseServicesMigrations = pulseServicesScope && requiredFiles.slice(0, 2).every((file) =>
+  fs.readFileSync(absolute(file)).equals(execFileSync('git', ['show', `c8ac122653b2d948343727815dfc3279d98c9cc6:${file}`], { cwd: root })));
+requireValue(unchangedPulseServicesMigrations || unchangedDocumentIntegrationMigrations || unchangedProviderAnswerMigrations || unchangedAuditMigrations || unchangedUatMigrations || inheritedSecurityMigrations || migrationScope, 'CELAR_PR630_MIGRATION_SCOPE', flowHiveSowSuccessorScope ? 'combined FlowHive/SOW migrations 103-106' : 'Migration 084 and guarded rollback');
 requireValue(!changed.includes('.github/workflows/celar-ai-source-snapshot-temp.yml'), 'CELAR_PR630_TEMP_SNAPSHOT_REMOVED');
 const flowHiveProxyLimit = 'deployment/containers/web/default.conf.template';
 const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope
@@ -203,7 +207,7 @@ const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope
   && changed.includes(flowHiveProxyLimit)
   && governedSuccessorPaths.has(flowHiveProxyLimit);
 requireValue(
-  securityRemediationScope || changed.every((file) => (!file.startsWith('deployment/') || (flowHiveProxyLimitReviewed && file === flowHiveProxyLimit)) && (!file.includes('projectpulse-deploy-') || (enterpriseCompletionScope && file === '.github/workflows/projectpulse-deploy-test.yml')) && !file.includes('oracle-test-runtime-deploy')),
+  securityRemediationScope || changed.every((file) => (!file.startsWith('deployment/') || (pulseServicesScope && file.startsWith('deployment/pulse-services/')) || (flowHiveProxyLimitReviewed && file === flowHiveProxyLimit)) && (!file.includes('projectpulse-deploy-') || (enterpriseCompletionScope && file === '.github/workflows/projectpulse-deploy-test.yml')) && !file.includes('oracle-test-runtime-deploy')),
   'CELAR_PR630_NO_DEPLOYMENT_CONTROLLER',
   flowHiveProxyLimitReviewed ? 'only the reviewed FlowHive proxy limit' : ''
 );

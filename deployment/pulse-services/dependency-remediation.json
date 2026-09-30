@@ -1,0 +1,32 @@
+{
+  "source": "GitHub CI 36760240564, Trivy candidate image scan",
+  "detected": [
+    {
+      "VulnerabilityID": "CVE-2026-4372",
+      "PkgName": "transformers",
+      "InstalledVersion": "4.57.6",
+      "FixedVersion": "5.3.0",
+      "Severity": "HIGH"
+    },
+    {
+      "VulnerabilityID": "CVE-2026-5241",
+      "PkgName": "transformers",
+      "InstalledVersion": "4.57.6",
+      "FixedVersion": "5.5.0",
+      "Severity": "HIGH"
+    },
+    {
+      "VulnerabilityID": "CVE-2026-9856",
+      "PkgName": "transformers",
+      "InstalledVersion": "4.57.6",
+      "FixedVersion": "5.10.0",
+      "Severity": "HIGH"
+    }
+  ],
+  "replacement": "transformers==5.10.1",
+  "status": "source_patched_native_revalidation_required",
+  "modelCheckpointChanged": false,
+  "original149FindingsClosed": 0,
+  "currentOracleInstalledPackageNotIndependentlyVerified": true,
+  "yanked5_10_0Rejected": true
+}

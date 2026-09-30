@@ -39,6 +39,7 @@ namespace ProjectTime.Api.Ai
     { public string Code => code; public int Status => status; }
     public static class LayaDecisionTransport
     {
+        public static string RuntimeLocation => "isolated_test_fixture";
         public static bool DeploymentAllowed() => Fixture.Allowed && !Fixture.Candidate;
         public static async Task<JsonObject> SendAsync(string? text, CancellationToken ct)
         {

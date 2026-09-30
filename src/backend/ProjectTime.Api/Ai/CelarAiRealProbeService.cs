@@ -158,6 +158,8 @@ public sealed class CelarAiRealProbeService
 
     private async Task<CelarAiProbeEvidence> ProbeOcrAsync(CancellationToken cancellationToken)
     {
+        if (PulseDocumentServiceOptions.FromEnvironment().Requested)
+            return await ProbePulseDocumentUtilityAsync(true, cancellationToken);
         var snapshot = PulseAiExternalHttpsRuntimePolicy.Evaluate();
         if (!TryRuntimeEndpoint(snapshot, snapshot.OcrEndpoint, out var endpoint, out var failure))
             return RuntimeConfigurationProbe("private_ocr", "Private OCR", failure);
@@ -197,6 +199,8 @@ public sealed class CelarAiRealProbeService
 
     private async Task<CelarAiProbeEvidence> ProbeMalwareAsync(CancellationToken cancellationToken)
     {
+        if (PulseDocumentServiceOptions.FromEnvironment().Requested)
+            return await ProbePulseDocumentUtilityAsync(false, cancellationToken);
         var snapshot = PulseAiExternalHttpsRuntimePolicy.Evaluate();
         if (!TryRuntimeEndpoint(snapshot, snapshot.MalwareScanEndpoint, out var endpoint, out var failure))
             return RuntimeConfigurationProbe("private_malware_scan", "Private malware scanning", failure);
@@ -231,6 +235,42 @@ public sealed class CelarAiRealProbeService
                 null, Elapsed(started), "malware_scanner_unavailable",
                 "The authenticated private malware probe did not complete.", endpoint.Host, DateTimeOffset.UtcNow);
         }
+    }
+
+    private async Task<CelarAiProbeEvidence> ProbePulseDocumentUtilityAsync(bool ocr, CancellationToken token)
+    {
+        var options = PulseDocumentServiceOptions.FromEnvironment();
+        var started = Stopwatch.GetTimestamp();
+        var folder = Directory.CreateTempSubdirectory("pulse-document-health-");
+        var path = Path.Combine(folder.FullName,"synthetic.input");
+        try
+        {
+            var bytes = ocr ? OcrProbePng : Encoding.UTF8.GetBytes("PULSE SCANNER READINESS SYNTHETIC FIXTURE\n");
+            await File.WriteAllBytesAsync(path,bytes,token);
+            using var client = new PulseDocumentServiceClient(options);
+            bool healthy; string diagnostic;
+            if (ocr)
+            {
+                var source = new PulseAiAuthorizedDocumentSource(Guid.NewGuid(),null,"","","","document","validation",
+                    "synthetic.png","synthetic.input",path,"image/png",bytes.Length,false,false,"pending",false,null,
+                    DateTimeOffset.UtcNow,"synthetic_health_probe","internal","restricted",[]);
+                var limits = new PulseAiDocumentPipelineOptions(folder.FullName,true,false,"",true,false,false,
+                    32*1024*1024,50,1000000,50,100,1000,100);
+                var result = await client.ExtractAsync(source,limits,token);
+                healthy = result.Succeeded && result.Sections.Any(x=>x.Text.Contains("CELAR OCR PROBE",StringComparison.OrdinalIgnoreCase));
+                diagnostic = result.Succeeded ? "ocr_probe_text_missing" : result.DiagnosticCode;
+            }
+            else
+            {
+                var result = await client.ScanAsync(path,45,token);
+                healthy = result.Clean && !result.Infected;
+                diagnostic = result.DiagnosticCode;
+            }
+            return Probe(ocr?"private_ocr_text":"private_malware_clean_file",ocr?"private_ocr":"private_malware_scan",
+                ocr?"Pulse OCR":"Pulse malware scanning",healthy?"healthy":"failed",null,Elapsed(started),healthy?"":diagnostic,
+                "An authenticated exact-content probe used the selected Pulse document service.",options.ExpectedHost,DateTimeOffset.UtcNow);
+        }
+        finally { try { Directory.Delete(folder.FullName,true); } catch(IOException) { } }
     }
 
     private async Task<CelarAiProbeEvidence> ProbeReadinessAsync(
@@ -286,6 +326,16 @@ public sealed class CelarAiRealProbeService
         CelarAiMonitorPolicy policy,
         CancellationToken cancellationToken)
     {
+        if (PulseDocumentServiceOptions.FromEnvironment().Requested)
+        {
+            var selected = PulseDocumentServiceOptions.FromEnvironment();
+            var started = Stopwatch.GetTimestamp();
+            using var client = new PulseDocumentServiceClient(selected);
+            var result = await client.ProbeAsync(cancellationToken);
+            return Probe("clamav_signature_freshness", "clamav_signatures", "ClamAV signature freshness",
+                result.Ready ? "healthy" : "failed", null, Elapsed(started), result.Ready ? "" : result.Diagnostic,
+                "Loaded signature freshness was checked on the selected Pulse service, not Oracle.", selected.ExpectedHost, DateTimeOffset.UtcNow);
+        }
         var readiness = await ProbeReadinessAsync(policy, cancellationToken);
         var configuredVersion = CelarAiOperationsPolicy.Clean(
             Environment.GetEnvironmentVariable("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SIGNATURE_VERSION"),

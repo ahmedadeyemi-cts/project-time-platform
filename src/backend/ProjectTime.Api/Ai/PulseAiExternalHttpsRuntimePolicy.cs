@@ -478,23 +478,18 @@ public sealed class PulseAiExternalHttpsRuntimeGuard(
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
-        if (!response.IsSuccessStatusCode)
-            throw new InvalidOperationException(
-                $"The Celar AI external HTTPS readiness endpoint returned HTTP {(int)response.StatusCode}.");
-
+        var documents = PulseDocumentServiceOptions.FromEnvironment();
+        var documentReady = false;
+        if (documents.Requested)
+        {
+            if (!documents.Valid) throw new InvalidOperationException("The independent document configuration is invalid.");
+            using var documentClient = new PulseDocumentServiceClient(documents);
+            var probe = await documentClient.ProbeAsync(cancellationToken);
+            documentReady = probe.Ready;
+        }
         using var json = await ReadBoundedJsonAsync(response.Content, cancellationToken);
-        var root = json.RootElement;
-        var ready = StringEquals(root, "status", "ready")
-            && Boolean(root, "ollamaReady")
-            && Boolean(root, "generationModelReady")
-            && Boolean(root, "embeddingModelReady")
-            && Boolean(root, "tesseractReady")
-            && Boolean(root, "clamavReady")
-            && StringEquals(root, "generationModel", PulseAiExternalHttpsRuntimePolicy.GenerationModel)
-            && StringEquals(root, "embeddingModel", PulseAiExternalHttpsRuntimePolicy.EmbeddingModel)
-            && StringEquals(root, "ocrModel", PulseAiExternalHttpsRuntimePolicy.OcrModel)
-            && root.TryGetProperty("rawDocumentContentLogged", out var logged)
-            && logged.ValueKind == JsonValueKind.False;
+        var ready = PulseDocumentReadinessPolicy.AcceptOracleHealth(json.RootElement,
+            (int)response.StatusCode, documents.Requested, documents.Valid, documentReady);
         if (!ready)
             throw new InvalidOperationException(
                 "The Celar AI external HTTPS runtime failed the authenticated startup readiness contract.");
