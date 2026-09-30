@@ -1,0 +1,25 @@
+name: Verify protected release supervisor queue preservation
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/module025-protected-uat-control.yml'
+      - '.github/workflows/module025-retained-register-check.yml'
+      - '.github/workflows/flowhive-psa-protected-test-admission.yml'
+      - '.github/workflows/release-supervisor-queue-ci.yml'
+      - 'tests/release-supervisor-queue/**'
+permissions:
+  contents: read
+concurrency:
+  group: release-queue-regression-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: python3 -m pip install PyYAML==6.0.3
+      - run: python3 tests/release-supervisor-queue/test_queue.py

@@ -11,6 +11,7 @@ permissions:
 # Share the existing supervisor lock; never interrupt an active deployment.
 concurrency:
   group: module025-protected-uat-control
+  queue: max
   cancel-in-progress: false
 
 jobs:

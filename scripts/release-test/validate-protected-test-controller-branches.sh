@@ -3,6 +3,16 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# Queue-only repair: exact source, existing controller identity and all safety regressions.
+if [[ "$HEAD_BRANCH" == 'fix/protected-uat-supervisor-queue-20260930' ]]; then
+  python3 tests/release-supervisor-queue/scope.py
+  python3 tests/release-supervisor-queue/test_queue.py
+  python3 tests/test-pr1139-uat-recovery.py
+  python3 tests/test-pr1140-uat-recovery.py
+  python3 tests/security-release/test_controller_registration.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'codex/flowhive-save-schedule-approval-polish' ]]; then
   python3 tests/flowhive-save-release/scope.py
   python3 tests/flowhive-save-release/test_scope.py
