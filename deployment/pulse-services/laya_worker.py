@@ -106,7 +106,7 @@ def check_answer(result: Any) -> dict[str, Any]:
 
 def preflight() -> Path:
     from download_model import validate
-    expected = {'laya':'0.3.4','transformers':'4.57.6','torch':'2.14.0+cpu'}
+    expected = {'laya':'0.3.4','transformers':'5.10.1','torch':'2.14.0+cpu'}
     for name,version in expected.items():
         if importlib.metadata.version(name)!=version:raise RuntimeError('model_dependency_identity')
     return validate(DATA)

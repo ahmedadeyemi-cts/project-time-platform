@@ -207,7 +207,7 @@ const flowHiveProxyLimitReviewed = flowHiveSowSuccessorScope
   && changed.includes(flowHiveProxyLimit)
   && governedSuccessorPaths.has(flowHiveProxyLimit);
 requireValue(
-  securityRemediationScope || changed.every((file) => (!file.startsWith('deployment/') || (flowHiveProxyLimitReviewed && file === flowHiveProxyLimit)) && (!file.includes('projectpulse-deploy-') || (enterpriseCompletionScope && file === '.github/workflows/projectpulse-deploy-test.yml')) && !file.includes('oracle-test-runtime-deploy')),
+  securityRemediationScope || changed.every((file) => (!file.startsWith('deployment/') || (pulseServicesScope && file.startsWith('deployment/pulse-services/')) || (flowHiveProxyLimitReviewed && file === flowHiveProxyLimit)) && (!file.includes('projectpulse-deploy-') || (enterpriseCompletionScope && file === '.github/workflows/projectpulse-deploy-test.yml')) && !file.includes('oracle-test-runtime-deploy')),
   'CELAR_PR630_NO_DEPLOYMENT_CONTROLLER',
   flowHiveProxyLimitReviewed ? 'only the reviewed FlowHive proxy limit' : ''
 );

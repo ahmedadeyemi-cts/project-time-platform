@@ -59,12 +59,15 @@ def application(kind,images,token,secret,sha,run):
                         'scale':{'minReplicas':1,'maxReplicas':1},'terminationGracePeriodSeconds':30}}}
     validate_resource(resource,kind,images)
     return resource
+def runtime_identity_isolated(configuration):
+    settings=configuration.get('identitySettings',[])
+    return len(settings)==1 and settings[0].get('identity','').lower()==IDENTITY.lower() and settings[0].get('lifecycle')=='None'
 def validate_resource(body,kind,images):
     p=body['properties'];c=p['configuration'];t=p['template']
     require(kind in APPS and p['environmentId']==ENV and body['location']=='westus3','wrong_environment')
     require(c['ingress']['external'] is False and c['ingress']['allowInsecure'] is False and c['ingress']['targetPort']==8082,'ingress_boundary')
     require(not c['ingress'].get('additionalPortMappings'),'raw_ports')
-    require(c['identitySettings']==[{'identity':IDENTITY,'lifecycle':'None'}],'runtime_identity_exposed')
+    require(runtime_identity_isolated(c),'runtime_identity_exposed')
     require(t['scale']=={'minReplicas':1,'maxReplicas':1},'scale_boundary')
     require(sum(x['resources']['cpu'] for x in t['containers'])<=4,'cpu_boundary')
     require(sum(float(x['resources']['memory'][:-2]) for x in t['containers'])<=8,'memory_boundary')

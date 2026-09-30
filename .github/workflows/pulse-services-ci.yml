@@ -28,7 +28,9 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
+      - run: python3 -m pip install PyYAML==6.0.3
       - run: python3 tests/pulse_services/test_contracts.py
+      - run: python3 tests/pulse_services/test_cutover.py
       - run: dotnet run --project tests/PulseServiceCutoverTests -c Release
       - run: dotnet run --project tests/PulseDocumentServiceTests -c Release
   containers:

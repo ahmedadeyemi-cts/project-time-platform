@@ -3,6 +3,8 @@ import ctypes, os, re, stat, sys, tempfile, time
 from pathlib import Path
 
 def harden(profile="gateway"):
+    if any(os.environ.get(k) for k in ("IDENTITY_ENDPOINT","IDENTITY_HEADER","MSI_ENDPOINT","MSI_SECRET")):
+        raise RuntimeError("runtime_managed_identity_must_be_disabled")
     lib=ctypes.CDLL('/usr/local/lib/libpulse-sandbox.so',use_errno=True)
     lib.pulse_sandbox.argtypes=[ctypes.c_char_p];lib.pulse_sandbox.restype=ctypes.c_int
     if lib.pulse_sandbox(profile.encode()) != 0:
@@ -40,7 +42,7 @@ def start():
             if any((Path('/var/lib/clamav')/x).is_file() for x in ('daily.cvd','daily.cld')):break
             time.sleep(2)
         else:raise RuntimeError('signature_bootstrap_unavailable')
-        os.execv('/usr/local/bin/pulse-sandbox',['pulse-sandbox','scanner','/usr/sbin/clamd','--foreground=true','--config-file=/etc/clamav/clamd.conf'])
+        os.execv('/usr/bin/python3',['python3','/opt/pulse-services/scanner_start.py'])
     if mode=='updater':
         os.execv('/usr/local/bin/pulse-sandbox',['pulse-sandbox','updater','/usr/bin/freshclam','--daemon','--foreground=true','--config-file=/etc/clamav/freshclam.conf'])
     raise RuntimeError('startup_mode_invalid')

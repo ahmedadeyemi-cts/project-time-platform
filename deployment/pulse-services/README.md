@@ -19,7 +19,7 @@ requires signature-feed networking. Container readiness is not evidence that all
 149 findings are closed.
 
 Laya uses the existing question schema, 450-token budget and exact checkpoint
-1c5edc17a7acd8701df6fc341c0d179f1c62c982. Model data and 26 Python wheels are hash
+1c5edc17a7acd8701df6fc341c0d179f1c62c982. Model data and hash-pinned Python wheels are hash
 pinned. The runtime loads locally and does not fetch models, contact Oracle,
 perform training or execute model-generated actions. The original local-service
 installer supplied by the owner is the source of the worker protocol. Its current
@@ -35,3 +35,20 @@ checks, official signature bootstrap/reload, platform isolation and capacity,
 private TLS and credentials, local Super Administrator positive login, scoped
 API acceptance and rollback must pass. Source tests and mock transports are not
 installed evidence. No Production or Oracle host change is included.
+
+## Deployment-governance prerequisite
+
+The new manual controller was correctly rejected by the unchanged root-of-trust
+validator because it is not in its immutable manifest. The same validator also
+prohibits its own modification by an ordinary PR. Therefore the proposed workflow
+is retained as **inactive review material** in `proposed-test-cutover.yml`, not in
+`.github/workflows`. It must not be manually executed or copied into Actions to
+circumvent that boundary. A separate governance-owner registration decision is
+required. No existing controller, manifest, guard digest, or release protection has
+been altered, and no Test route is claimed switched.
+
+The proposal retains one Test environment job, the required environment-wide
+queue, exact merged-source and accepted-application checks, pre/post local Super
+Administrator login, separately scoped service credentials, scanned images,
+private native acceptance, and rollback. Its filename and hash must be registered
+through the governance-owner's authorized policy-update process before dispatch.
