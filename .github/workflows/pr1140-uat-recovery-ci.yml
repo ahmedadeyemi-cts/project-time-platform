@@ -45,6 +45,9 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/pulse-documents-integration-20260930' ]]; then
+            python3 tests/pulse-document-integration/scope.py
+            python3 tests/pulse-document-integration/test_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/uat-provider-answer-contract-20260930' ]]; then
             python3 tests/uat-provider-answer/scope.py
             python3 tests/uat-provider-answer/test_scope.py

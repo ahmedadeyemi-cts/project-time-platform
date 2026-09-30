@@ -32,6 +32,10 @@ jobs:
           dotnet-version: 10.0.x
       - name: Exercise actual scanner and OCR integration with isolated transports
         run: dotnet run --project tests/PulseDocumentServiceTests/PulseDocumentServiceTests.csproj --configuration Release
+      - name: Verify exact source and unchanged account/deployment boundaries
+        run: |
+          python3 tests/pulse-document-integration/scope.py
+          python3 tests/pulse-document-integration/test_scope.py
       - name: Verify repository security posture
         run: python3 scripts/security/validate-repository-security-posture.py
       - name: Check patch whitespace
