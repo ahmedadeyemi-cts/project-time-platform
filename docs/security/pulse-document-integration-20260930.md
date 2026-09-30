@@ -47,3 +47,13 @@ The original 149-finding register, additional locations and security disposition
 - https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts
 - https://learn.microsoft.com/en-us/azure/templates/microsoft.app/containerapps
 - https://docs.clamav.net/manual/Installing/Docker.html
+
+## CI source-registration compatibility
+
+The first registered revision triggered Laya receipt CI, whose source selector
+expected the historical PR1153 application branch. It failed before executing any
+receipt test. PR1221 now uses its own exact repository/branch/PR/baseline and
+SHA-256 inventory and additionally compares all inherited Laya owner, lease,
+reader, index authorization and migration sources byte-for-byte. The original
+Laya receipt and frontend tests remain in the workflow and must still pass.
+Neither Laya release authority nor its application source is modified.

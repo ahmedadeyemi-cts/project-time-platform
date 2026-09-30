@@ -12,6 +12,21 @@ def current_branch():
     return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
+# This integration uses its own exact PR inventory; Laya owners and schema are unchanged.
+if current_branch() == 'feature/pulse-documents-integration-20260930':
+    subprocess.run([sys.executable, str(ROOT/'tests/pulse-document-integration/scope.py')], cwd=ROOT, check=True)
+    for path in ['database/migrations/125_automatic_document_admission_laya.sql',
+                 'src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs',
+                 'src/backend/ProjectTime.Api/Ai/PulseAiDocumentIndexAuthorization.cs']:
+        expected = subprocess.check_output(['git','-C',str(ROOT),'show','bb2c9cccaf4d95cbfe32818e3f55ccb58cf029dc:'+path])
+        if (ROOT/path).read_bytes() != expected:
+            raise SystemExit('Document integration changed inherited Laya authority: '+path)
+    print('LAYA_DOCUMENT_INTEGRATION_INHERITED_SOURCE=PASS; native_receipt_tests_required=true')
+    raise SystemExit(0)
+
 # The security inventory includes no Laya authority or schema changes.
 if current_branch() == 'fix/security-complete-20260929':
     subprocess.run([sys.executable, str(ROOT/'tests/security-completion/scope.py')], cwd=ROOT, check=True)
