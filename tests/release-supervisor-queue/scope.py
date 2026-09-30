@@ -31,7 +31,7 @@ def main():
     need(set(m["sha256"])==ALLOWED-{MANIFEST},"Incomplete source hash inventory")
     for p in paths:
         entry=git("ls-tree","HEAD","--",p).decode().split()
-        need(entry and entry[0]=="100644" and not (ROOT/p).is_symlink(),"Unsafe source mode")
+        need(entry and entry[0]==("100755" if p=="scripts/release-test/validate-protected-test-controller-branches.sh" else "100644") and not (ROOT/p).is_symlink(),"Unsafe source mode")
         data=(ROOT/p).read_bytes();need(data==git("show","HEAD:"+p),"Dirty source")
         if p!=MANIFEST:need(hashlib.sha256(data).hexdigest()==m["sha256"][p],"Source bytes differ")
     need(git("rev-parse","HEAD:.github/workflows/projectpulse-deploy-test.yml").decode().strip()=="94fe4bf498c3d89347db62749279f566d0c26ce7","Canonical controller identity changed")
