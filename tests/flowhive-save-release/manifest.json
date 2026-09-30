@@ -1,5 +1,5 @@
 {
-  "base": "98f80675b50e72c450f96f278c87168939a0ad2e",
+  "base": "5b5fe14d984609930c68236236bcacdff103d8a1",
   "files": [
     ".github/workflows/contracts-approval-funding-ci.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
@@ -33,14 +33,14 @@
   ],
   "sha256": {
     ".github/workflows/contracts-approval-funding-ci.yml": "0fc26951058e8d3147a0c72a12dc078064a81f621e419523bce1f8a139d22488",
-    ".github/workflows/flowhive-enterprise-psa-ci.yml": "a53e4d9699f526b6c688b30aefb9d450e01f138ac6cd88907ce4444016a56dc4",
-    ".github/workflows/flowhive-psa-release-control-ci.yml": "4c4a8afa0929d28cc40447a1ee01ff7bfb33141609316e5e00aafab48d1e46c7",
-    ".github/workflows/pr1140-uat-recovery-ci.yml": "6c053bb4eca0d925d5fd090d0fbf77ab005ac6f548a2d19ad8f6a1eca13b746d",
-    ".github/workflows/pr1151-uat-supersession-ci.yml": "db3ce7600bc140570f644a0b8b754a247640f132ab2ccdce35205b60f2b7466a",
-    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "78bee7c6ca5ae9327d10d15ce67651e0902e7defa17061390975deb51a42deba",
+    ".github/workflows/flowhive-enterprise-psa-ci.yml": "566b454404f97ee56497b8aa6125d8aaffd2cdda3db4f2791a7e3a3efae9e9b6",
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "4002c59ae08d62a226b6e7fd874dcd9cb1bd63d2b2696bad8406b246ae41a28d",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "bed1dbb98b211d85580e433abe159cd903566add12a6fd328fbfbb1d0b96f30c",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "0de3fad5e7f6819dd002330f7e55b715ca9bd21b85913e863f0bda7b53f8ec41",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "a6a7e5ed32f0940ad3c901f58f61917407988c8ac242b8105df734409b900bf0",
     "docs/validation/flowhive-approval-uat-2026-09-29.md": "1a3f8bb27532e0c3863610f1790f6703b1cac3df7ec511bbc91b33a1fb69de16",
-    "scripts/release-test/validate-module025-governed-release.sh": "8bb778afebacdf22a838fd39ae960b471cd4c6bc52d0dc4401074a6e28bd9db9",
-    "scripts/release-test/validate-protected-test-controller-branches.sh": "40b450d6675f92c5f85cef15150db5f6a09672c8761cc246c3a6f7174373b333",
+    "scripts/release-test/validate-module025-governed-release.sh": "bd7e7f9e2f7ac4a3c595b9dc31714b47c7ccd00e2526cfef18a3218c0bf6983e",
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "19ecfc1bbaa4bee37ad2582db5b4d2a232600d3fed6d6c828fc36130f9184aa8",
     "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs": "b9276c49f23a526cf43efebffe250814f1f8f98b7ce7fe788614d15c55def60b",
     "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveCollaborationModule.cs": "81cb7fdbdf99b1af6d8e9009e862bdb585657ff78831903eee798c11751c1b5c",
     "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs": "3f76cb7403006be6373c3ce5845cd2039338680b465bb168f99fe0f0eabf2b18",
@@ -56,9 +56,9 @@
     "tests/FlowHiveExecutionTests/AutomaticPlanningTests.cs": "b6e2e2dc2b5a43dc61f3c3e88c71549e5fb2d80433f5e76134d161917e9d98bd",
     "tests/approval-review/ui.test.jsx": "4cdf5e15dbb0feed2864b8e66e76c89e9afbe3869aed14c66dc10893a089185a",
     "tests/flowhive-psa-react-browser.py": "e0abb6b272da214e54a1cc0f15e14a4a0ed49581f428684603fb025375ef1d1f",
-    "tests/flowhive-save-release/scope.py": "8d4fbdd6612cb03d67d80b1f87e7b741d05dea33b8417f78abfff890132cb42e",
+    "tests/flowhive-save-release/scope.py": "eb9db59ca4c1ba5cfacc06d3c93b8febe31fff67b04548943cf90453c31e45f3",
     "tests/flowhive-save-release/test_scope.py": "1222d914c823e4dd0fd82c076f616c12e7dfa4b68224d7b941ced336b01bbb26",
     "tests/flowhive-sharing/collaboration-browser.py": "50d9f039df7b8216daca05793f04fbe08cb54aedb72481fa27db0ded6dc86fc3",
-    "tests/security-release/admission_fixture.py": "84d2169f194c10367e7dff078fe02517ca63385aafd0c4a2ba8f0abfcd36e5be"
+    "tests/security-release/admission_fixture.py": "13f76053caa11ea29bf15bc911ee22b896a533e11ca7a277036c6e3e47ddde9c"
   }
 }

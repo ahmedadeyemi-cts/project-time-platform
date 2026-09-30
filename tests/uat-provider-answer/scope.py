@@ -1,4 +1,4 @@
-"""Exact FlowHive save and Approval Center source registration; does not authorize deployment."""
+"""Exact security UAT follow-up source registration; does not authorize deployment."""
 from pathlib import Path, PurePosixPath
 import hashlib
 import json
@@ -6,13 +6,15 @@ import os
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = '5b5fe14d984609930c68236236bcacdff103d8a1'
-BRANCH = 'codex/flowhive-save-schedule-approval-polish'
+BASE = '98f80675b50e72c450f96f278c87168939a0ad2e'
+BRANCH = 'fix/uat-provider-answer-contract-20260930'
 REPOSITORY = 'ahmedadeyemi-cts/project-time-platform'
-MANIFEST = 'tests/flowhive-save-release/manifest.json'
+MANIFEST = 'tests/uat-provider-answer/manifest.json'
 CI_DISPATCH = {'scripts/release-test/validate-protected-test-controller-branches.sh',
                'scripts/release-test/validate-module025-governed-release.sh'}
-MIGRATION_BUILDER = 'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'
+CI_WORKFLOWS = {'.github/workflows/'+name for name in ('flowhive-enterprise-psa-ci.yml', 'flowhive-psa-release-control-ci.yml', 'pr1140-uat-recovery-ci.yml', 'pr1151-uat-supersession-ci.yml', 'uat-migration-throttle-recovery-ci.yml')}
+
+ALLOWED = {'tests/module064-migration-rollout.test.py', 'tests/security-release/admission_fixture.py', '.github/workflows/pr1151-uat-supersession-ci.yml', 'tests/uat-provider-answer/test_scope.py', '.github/workflows/pr1140-uat-recovery-ci.yml', 'tests/uat-provider-answer/manifest.json', '.github/workflows/flowhive-enterprise-psa-ci.yml', '.github/workflows/flowhive-psa-release-control-ci.yml', 'scripts/release-test/validate-module025-governed-release.sh', '.github/workflows/uat-migration-throttle-recovery-ci.yml', 'src/backend/ProjectTime.Api/Ai/PulseAiSystemIntelligenceService.cs', 'tests/uat-provider-answer/scope.py', 'tests/uat-provider-answer/README.md', 'scripts/release-test/validate-protected-test-controller-branches.sh', 'tests/validate-celar-ai-pr630-consolidated-legacy.mjs', 'tests/validate-celar-ai-pr630-consolidated.mjs', 'tests/CelarAiUniversalAnswerReliabilityTests/Program.cs', 'src/backend/ProjectTime.Api/Ai/CelarAiUniversalAnswerReliability.cs'}
 
 def require(value, message):
     if not value: raise RuntimeError(message)
@@ -21,19 +23,16 @@ def git(*args):
     return subprocess.check_output(['git', '-C', str(ROOT), *args], timeout=60)
 
 def frozen(path):
-    if path in CI_DISPATCH: return False
-    if path.startswith('scripts/release-test/'): return True
-    if path.startswith('.github/') and not path.startswith('.github/workflows/'): return True
-    if path.startswith('.github/workflows/'):
-        return any(word in path for word in ('deploy', 'protected-uat-control', 'installed-acceptance', 'oracle-test-runtime'))
-    return False
+    if path in CI_DISPATCH | CI_WORKFLOWS: return False
+    return path.startswith('scripts/release-test/') or path.startswith('.github/')
 
 def verify_identity(branch, repository, base, number):
-    require((branch, repository, base, str(number)) == (BRANCH, REPOSITORY, 'main', '1217'), 'Wrong source identity')
+    require((branch, repository, base, str(number)) == (BRANCH, REPOSITORY, 'main', '1219'), 'Wrong source identity')
 
 def verify_paths(paths, manifest):
     require(manifest['base'] == BASE, 'Wrong fixed baseline')
     require(manifest['files'] == sorted(set(manifest['files'])), 'Paths must be sorted and unique')
+    require(set(paths) == ALLOWED, 'Only the exact reviewed source and registration are permitted')
     require(set(paths) == set(manifest['files']), 'Unexpected or missing source files')
     require(set(manifest['sha256']) == set(paths) - {MANIFEST}, 'Every source file must be hash-bound')
     for path in paths:
@@ -47,7 +46,7 @@ def verify_content(data, digest, mode):
 def main():
     verify_identity(os.getenv('GITHUB_HEAD_REF') or git('branch', '--show-current').decode().strip(),
                     os.getenv('GITHUB_REPOSITORY', REPOSITORY), os.getenv('GITHUB_BASE_REF', 'main'),
-                    os.getenv('PR_NUMBER', '1217'))
+                    os.getenv('PR_NUMBER', '1219'))
     if os.getenv('GITHUB_EVENT_PATH'):
         event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
         if event.get('pull_request'):
@@ -70,6 +69,6 @@ def main():
             require((ROOT/path).is_file() and not (ROOT/path).is_symlink()
                     and (ROOT/path).read_bytes() == git('show', f'{BASE}:{path}'), 'Frozen deployment authority changed: '+path)
     subprocess.run(['git', '-C', str(ROOT), 'diff', '--check', BASE, 'HEAD'], check=True)
-    print('FLOWHIVE_SAVE_APPROVAL_EXACT_SOURCE=PASS; deployment_authorization=NONE; native_protections=REQUIRED')
+    print('UAT_PROVIDER_ANSWER_EXACT_SOURCE=PASS; deployment_authorization=NONE; native_protections=REQUIRED')
 
 if __name__ == '__main__': main()

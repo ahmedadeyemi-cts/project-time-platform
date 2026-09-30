@@ -21,6 +21,12 @@ if [[ "$HEAD_BRANCH" == 'codex/approval-routing-bulk-review' ]]; then
   node tests/validate-systemwide-image-build-controller.mjs
   exit 0
 fi
+if [[ "$HEAD_BRANCH" == 'fix/uat-provider-answer-contract-20260930' ]]; then
+  python3 tests/uat-provider-answer/scope.py
+  python3 tests/uat-provider-answer/test_scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  exit 0
+fi
 if [[ "$HEAD_BRANCH" == 'fix/security-audit-followup-20260929' ]]; then
   python3 tests/security-audit-followup/scope.py
   python3 tests/security-audit-followup/test_scope.py
