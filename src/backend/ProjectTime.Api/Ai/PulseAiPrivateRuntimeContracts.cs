@@ -62,6 +62,8 @@ public sealed record PulseAiPrivateRuntimeOptions(
     string MalwareScanEndpoint = "",
     string MalwareScanBearerToken = "")
 {
+    public PulseDocumentServiceOptions DocumentService { get; init; } = PulseDocumentServiceOptions.Disabled;
+
     public bool ClamAvConfigured =>
         MalwareScannerMode.Equals("clamav_tcp", StringComparison.OrdinalIgnoreCase)
         && !string.IsNullOrWhiteSpace(MalwareScannerHost)
@@ -75,7 +77,7 @@ public sealed record PulseAiPrivateRuntimeOptions(
         && !string.IsNullOrWhiteSpace(MalwareScanBearerToken);
 
     public bool MalwareScannerConfigured =>
-        ClamAvConfigured || HttpsMalwareScanConfigured;
+        DocumentService.Requested ? DocumentService.Valid : ClamAvConfigured || HttpsMalwareScanConfigured;
 
     public bool PreScanAttestationConfigured => false;
 
@@ -86,7 +88,7 @@ public sealed record PulseAiPrivateRuntimeOptions(
         AutoQueueEligibleDocuments && DocumentServicePrincipalUserId is not null;
 
     public bool OcrConfigured =>
-        !string.IsNullOrWhiteSpace(OcrEndpoint)
+        DocumentService.Requested ? DocumentService.Valid : !string.IsNullOrWhiteSpace(OcrEndpoint)
         && !string.IsNullOrWhiteSpace(OcrModel);
 
     public bool EmbeddingConfigured =>
@@ -160,7 +162,8 @@ public sealed record PulseAiPrivateRuntimeOptions(
                 1000,
                 string.Empty),
             MalwareScanBearerToken: Environment.GetEnvironmentVariable(
-                PulseAiExternalHttpsRuntimePolicy.MalwareScanBearerTokenVariable)?.Trim() ?? string.Empty);
+                PulseAiExternalHttpsRuntimePolicy.MalwareScanBearerTokenVariable)?.Trim() ?? string.Empty)
+        { DocumentService = PulseDocumentServiceOptions.FromEnvironment() };
     }
 
     private static bool Boolean(string name, bool fallback) =>

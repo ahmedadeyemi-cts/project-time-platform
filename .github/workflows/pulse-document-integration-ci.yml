@@ -1,0 +1,38 @@
+name: Pulse independent document-service integration
+on:
+  pull_request:
+    paths:
+      - 'src/backend/ProjectTime.Api/Ai/PulseDocumentService*.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateOcrClient.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs'
+      - 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs'
+      - 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs'
+      - 'tests/PulseDocumentServiceTests/**'
+      - 'tests/pulse-document-integration/**'
+      - 'docs/security/pulse-document-integration-20260930.md'
+      - '.github/workflows/pulse-document-integration-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: pulse-document-integration-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: 10.0.x
+      - name: Exercise actual scanner and OCR integration with isolated transports
+        run: dotnet run --project tests/PulseDocumentServiceTests/PulseDocumentServiceTests.csproj --configuration Release
+      - name: Verify repository security posture
+        run: python3 scripts/security/validate-repository-security-posture.py
+      - name: Check patch whitespace
+        run: git diff --check

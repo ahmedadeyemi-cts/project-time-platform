@@ -90,12 +90,14 @@ public sealed record PulseAiDocumentPipelineOptions(
 {
     public static PulseAiDocumentPipelineOptions FromEnvironment()
     {
+        var documents = PulseDocumentServiceOptions.FromEnvironment();
         return new PulseAiDocumentPipelineOptions(
             UploadRoot: ProjectPulseUploadStorage.ResolveRoot(),
             ExtractionPreviewEnabled: Boolean("PROJECTPULSE_PULSE_AI_DOCUMENT_EXTRACTION_PREVIEW_ENABLED", false),
             MalwareScanAttested: Boolean("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCAN_ATTESTED", false),
-            MalwareScannerMode: Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE"), 80, "not_configured"),
-            OcrEndpointConfigured: HasValue("PROJECTPULSE_PRIVATE_OCR_ENDPOINT"),
+            MalwareScannerMode: documents.Requested ? PulseDocumentServiceOptions.Provider
+                : Clean(Environment.GetEnvironmentVariable("PROJECTPULSE_PULSE_AI_DOCUMENT_MALWARE_SCANNER_MODE"), 80, "not_configured"),
+            OcrEndpointConfigured: documents.Requested ? documents.Valid : HasValue("PROJECTPULSE_PRIVATE_OCR_ENDPOINT"),
             PrivateEmbeddingEndpointConfigured: HasValue("PROJECTPULSE_PRIVATE_EMBEDDING_ENDPOINT")
                 && HasValue("PROJECTPULSE_PRIVATE_EMBEDDING_MODEL"),
             PrivateVectorIndexConfigured: HasValue("PROJECTPULSE_PRIVATE_VECTOR_INDEX"),

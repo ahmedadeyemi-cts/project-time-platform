@@ -100,7 +100,13 @@ public sealed class PulseAiPrivateDocumentRuntimeService
 
         var scannerReason = options.MalwareScannerConfigured ? "scanner_not_checked" : "scanner_not_configured";
         var scannerApproved = options.PreScanAttestationConfigured;
-        if (options.HttpsMalwareScanConfigured)
+        if (options.DocumentService.Requested)
+        {
+            var resolution = await options.DocumentService.ResolveAsync("/v1/scan", cancellationToken);
+            scannerApproved = resolution.Approved;
+            scannerReason = resolution.Reason;
+        }
+        else if (options.HttpsMalwareScanConfigured)
         {
             var scannerResolution = await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 options.MalwareScanEndpoint,
@@ -121,7 +127,18 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             scannerReason = scannerResolution.Reason;
         }
 
-        var ocrResolution = options.OcrConfigured
+        var documentServiceReady = !options.DocumentService.Requested;
+        if (options.DocumentService.Requested && scannerApproved)
+        {
+            using var documents = new PulseDocumentServiceClient(options.DocumentService);
+            var probe = await documents.ProbeAsync(cancellationToken);
+            documentServiceReady = probe.Ready;
+            if (!probe.Ready) blockers.Add($"The independent document service is unavailable ({probe.Diagnostic}).");
+        }
+
+        var ocrResolution = options.DocumentService.Requested
+            ? await options.DocumentService.ResolveAsync("/v1/extract", cancellationToken)
+            : options.OcrConfigured
             ? await PulseAiPrivateEndpointPolicy.VerifyResolvedPrivateEndpointAsync(
                 options.OcrEndpoint,
                 options.PrivateHostAllowlist,
@@ -142,7 +159,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         var embeddingPrivate = embeddingResolution.Approved;
         var embeddingReason = embeddingResolution.Reason;
 
-        if ((options.ClamAvConfigured || options.HttpsMalwareScanConfigured) && !scannerApproved)
+        if ((options.DocumentService.Requested || options.ClamAvConfigured || options.HttpsMalwareScanConfigured) && !scannerApproved)
             blockers.Add($"The configured malware scanner destination was rejected by runtime endpoint policy ({scannerReason}).");
         if (counts.AwaitingOcr > 0 && !ocrPrivate)
             blockers.Add($"{counts.AwaitingOcr} document processing job(s) require an approved private OCR endpoint ({ocrReason}).");
@@ -151,7 +168,8 @@ public sealed class PulseAiPrivateDocumentRuntimeService
         if (options.EmbeddingConfigured && !embeddingPrivate)
             blockers.Add($"The configured embedding endpoint was rejected by the private endpoint policy ({embeddingReason}).");
         if (schema.LexicalIndex) ready.Add("PostgreSQL full-text index is available");
-        if (options.HttpsMalwareScanConfigured) ready.Add("authenticated Test-only HTTPS malware scanning gateway is configured");
+        if (options.DocumentService.Valid) ready.Add("independent Pulse document service is configured; model routes are unchanged");
+        else if (options.HttpsMalwareScanConfigured) ready.Add("authenticated Test-only HTTPS malware scanning gateway is configured");
         else if (options.ClamAvConfigured) ready.Add("private ClamAV scanning is configured");
         if (options.PreScanAttestationConfigured) ready.Add("approved pre-scan attestation mode is configured");
         if (scannerApproved) ready.Add("malware scanning destination or attestation passed runtime endpoint policy");
@@ -169,6 +187,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             && servicePrincipal.Authorized
             && storage.ProductionReady
             && scannerApproved
+            && documentServiceReady
             && (counts.AwaitingOcr == 0 || ocrPrivate)
             && (embeddingPrivate || options.LexicalOnlyCompletionApproved)
             && counts.ReadySowDocuments > 0;
@@ -195,7 +214,7 @@ public sealed class PulseAiPrivateDocumentRuntimeService
             ProcessingTablesAvailable: schema.Complete,
             UploadStorageProductionReady: storage.ProductionReady,
             UploadRootFingerprint: storage.RootFingerprint,
-            ClamAvConfigured: options.ClamAvConfigured || options.HttpsMalwareScanConfigured,
+            ClamAvConfigured: options.MalwareScannerConfigured,
             MalwareScannerEndpointPrivate: scannerApproved,
             PreScanAttestationConfigured: options.PreScanAttestationConfigured,
             OcrConfigured: options.OcrConfigured,
