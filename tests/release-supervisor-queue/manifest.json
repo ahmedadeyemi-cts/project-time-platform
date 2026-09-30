@@ -1,0 +1,24 @@
+{
+  "base": "c21098d5dcefa5fecb4812d5a8d3a0ac84b61480",
+  "files": [
+    ".github/workflows/module025-protected-uat-control.yml",
+    ".github/workflows/module025-retained-register-check.yml",
+    ".github/workflows/pr1139-uat-recovery-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/release-supervisor-queue-ci.yml",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "tests/release-supervisor-queue/manifest.json",
+    "tests/release-supervisor-queue/scope.py",
+    "tests/release-supervisor-queue/test_queue.py"
+  ],
+  "sha256": {
+    ".github/workflows/module025-protected-uat-control.yml": "7be4c669bff498066aa733a44e440d31a2edad5fc35b662003a2d019452235ec",
+    ".github/workflows/module025-retained-register-check.yml": "ccefb5c52fb05310553f74ab83a567c46cd7ca6290cb8ed18d6085258d95f1fd",
+    ".github/workflows/pr1139-uat-recovery-ci.yml": "8217007f17ecbfb09b02c742fc7dbc04375a08a6321f06a8c8061d06f0159ef2",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "d89125d3d7466e3d0fd87109230857685f46205c8de9986963ae1628eebc73a4",
+    ".github/workflows/release-supervisor-queue-ci.yml": "c1035c06f921d605d2d6bd65066b451745966c3d71f1d2a546256748ea2e76a8",
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "dc4bc2604b634ab6321788437a533493ed823b06a916030632b43833139a5659",
+    "tests/release-supervisor-queue/scope.py": "408df9d15be8352b87acc301f313d54b8eed7c98b6454003c575df54f53a815a",
+    "tests/release-supervisor-queue/test_queue.py": "547aa3e1a0fc70261ff0d6fd912b7bbd2f7af9d225bc8da711f58a4517f38909"
+  }
+}

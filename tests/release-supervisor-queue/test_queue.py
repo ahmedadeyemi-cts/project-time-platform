@@ -1,5 +1,5 @@
 """Queue-loss regression and exact-control preservation. No GitHub/Azure writes."""
-import copy,itertools,subprocess,unittest
+import copy,itertools,json,subprocess,unittest
 from pathlib import Path
 import yaml
 ROOT=Path(__file__).resolve().parents[2]
@@ -35,6 +35,16 @@ class QueueTests(unittest.TestCase):
             before=yaml.safe_load(original(n));after=yaml.safe_load(current(n))
             after["concurrency"].pop("queue")
             self.assertEqual(before,after)
+    def test_inherited_controller_recognition_is_exact(self):
+        original_suffix="c7b3c7ae88aceb33a0c77f816a21a8ad28952fc4)$ ]]"
+        accepted_suffix="c7b3c7ae88aceb33a0c77f816a21a8ad28952fc4|94fe4bf498c3d89347db62749279f566d0c26ce7)$ ]]"
+        registration=json.loads((ROOT/"tests/security-release/controller_registration.json").read_text())
+        self.assertEqual(registration["controllerBlob"],"94fe4bf498c3d89347db62749279f566d0c26ce7")
+        for name in ("pr1139-uat-recovery-ci.yml","pr1140-uat-recovery-ci.yml"):
+            old=original(name);self.assertEqual(old.count(original_suffix),1)
+            self.assertEqual(current(name),old.replace(original_suffix,accepted_suffix,1))
+            self.assertIn('git diff --exit-code "$BASE_SHA" HEAD -- .github/workflows/projectpulse-deploy-test.yml .github/workflows/projectpulse-deploy-production.yml',current(name))
+
     def test_baseline_can_replace_authorized_pending_release(self):
         pending=["authorized-release"]
         self.assertNotIn("authorized-release",enqueue(pending,"unrelated-comment","single"))
