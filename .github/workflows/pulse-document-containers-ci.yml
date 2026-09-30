@@ -66,8 +66,9 @@ jobs:
           printf '%s\n' "$GITHUB_SHA" > candidate-evidence/source-sha.txt
           printf '%s\n' 'Local config IDs are not registry digests. No deployment or security closure.' > candidate-evidence/BOUNDARY.txt
       - name: Scan worker for fixable high and critical vulnerabilities
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
+          version: v0.74.0
           image-ref: pulse-documents:ci
           format: json
           output: candidate-evidence/worker-vulnerabilities.json
@@ -75,8 +76,9 @@ jobs:
           exit-code: '1'
           ignore-unfixed: true
       - name: Scan scanner for fixable high and critical vulnerabilities
-        uses: aquasecurity/trivy-action@915b19bbe73b92a6cf82a1bc12b087c9a19a5fe2
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
+          version: v0.74.0
           image-ref: pulse-clamav:ci
           format: json
           output: candidate-evidence/scanner-vulnerabilities.json
