@@ -82,6 +82,13 @@ jobs:
             node tests/validate-systemwide-image-build-controller.mjs
             exit 0
           fi
+          if [[ "$GITHUB_HEAD_REF" == 'codex/flowhive-save-schedule-approval-polish' ]]; then
+            python3 tests/flowhive-save-release/scope.py
+            python3 tests/flowhive-save-release/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py

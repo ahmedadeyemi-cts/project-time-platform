@@ -109,8 +109,18 @@ internal static class AutomaticPlanningTests
         Check((long)(await Sql("SELECT count(*) FROM project_flowhive_auto_plans WHERE project_id=@p",("p",newProject)))! == 1, "concurrent enrollment creates one consent record");
         Check(!(bool)(await Sql("SELECT enabled FROM project_flowhive_auto_plans WHERE project_id=@p",("p",optedOut)))!, "default preserves explicit project opt-out");
         Check(await Queue(project) is null && (string)(await Sql("SELECT status FROM project_flowhive_auto_plans WHERE project_id=@p",("p",project)))! == "waiting_documents", "documents wait without starting the generation deadline");
-        await Sql("UPDATE projects SET start_date=NULL WHERE project_id=@p",("p",project));
-        Check(await Queue(project) is null && (string)(await Sql("SELECT status FROM project_flowhive_auto_plans WHERE project_id=@p",("p",project)))! == "waiting_start_date", "missing date does not fabricate a schedule");
+        await Sql("UPDATE projects SET start_date=NULL,created_at='2026-06-27T23:30:00-07:00' WHERE project_id=@p",("p",project));
+        await using (var dateDb = new NpgsqlConnection(cs))
+        {
+            await dateDb.OpenAsync();
+            var loadSeed = typeof(ProjectFlowHiveAiPlannerOrchestrationModule).GetMethod("LoadProjectSeedAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+            var datedSeed = await (Task<ProjectFlowHivePlanRequest?>)loadSeed.Invoke(null,[dateDb,project,CancellationToken.None])!;
+            Check(datedSeed!.ProjectStartDate == new DateOnly(2026,6,28), "missing start uses the recorded creation date in UTC");
+            await Sql("UPDATE projects SET start_date='2026-07-01' WHERE project_id=@p",("p",project));
+            var explicitSeed = await (Task<ProjectFlowHivePlanRequest?>)loadSeed.Invoke(null,[dateDb,project,CancellationToken.None])!;
+            Check(explicitSeed!.ProjectStartDate == new DateOnly(2026,7,1), "explicit project start takes precedence over creation date");
+        }
+        Check(await Queue(project) is null && (string)(await Sql("SELECT status FROM project_flowhive_auto_plans WHERE project_id=@p",("p",project)))! == "waiting_documents", "a date anchor does not bypass evidence readiness");
         await Sql("UPDATE projects SET start_date='2026-09-20',project_manager_user_id=NULL WHERE project_id=@p",("p",newProject));
         Check(await Queue(newProject) is null && (string)(await Sql("SELECT status FROM project_flowhive_auto_plans WHERE project_id=@p",("p",newProject)))! == "waiting_pm", "missing PM does not start unattended generation");
         await Sql("UPDATE projects SET start_date='2026-09-20' WHERE project_id=@p",("p",project));

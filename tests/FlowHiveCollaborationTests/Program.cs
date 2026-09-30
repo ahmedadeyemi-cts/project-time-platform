@@ -36,18 +36,36 @@ foreach(var pair in new[]{("\"durationWorkingDays\":2","\"durationWorkingDays\":
 Check(ParseError(Parse("{\"plan\":{\"tasks\":[null]}}")) is IStatusCodeHttpResult{StatusCode:400},"null task rows are rejected before engine dereference");
 Check(ParseError(Parse("{\"plan\":{\"tasks\":[1]}}")) is IStatusCodeHttpResult{StatusCode:400},"scalar task rows are rejected before engine dereference");
 
+var contactJson="""{"displayName":"Customer lead","email":"lead@example.invalid","phone":"5550100012","title":"VP of Sales","organization":"Example organization","contactKind":"customer","isActive":true,"projectContactId":"","expectedRowVersion":""}""";
+var contactParsed=Call("ProjectFlowHiveRequestReader","ParseContact",contactJson,"contact-fixture")!;
+Check(contactParsed.GetType().GetProperty("Error")!.GetValue(contactParsed) is null,"contact form with cleared optional identifiers binds without a generic 400");
+var contactRequest=(FlowHiveContactRequest)contactParsed.GetType().GetProperty("Request")!.GetValue(contactParsed)!;
+Check(contactRequest.Phone=="5550100012" && contactRequest.ProjectContactId is null,"contact phone stays text and empty identity never becomes a new authority");
+var badContact=Call("ProjectFlowHiveRequestReader","ParseContact",contactJson.Replace("\"phone\":\"5550100012\"","\"phone\":5550100012"),"contact-fixture")!;
+Check(badContact.GetType().GetProperty("Error")!.GetValue(badContact) is IStatusCodeHttpResult{StatusCode:400},"malformed contact fields produce structured errors");
+var bufferedContext=new DefaultHttpContext();bufferedContext.Request.ContentType="application/json";
+bufferedContext.Request.Body=new MemoryStream(Encoding.UTF8.GetBytes(cleared));bufferedContext.Request.Body.Position=bufferedContext.Request.Body.Length;
+var bufferedTask=(Task)Call("ProjectFlowHiveRequestReader","ReadAsync",bufferedContext,CancellationToken.None)!;await bufferedTask;
+var bufferedResult=bufferedTask.GetType().GetProperty("Result")!.GetValue(bufferedTask)!;
+Check(ParseError(bufferedResult) is null,"working-copy reader replays a previously inspected buffered body");
+
 var builder=WebApplication.CreateBuilder(Array.Empty<string>());builder.Logging.ClearProviders();builder.WebHost.UseUrls("http://127.0.0.1:0");
 await using(var app=builder.Build())
 {
+ app.UseProjectPulseSecurityHardening();
  app.MapPut("/old",(ProjectFlowHiveWorkingCopyRequest request)=>Results.Ok());
+ app.MapPost("/fixture/contact-contract",(FlowHiveContactRequest request)=>Results.Ok(new {request.DisplayName,request.ProjectContactId}));
+ app.MapPut("/fixture/controls-contract",(ProjectFlowHiveProjectControlsRequest request)=>Results.Ok(new {request.ApprovedBudget,request.CustomerSharingEnabled}));
  var type=assembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveEnterpriseModule")!;
  var handler=(Func<Guid,HttpContext,CancellationToken,Task<IResult>>)type.GetMethod("SaveWorkingCopyAsync",flags)!.CreateDelegate(typeof(Func<Guid,HttpContext,CancellationToken,Task<IResult>>));
  app.MapPut("/working-copy/{projectId:guid}",handler);
- app.MapPost("/contacts/{projectId:guid}",(Func<Guid,FlowHiveContactRequest,HttpContext,CancellationToken,Task<IResult>>)type.GetMethod("SaveProjectContactAsync",flags)!.CreateDelegate(typeof(Func<Guid,FlowHiveContactRequest,HttpContext,CancellationToken,Task<IResult>>)));
+ app.MapPost("/contacts/{projectId:guid}",(Func<Guid,HttpContext,CancellationToken,Task<IResult>>)type.GetMethod("SaveProjectContactAsync",flags)!.CreateDelegate(typeof(Func<Guid,HttpContext,CancellationToken,Task<IResult>>)));
  app.MapPost("/meetings/{projectId:guid}",(Func<Guid,FlowHiveMeetingDraftRequest,HttpContext,CancellationToken,Task<IResult>>)type.GetMethod("CreateMeetingDraftAsync",flags)!.CreateDelegate(typeof(Func<Guid,FlowHiveMeetingDraftRequest,HttpContext,CancellationToken,Task<IResult>>)));
  await app.StartAsync();using var client=new HttpClient{BaseAddress=new Uri(app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single())};
  async Task<HttpStatusCode> Send(HttpMethod method,string path,string body){using var req=new HttpRequestMessage(method,path){Content=new StringContent(body,Encoding.UTF8,"application/json")};using var res=await client.SendAsync(req);return res.StatusCode;}
  Check(await Send(HttpMethod.Put,"/old",cleared)==HttpStatusCode.BadRequest,"real original typed binding reproduces blank-DateOnly 400");
+ Check(await Send(HttpMethod.Post,"/fixture/contact-contract","""{"displayName":"UAT QA Contact","email":"qa@example.invalid","phone":"","title":"","organization":"Synthetic","contactKind":"customer","isActive":true}""")==HttpStatusCode.OK,"valid browser contact DTO survives security inspection and real typed binding");
+ Check(await Send(HttpMethod.Put,"/fixture/controls-contract","""{"contractType":"unknown","currencyCode":"USD","approvedBudget":null,"expenseBudget":null,"contingencyBudget":null,"forecastAtCompletion":null,"percentCompleteMethod":"task_weighted","statusReportCadence":"weekly","customerSharingEnabled":false,"financialNotes":"Synthetic QA"}""")==HttpStatusCode.OK,"optional financial amounts survive security inspection and real typed binding");
  Check(await Send(HttpMethod.Put,$"/working-copy/{project}",cleared)==HttpStatusCode.Unauthorized,"real new save handler checks session before parsing or DB access");
  Check(await Send(HttpMethod.Post,$"/contacts/{project}","{}") == HttpStatusCode.Unauthorized,"contact handler never trusts anonymous caller");
  Check(await Send(HttpMethod.Post,$"/meetings/{project}","{}") == HttpStatusCode.Unauthorized,"meeting draft handler never trusts anonymous caller");
@@ -62,6 +80,10 @@ Check(cpm.Valid,"existing CPM accepts diamond dependency fixture");
 Check(cpm.Tasks.Single(x=>x.WbsNumber=="2").IsCritical && !cpm.Tasks.Single(x=>x.WbsNumber=="3").IsCritical,"existing CPM separates controlling and noncontrolling branches");
 Check(cpm.Tasks.Single(x=>x.WbsNumber=="3").TotalFloatWorkingDays==4,"existing CPM computes four days of float on short branch");
 Check(!ProjectFlowHiveScheduleEngine.Calculate(Plan(project) with {Dependencies=[new("1","2","FS",0),new("2","1","FS",0)]}).Valid,"cycle rejection is intentional, not suppressed to avoid 400");
+var phasePlan=Plan(project) with {Tasks=[TaskRow("1","Plan",0) with {IsSummary=true,Phase="Plan"},TaskRow("1.1","Discover",2) with {ParentWbsNumber="1",Phase="Plan"},TaskRow("1.2","Review",3) with {ParentWbsNumber="1",Phase="Plan"}],Dependencies=[new("1.1","1.2","FS",0)]};
+var phaseSchedule=ProjectFlowHiveScheduleEngine.Calculate(phasePlan);
+Check(phaseSchedule.Valid && phaseSchedule.Tasks.Single(t=>t.WbsNumber=="1").StartDate==new DateOnly(2026,9,28) && phaseSchedule.Tasks.Single(t=>t.WbsNumber=="1").EndDate==new DateOnly(2026,10,2),"phase dates roll up from task estimates and dependency sequence");
+
 
 if(args.Contains("--database")) await Database();
 Console.WriteLine($"FLOWHIVE_COLLABORATION_ASSERTIONS={count}; LIVE_CONTACT_CHANGES=0; LIVE_INVITATIONS=0; RESULT=PASS");

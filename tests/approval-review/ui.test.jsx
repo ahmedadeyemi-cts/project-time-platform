@@ -17,14 +17,14 @@ assert.deepEqual(approvalPeriod('week','2026-09-30'),{weekStart:'2026-09-27'});
 assert.deepEqual(approvalPeriod('month','2026-09-30'),{monthStart:'2026-09-01'});
 await render();assert.equal(document.querySelectorAll('tbody tr').length,2,'All pages loaded');
 await click(document.querySelector('.approval-period-select input'));
-await click(button('Review selected approvals'));assert.equal(writes.length,0,'Review never writes');
+await click(button('Review selected (2)'));assert.equal(writes.length,0,'Review never writes');
 await click(button('Confirm approval'));assert.equal(writes.length,1);assert.equal(writes[0].items.length,2);assert.equal(writes[0].mode,'selected');assert.equal(writes[0].items[0].reviewToken,'review-one');assert.ok(writes[0].weekStart);assert.equal(document.querySelectorAll('input:checked').length,0);
 // Month and stage changes reset selection and issue exact month query.
 await click(document.querySelector('.approval-period-select input'));
-await act(async()=>{let el=document.querySelector('select');el.value='month';el.dispatchEvent(new dom.window.Event('change',{bubbles:true}));});
+await click(button('Month')); assert.equal(button('Month').getAttribute('aria-pressed'),'true');
 assert.ok(calls.at(-1).monthStart);assert.equal(document.querySelectorAll('input:checked').length,0);
-await click(document.querySelector('.approval-period-select input'));await click(button('Review selected approvals'));
+await click(document.querySelector('.approval-period-select input'));await click(button('Review selected (2)'));
 fail=true;await click(button('Confirm approval'));assert.match(document.querySelector('[role="alert"]').textContent,/Selection changed/);assert.equal(writes.at(-1).weekStart,undefined);assert.ok(writes.at(-1).monthStart);assert.equal(button('Confirm approval'),undefined);
-await render(true);assert.ok([...document.querySelectorAll('input[type="checkbox"]')].every(el=>el.disabled));assert.ok(button('Review selected approvals').disabled);
+await render(true);assert.ok([...document.querySelectorAll('input[type="checkbox"]')].every(el=>el.disabled));assert.ok(button('Review selected (2)').disabled);
 await act(async()=>root.unmount());
 console.log('PASS bulk review UI: pagination, explicit selection, confirmation, month boundaries, stale rejection, View-As read-only');

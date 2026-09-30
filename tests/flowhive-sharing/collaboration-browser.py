@@ -14,8 +14,8 @@ def seed(pid):
 def timing(pid):return dict(projectId=pid,valid=True,projectFinishDate='2026-09-29',criticalTaskCount=1,scheduledWorkingDays=2,plannedHours=8,tasks=[dict(wbsNumber='1',name='Review prerequisites',startDate='2026-09-28',endDate='2026-09-29',durationWorkingDays=2,earliestStartIndex=0,latestStartIndex=0,totalFloatWorkingDays=0,freeFloatWorkingDays=0,isCritical=True)],issues=[],calendarMode='weekday_preview_module_057_not_applied')
 async def main():
  async with async_playwright() as pw:
-  browser=await pw.chromium.launch(headless=True,args=['--no-sandbox'])
-  for mode,theme,width in [('success','light',1440),('error','light',1440),('readonly','dark',1440),('limit','light',1440),('success','dark',390)]:
+  browser=await pw.chromium.launch(headless=True,executable_path=os.getenv('FLOWHIVE_CHROMIUM_PATH') or None,args=['--no-sandbox','--disable-dev-shm-usage'])
+  for mode,theme,width in [('success','light',1440),('error','light',1440),('binding_error','light',1440),('readonly','dark',1440),('limit','light',1440),('race','light',1440),('conflict','light',1440),('success','dark',390)]:
    page=await browser.new_page(viewport={'width':width,'height':1100});page.set_default_timeout(7000)
    state={'writes':[],'errors':[],'plans':{A:seed(A),B:seed(B)},'version':P,'contacts':[dict(projectContactId=CONTACT,displayName='Customer IT owner',email='customer@example.invalid',phone='555-0101',title='IT Director',organization='Customer',contactKind='customer',isActive=True,rowVersion=P)],'meetings':[]}
    if mode=='limit':state['contacts']=[dict(state['contacts'][0],projectContactId=f'90000000-0000-4000-8000-{i:012d}',displayName=f'Contact {i}',email=f'contact{i}@example.invalid') for i in range(15)]
@@ -33,10 +33,15 @@ async def main():
      pid=path.split('/')[4];body={'project':{'projectId':pid,'customerName':'Synthetic customer'},'access':{'canManage':mode!='readonly','canEditPlanner':mode!='readonly','canAdministerPlanner':mode!='readonly','canShare':mode!='readonly','isViewAs':mode=='readonly'},'workingCopy':{'plan':state['plans'][pid],'rowVersion':state['version'],'workingRevision':2,'validation':{'valid':True,'issues':[]},'schedule':timing(pid)},'controls':{},'raidItems':[],'statusReports':[],'customerShares':[],'sowEvidence':[]}
     elif path.endswith('/collaboration'):
      pid=path.split('/')[4];body={'projectId':pid,'ready':True,'canManage':mode!='readonly','maxActiveContacts':15,'liveInvitationsAvailable':False,'team':[{'userId':PM,'displayName':'Project Manager','email':'pm@example.invalid','role':'Project Manager'},{'userId':ENGINEER,'displayName':'Engineer Two','email':'engineer@example.invalid','role':'Project team'}] if pid==A else [],'contacts':state['contacts'] if pid==A else [],'meetingDrafts':state['meetings'] if pid==A else []}
+    elif path.endswith('/schedule/calculate'):
+     body=timing(A);body['tasks'][0]['endDate']=req.post_data_json['tasks'][0].get('estimatedFinishDate') or '2026-09-29'
     elif path.endswith('/working-copy'):
      payload=req.post_data_json
-     if mode=='error':status=400;body={'message':'A field needs correction.','issues':[{'path':'$.plan.tasks[0].durationWorkingDays','message':'Working-day duration must be a whole number.','severity':'error'}],'correlationId':'FIELD-FIXTURE'}
-     else:state['plans'][A]=payload['plan'];state['version']=VERSION;body={'rowVersion':VERSION,'workingRevision':3,'schedule':timing(A),'validation':{'valid':True,'issues':[]},'stateChanged':True}
+     if mode=='binding_error':return await route.fulfill(status=400,content_type='text/plain',headers={'x-projectpulse-correlation-id':'BINDING-FIXTURE'},body='')
+     if mode=='race' and len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1:await asyncio.sleep(1)
+     if mode=='conflict':status=409;body={'message':'Another editor saved a newer working copy. Reload before saving.','issues':[],'stateChanged':False}
+     elif mode=='error':status=400;body={'message':'A field needs correction.','issues':[{'path':'$.plan.tasks[0].durationWorkingDays','message':'Working-day duration must be a whole number.','severity':'error'}],'correlationId':'FIELD-FIXTURE'}
+     else:state['plans'][A]=payload['plan'];state['version']=VERSION;body={'rowVersion':VERSION,'workingRevision':3,'schedule':timing(A),'validation':{'valid':True,'issues':[]},'stateChanged':True};body['schedule']['tasks'][0]['endDate']=payload['plan']['tasks'][0].get('estimatedFinishDate') or '2026-09-29'
     elif path.endswith('/contacts'):
      contact=dict(req.post_data_json,projectContactId='99999999-9999-4999-8999-999999999999',rowVersion=VERSION);state['contacts'].append(contact);body={'projectId':A,'projectContactId':contact['projectContactId'],'rowVersion':VERSION,'accountCreated':False,'invitationSent':False}
     elif path.endswith('/meeting-drafts'):
@@ -73,13 +78,34 @@ async def main():
     await picker.get_by_role('checkbox',name=re.compile('Engineer Two')).check();await picker.get_by_role('checkbox',name=re.compile('Customer IT owner')).check()
     assert await picker.locator('summary').inner_text() and '3 assigned' in await picker.locator('summary').inner_text()
     await picker.get_by_role('checkbox',name=re.compile('Engineer Two')).uncheck();assert '2 assigned' in await picker.locator('summary').inner_text()
-    await page.get_by_role('button',name='Save working copy',exact=True).click()
-    if mode=='error':
-     await page.get_by_role('region',name='Fields needing correction').wait_for();assert 'durationWorkingDays' in await page.get_by_role('region',name='Fields needing correction').inner_text();assert await page.get_by_role('button',name='Save working copy',exact=True).is_enabled()
+    if mode in ('success','race','conflict'):
+     # Autosave is the default; retaining the finish during debounce regresses the reported disappearing date.
+     finish=page.get_by_label('End date for Review prerequisites',exact=True)
+     await finish.fill('2026-10-02');assert await finish.input_value()=='2026-10-02'
     else:
-     await page.wait_for_function("document.querySelector('.flowhive-save-bar')?.textContent.includes('Working copy saved')")
-     writes=[body for method,path,body in state['writes'] if path.endswith('/working-copy')];assert len(writes)==1
-     saved=writes[0]['plan'];assert saved['projectEndDate'] is None and saved['tasks'][0]['constraintDate'] is None
+     await page.get_by_role('button',name='Save now',exact=True).click()
+    if mode=='race':
+     await page.wait_for_function("document.querySelector('.flowhive-save-bar')?.textContent.includes('Saving changes')")
+     await page.get_by_label('Task 1 name',exact=True).fill('Keep the newer edit')
+    if mode=='conflict':
+     await page.wait_for_function("document.querySelector('.flowhive-save-bar')?.textContent.includes('Not saved')")
+     await page.get_by_label('Task 1 name',exact=True).fill('Preserve after conflict');await page.wait_for_timeout(2200)
+     assert len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1
+     assert await page.get_by_label('Task 1 name',exact=True).input_value()=='Preserve after conflict'
+    elif mode=='binding_error':
+     await page.get_by_text(re.compile('The server could not read these changes')).wait_for()
+     assert 'BINDING-FIXTURE' in await page.locator('.flowhive-error').inner_text()
+     assert await page.get_by_role('button',name='Save now',exact=True).is_enabled()
+     await page.wait_for_timeout(2200)
+     assert len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1
+     assert '2 assigned' in await picker.locator('summary').inner_text()
+    elif mode=='error':
+     await page.get_by_role('region',name='Fields needing correction').wait_for();assert 'durationWorkingDays' in await page.get_by_role('region',name='Fields needing correction').inner_text();assert await page.get_by_role('button',name='Save now',exact=True).is_enabled();await page.wait_for_timeout(2200);assert len([w for w in state['writes'] if w[1].endswith('/working-copy')])==1
+    else:
+     await page.wait_for_function("document.querySelector('.flowhive-save-bar')?.textContent.includes('All changes saved')")
+     writes=[body for method,path,body in state['writes'] if path.endswith('/working-copy')];assert len(writes)==(2 if mode=='race' else 1);assert writes[0]['plan']['tasks'][0]['durationWorkingDays']==5;assert writes[0]['plan']['tasks'][0]['estimatedFinishDate']=='2026-10-02'
+     if mode=='race':assert writes[-1]['plan']['tasks'][0]['name']=='Keep the newer edit' and writes[-1]['expectedRowVersion']==VERSION
+     saved=writes[-1]['plan'];assert saved['projectEndDate'] is None and saved['tasks'][0]['constraintDate'] is None
      assert len(saved['assignments'])==2;assert saved['assignments'][0]['plannedHours']==8;assert saved['assignments'][0]['allocationPercent']==50
      assert saved['assignments'][1]['resourceUserId'] is None and saved['assignments'][1]['projectContactId']==CONTACT and saved['assignments'][1]['plannedHours']==0
      await page.get_by_role('checkbox',name='Critical tasks only',exact=True).check();assert await page.locator('.flowhive-work-row').count()==1
@@ -93,5 +119,5 @@ async def main():
    assert await page.get_by_role('region',name='Project team and customer contacts').get_by_text('customer@example.invalid',exact=True).count()==0
    await page.close()
   await browser.close()
- print('FLOWHIVE_COLLABORATION_BROWSER_CASES=5; LIVE_REQUESTS=0; INVITATIONS_SENT=0; RESULT=PASS')
+ print('FLOWHIVE_COLLABORATION_BROWSER_CASES=8; LIVE_REQUESTS=0; INVITATIONS_SENT=0; RESULT=PASS')
 asyncio.run(main())

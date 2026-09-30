@@ -27,3 +27,37 @@
 .approval-center-shell .manager-status-row { gap: 8px; }
 .approval-center-shell .manager-status-row span { padding: 6px 10px; border-radius: 8px; }
 @media (max-width: 900px) { .approval-center-shell .manager-approval-header { grid-template-columns: 1fr; } .approval-period-filters { grid-template-columns: 1fr; } .approval-period-review { padding: 16px; } }
+
+/* Compact review layout, scoped so Pulse's other tables keep their own styles. */
+.approval-period-review { padding: 18px 20px; gap: 12px; border-radius: 10px; }
+.approval-period-review header { align-items: center; }
+.approval-period-review h3 { margin-bottom: 4px; }
+.approval-period-review header p, .approval-period-count, .approval-period-help { font-size: .875rem; }
+.approval-period-review .approval-period-filters { display:flex; flex-wrap:wrap; align-items:center; gap:16px; }
+.approval-period-filters > label { display:flex; align-items:center; gap:8px; font-size:.875rem; }
+.approval-period-review select, .approval-period-review input:not([type='checkbox']), .approval-period-review button { min-height:36px; padding:6px 10px; }
+.approval-period-switch { display:flex; align-items:center; }
+.approval-period-switch > span { margin-right:8px; font-size:.875rem; }
+.approval-period-switch button { border-radius:0; min-width:68px; }
+.approval-period-switch button:first-of-type { border-radius:5px 0 0 5px; }
+.approval-period-switch button:last-of-type { border-radius:0 5px 5px 0; }
+.approval-period-review .approval-period-switch button[aria-pressed='true'], .approval-period-review .approval-period-primary { background:#075bbd; border-color:#075bbd; color:#fff; }
+.approval-period-selection { display:flex; justify-content:space-between; align-items:center; gap:12px; }
+.approval-period-select { font-size:.875rem; }
+.approval-period-review .approval-period-selection button { border:0; background:transparent; text-decoration:underline; }
+.approval-period-table .approval-visually-hidden { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); }
+.approval-period-review .approval-period-table :is(th,td) { padding:9px 12px; vertical-align:middle; font-size:.875rem; text-align:left; }
+.approval-period-review .approval-period-table thead th { background:var(--pulse-card-bg); color:var(--pulse-text); box-shadow:inset 0 -2px var(--pulse-card-border); text-transform:none; }
+.approval-period-review .approval-period-table tr[data-selected='true'] > * { background:color-mix(in srgb, var(--pulse-card-bg) 88%, #2b89dd); }
+.approval-period-badge { display:inline-block; border-radius:99px; padding:3px 9px; color:#624200; background:#ffedbc; white-space:nowrap; font-size:.75rem; }
+.approval-period-help summary { cursor:pointer; }
+.approval-period-help p { padding-top:6px; }
+.approval-period-review footer { align-items:center; padding-top:12px; }
+.approval-period-review footer button { margin:0; }
+@media(max-width:650px) { .approval-period-review {padding:14px;} .approval-period-filters > label {flex:1 1 100%; justify-content:space-between;} .approval-period-filters :is(input,select) {min-width:0; max-width:70%;} .approval-period-table table {min-width:640px;} }
+
+.approval-center-shell .approval-routing-guide { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; color:var(--pulse-text); }
+.approval-routing-guide > span { flex:1 1 250px; padding:9px 12px; border:1px solid var(--pulse-card-border); border-radius:6px; background:var(--pulse-card-bg); font-size:.875rem; }
+.approval-routing-guide strong { margin-right:6px; }
+[data-theme='dark'] .approval-period-review input { color-scheme:dark; }
+.approval-period-review .approval-period-table :is(th,td) { line-height:1.35; }

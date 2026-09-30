@@ -21,11 +21,11 @@ function LinesEditor({ label: title, value, onChange, rows = 4, placeholder = ''
   return <label>{title}<textarea rows={rows} value={(value || []).join('\n')} placeholder={placeholder} onChange={(event) => onChange(event.target.value.split('\n').map((item) => item.trim()).filter(Boolean))} /></label>;
 }
 
-export function FlowHiveSaveBar({ dirty, workingCopy, canManage, busy, onSaveWorkingCopy, onSaveVersion }) {
+export function FlowHiveSaveBar({ dirty, workingCopy, canManage, busy, onSaveWorkingCopy, onSaveVersion, autosaveStatus, autosavePaused }) {
   return <div className={`flowhive-save-bar ${dirty ? 'dirty' : workingCopy ? 'saved' : 'unsaved'}`} role="status">
-    <div><strong>{dirty ? 'Unsaved changes' : workingCopy ? 'Working copy saved' : 'No saved working copy'}</strong><span>{workingCopy?.updatedAt ? `Last saved ${new Date(workingCopy.updatedAt).toLocaleString()} · revision ${workingCopy.workingRevision}` : 'No working copy has been saved for this project.'}</span></div>
+    <div><strong>{autosaveStatus === 'saving' ? 'Saving changes…' : autosaveStatus === 'error' ? 'Not saved · review the error and retry' : dirty && autosavePaused ? 'Changes will save after AI planning finishes' : dirty ? 'Changes will autosave' : workingCopy ? 'All changes saved' : 'No saved working copy'}</strong><span>{workingCopy?.updatedAt ? `Last saved ${new Date(workingCopy.updatedAt).toLocaleString()} · revision ${workingCopy.workingRevision}` : workingCopy ? `Saved revision ${workingCopy.workingRevision}` : 'No working copy has been saved for this project.'}</span></div>
     <div className="flowhive-save-bar-actions">
-      <button type="button" className="primary" disabled={!canManage || !dirty || busy} onClick={onSaveWorkingCopy}>{busy === 'working-copy' ? 'Saving…' : 'Save working copy'}</button>
+      <button type="button" className="primary" disabled={!canManage || !dirty || busy || autosavePaused} onClick={onSaveWorkingCopy}>{busy === 'working-copy' ? 'Saving…' : 'Save now'}</button>
       <button type="button" disabled={!canManage || busy} onClick={onSaveVersion}>{busy === 'save' ? 'Saving version…' : 'Save immutable version'}</button>
     </div>
   </div>;
