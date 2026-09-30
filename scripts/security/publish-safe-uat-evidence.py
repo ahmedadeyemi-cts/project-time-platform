@@ -2,6 +2,7 @@
 """Project private UAT responses into a fixed, content-free artifact schema."""
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -40,8 +41,17 @@ def summarize(source):
                   "sha256": hashlib.sha256(data).hexdigest()}
         report.update({key: obj[key] for key in FLAGS if type(obj.get(key)) is bool})
         reports[name] = report
-    return {"schema": 1, "reports": reports,
-            "rawResponsesPublished": False, "screenshotsPublished": False}
+    summary = {"schema": 1, "reports": reports,
+               "rawResponsesPublished": False, "screenshotsPublished": False}
+    # A finite diagnostic projection is not an acceptance result. Keep original
+    # receipt validation, summary hashes and installed-release resolution intact.
+    spec = importlib.util.spec_from_file_location("safe_uat_diagnostics", Path(__file__).with_name("safe_uat_diagnostics.py"))
+    diagnostic_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(diagnostic_module)
+    diagnostic = diagnostic_module.project(source)
+    if diagnostic is not None:
+        summary["functionalUatDiagnostics"] = diagnostic
+    return summary
 
 
 # Only machine-generated installation receipts are copied, field by field. The
