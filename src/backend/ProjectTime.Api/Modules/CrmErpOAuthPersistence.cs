@@ -427,18 +427,9 @@ public static partial class CrmErpIntegrationModule
         if (provider.ProviderKey is ConnectWiseSellContract.LegacyProviderKey or ConnectWiseSellContract.ProviderKey)
             return new(false, "oauth_not_supported", "oauth_not_supported", null,
                 "Configure ConnectWise SELL with its API keys.", StatusCodes.Status409Conflict);
-        var lockKey = $"module026-oauth-refresh:{provider.ProviderKey}";
-        var lockAcquired = false;
-        await using (var claim = new NpgsqlCommand(
-                         "SELECT pg_try_advisory_lock(hashtext(@lock_key));",
-                         connection))
-        {
-            claim.Parameters.AddWithValue("lock_key", lockKey);
-            lockAcquired = Convert.ToBoolean(
-                await claim.ExecuteScalarAsync(cancellationToken) ?? false);
-        }
-
-        if (!lockAcquired)
+        await using var providerLease = await CrmProviderOperationLease.TryAcquireAsync(
+            connection, provider.ProviderKey, cancellationToken);
+        if (providerLease is null)
         {
             return new(
                 false,
@@ -452,7 +443,6 @@ public static partial class CrmErpIntegrationModule
         var encryptionKey = ReadEncryptionKey();
         if (encryptionKey is null)
         {
-            await ReleaseProviderRefreshLockAsync(connection, lockKey);
             return new(
                 false,
                 "oauth_refresh_encryption_unavailable",
@@ -464,6 +454,12 @@ public static partial class CrmErpIntegrationModule
 
         try
         {
+            // Due-provider snapshots may predate a completed configuration change.
+            var currentProvider = await ReadProviderConfigurationAsync(connection, provider.ProviderKey, cancellationToken);
+            if (currentProvider is null || !currentProvider.IsEnabled || currentProvider.AuthModel != "oauth2")
+                return new(false, "oauth_refresh_configuration_changed", "configuration_changed", null,
+                    "The provider is no longer enabled for OAuth renewal.", StatusCodes.Status409Conflict);
+            provider = currentProvider;
             if (!TryHttpsUri(provider.OAuthTokenUrl, out var tokenUri)
                 || !await IsSafeExternalUriAsync(tokenUri!, cancellationToken))
             {
@@ -795,7 +791,6 @@ public static partial class CrmErpIntegrationModule
         finally
         {
             CryptographicOperations.ZeroMemory(encryptionKey);
-            await ReleaseProviderRefreshLockAsync(connection, lockKey);
         }
     }
 
@@ -873,24 +868,6 @@ public static partial class CrmErpIntegrationModule
             clientSecretReturned = false
         }));
         await command.ExecuteNonQueryAsync(cancellationToken);
-    }
-
-    private static async Task ReleaseProviderRefreshLockAsync(
-        NpgsqlConnection connection,
-        string lockKey)
-    {
-        try
-        {
-            await using var release = new NpgsqlCommand(
-                "SELECT pg_advisory_unlock(hashtext(@lock_key));",
-                connection);
-            release.Parameters.AddWithValue("lock_key", lockKey);
-            await release.ExecuteNonQueryAsync(CancellationToken.None);
-        }
-        catch
-        {
-            // The database session releases advisory locks when the connection closes.
-        }
     }
 
     private static IResult OAuthRefreshMigrationRequired() => Results.Json(new

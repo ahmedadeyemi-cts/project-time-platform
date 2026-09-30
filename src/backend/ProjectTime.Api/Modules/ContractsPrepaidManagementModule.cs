@@ -832,8 +832,18 @@ public static class ContractsPrepaidManagementModule
             bytes = stream.ToArray();
         }
 
-        using var workbook =
-            new XLWorkbook(new MemoryStream(bytes));
+        using var workbookStream = new MemoryStream(bytes, writable: false);
+        XLWorkbook parsedWorkbook;
+        try { parsedWorkbook = ReadImportWorkbook(workbookStream); }
+        catch (InvalidDataException)
+        {
+            return Results.BadRequest(new
+            {
+                status = "validation_failed",
+                message = "The workbook exceeds the supported import limits or is invalid."
+            });
+        }
+        using var workbook = parsedWorkbook;
 
         var worksheet =
             workbook.Worksheets.FirstOrDefault(item =>
@@ -1631,6 +1641,12 @@ public static class ContractsPrepaidManagementModule
                     or "consumed"
                     or "overage"
         });
+    }
+
+    internal static XLWorkbook ReadImportWorkbook(Stream stream)
+    {
+        global::ProjectTime.Api.BoundedOfficeInput.Validate(stream);
+        return new XLWorkbook(stream);
     }
 
     private static Dictionary<string, int> BuildHeaderMap(

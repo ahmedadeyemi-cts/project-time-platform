@@ -11,7 +11,7 @@ internal static class ProjectFlowHiveCollaborationStore
     internal sealed record Contact(Guid ProjectContactId,string DisplayName,string Email,string Phone,string Title,string Organization,string ContactKind,bool IsActive,Guid RowVersion);
     internal sealed record TeamMember(Guid UserId,string DisplayName,string Email,string Phone,string Title,string Role);
     internal sealed record Meeting(Guid MeetingDraftId,string Title,string Agenda,string Location,DateTimeOffset StartsAt,DateTimeOffset EndsAt,string TimezoneName,string[] AttendeeReferences,string Status);
-    internal sealed class InputException(string field,string message,int status=400):Exception(message) { internal string Field=>field;internal int Status=>status; }
+    internal sealed class InputException(string fieldName,string message,int status=400):Exception(message) { internal string Field=>fieldName;internal int Status=>status; }
     internal static async Task<bool> ReadyAsync(NpgsqlConnection c,CancellationToken token)
     {
         await using var q=new NpgsqlCommand("SELECT to_regclass('project_flowhive_contacts') IS NOT NULL AND to_regclass('project_flowhive_meeting_drafts') IS NOT NULL;",c);
@@ -126,7 +126,7 @@ internal static class ProjectFlowHiveCollaborationStore
     {
         var title=Text(input.Title,"title",240,true);var location=Text(input.Location,"location",300);
         var zone=Text(input.TimezoneName,"timezoneName",100,true);
-        try{TimeZoneInfo.FindSystemTimeZoneById(zone);}catch(Exception e) when(e is TimeZoneNotFoundException or InvalidTimeZoneException){throw new InputException("timezoneName","Select a recognized time zone.");}
+        try{global::ProjectTime.Api.SafeTimeZones.FindSystemTimeZoneById(zone);}catch(Exception e) when(e is TimeZoneNotFoundException or InvalidTimeZoneException){throw new InputException("timezoneName","Select a recognized time zone.");}
         if(input.StartsAt is null || input.EndsAt is null || input.EndsAt<=input.StartsAt || input.EndsAt>input.StartsAt.Value.AddHours(24))throw new InputException("endsAt","Choose a start and a later finish, no more than 24 hours apart.");
         if((input.Agenda??"").Length>8000)throw new InputException("agenda","Keep the customer-visible agenda under 8,000 characters.");
         var references=(input.AttendeeReferences??[]).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
