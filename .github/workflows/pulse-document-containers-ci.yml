@@ -1,0 +1,95 @@
+name: Pulse document containers and security closeout foundation
+on:
+  pull_request:
+    paths:
+      - 'deployment/pulse-document-processing/**'
+      - 'tests/pulse_document_processing/**'
+      - 'docs/security/security-closeout-*'
+      - 'docs/security/foundry-transition-plan-20260930.md'
+      - '.github/workflows/pulse-document-containers-ci.yml'
+permissions:
+  contents: read
+concurrency:
+  group: pulse-document-containers-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  isolated-container-validation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify account and release scope is unchanged
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pulse-document-checks"
+          "$RUNNER_TEMP/pulse-document-checks/bin/pip" install PyYAML==6.0.3
+          "$RUNNER_TEMP/pulse-document-checks/bin/python" tests/pulse_document_processing/test_plan.py
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check
+      - name: Build isolated container candidates
+        run: |
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" -f deployment/pulse-document-processing/Dockerfile.worker -t pulse-documents:ci deployment/pulse-document-processing
+          docker build --label "org.opencontainers.image.revision=$GITHUB_SHA" -f deployment/pulse-document-processing/Dockerfile.clamav -t pulse-clamav:ci deployment/pulse-document-processing
+      - name: Exercise HTTP security boundary offline
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 64 --memory 1g --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m,mode=1777 \
+            -v "$PWD/tests/pulse_document_processing:/tests:ro" -e PYTHONPATH=/opt/pulse-documents \
+            pulse-documents:ci python3 /tests/test_boundary.py
+      - name: Verify real OCR and ClamAV using harmless fixtures
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 64 --memory 1g --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=512m,mode=1777 \
+            -v "$PWD/tests/pulse_document_processing:/tests:ro" -e PYTHONPATH=/opt/pulse-documents \
+            pulse-documents:ci python3 /tests/native_ocr.py
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 64 --memory 1g --cpus 1 \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777 \
+            -v "$PWD/tests/pulse_document_processing:/tests:ro" -e PYTHONPATH=/opt/pulse-documents \
+            pulse-clamav:ci python3 /tests/native_clamav.py
+      - name: Parse opt-in Compose without starting services
+        env:
+          PULSE_DOCUMENT_IMAGE: registry.example/pulse-documents@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          PULSE_CLAMAV_IMAGE: registry.example/pulse-clamav@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          PULSE_DOCUMENT_TOKEN_FILE: /tmp/synthetic-document-token-not-a-live-secret
+        run: docker compose --profile pulse-documents -f deployment/pulse-document-processing/compose.yml config --quiet
+      - name: Record candidate image IDs and package inventories
+        run: |
+          mkdir -p candidate-evidence
+          docker image inspect pulse-documents:ci pulse-clamav:ci --format '{{json .Id}}' > candidate-evidence/local-image-config-ids.jsonl
+          docker run --rm --network none pulse-documents:ci dpkg-query -W > candidate-evidence/worker-packages.txt
+          docker run --rm --network none pulse-clamav:ci dpkg-query -W > candidate-evidence/scanner-packages.txt
+          printf '%s\n' "$GITHUB_SHA" > candidate-evidence/source-sha.txt
+          printf '%s\n' 'Local config IDs are not registry digests. No deployment or security closure.' > candidate-evidence/BOUNDARY.txt
+      - name: Scan worker for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-documents:ci
+          format: json
+          output: candidate-evidence/worker-vulnerabilities.json
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+      - name: Scan scanner for fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-clamav:ci
+          format: json
+          output: candidate-evidence/scanner-vulnerabilities.json
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+          ignore-unfixed: true
+      - name: Retain content-free candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pulse-document-candidate-${{ github.run_id }}
+          path: candidate-evidence/
+          if-no-files-found: ignore
+          retention-days: 7

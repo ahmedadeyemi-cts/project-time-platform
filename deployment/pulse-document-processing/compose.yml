@@ -1,0 +1,65 @@
+# Opt-in companion containers. No VM, cloud provisioning or published ports.
+name: pulse-document-processing
+services:
+  documents:
+    profiles: [pulse-documents]
+    image: ${PULSE_DOCUMENT_IMAGE:?Set reviewed worker image with sha256 digest}
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 64
+    mem_limit: 1g
+    cpus: 1
+    restart: unless-stopped
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=512m,mode=1777"]
+    networks: [documents_private]
+    volumes: ["clamav_socket:/run/clamav:ro"]
+    secrets:
+      - source: document_service_token
+        target: pulse-documents-token
+        uid: "65534"
+        gid: "65534"
+        mode: 0400
+  clamav:
+    profiles: [pulse-documents]
+    image: ${PULSE_CLAMAV_IMAGE:?Set reviewed scanner image with sha256 digest}
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    network_mode: none
+    pids_limit: 32
+    mem_limit: 4g
+    cpus: 1
+    restart: unless-stopped
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777"]
+    volumes: ["clamav_socket:/run/clamav", "clamav_signatures:/var/lib/clamav:ro"]
+  signature_updater:
+    profiles: [pulse-documents]
+    image: ${PULSE_CLAMAV_IMAGE:?Set reviewed scanner image with sha256 digest}
+    user: "65534:65534"
+    entrypoint: [freshclam]
+    command: [--daemon, --foreground=true, --config-file=/etc/clamav/freshclam.conf]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 32
+    mem_limit: 2g
+    cpus: 0.5
+    restart: unless-stopped
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"]
+    networks: [signature_updates]
+    volumes: ["clamav_signatures:/var/lib/clamav", "clamav_socket:/run/clamav:ro"]
+    healthcheck:
+      disable: true
+networks:
+  documents_private:
+    internal: true
+  signature_updates: {}
+volumes:
+  clamav_signatures: {}
+  clamav_socket: {}
+secrets:
+  document_service_token:
+    file: ${PULSE_DOCUMENT_TOKEN_FILE:?Supply protected secret outside repository}
