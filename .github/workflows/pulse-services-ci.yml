@@ -31,6 +31,7 @@ jobs:
       - run: python3 -m pip install PyYAML==6.0.3
       - run: python3 tests/pulse_services/test_contracts.py
       - run: python3 tests/pulse_services/test_cutover.py
+      - run: python3 tests/pulse_services/test_activation_contracts.py
       - run: dotnet run --project tests/PulseServiceCutoverTests -c Release
       - run: dotnet run --project tests/PulseDocumentServiceTests -c Release
   containers:

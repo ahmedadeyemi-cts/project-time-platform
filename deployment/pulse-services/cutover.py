@@ -2,6 +2,7 @@
 import copy,hashlib,json,os,re,secrets,subprocess,sys,tempfile,time,urllib.error,urllib.request
 from pathlib import Path
 from test_resources import *
+from activation_contracts import acceptance_job_name, validate_document_runtime
 REPO='ahmedadeyemi-cts/project-time-platform'
 ORIGIN='https://phd-west-test.onenecklab.com'
 PREFIXES=('PROJECTPULSE_DOCUMENT_SERVICE_','PROJECTPULSE_LAYA_SERVICE_')
@@ -93,7 +94,8 @@ def local_admin(after=False):
             status,health=public_api('/api/ai-configuration/decisions/laya/health',session,{})
             check(status==200 and health.get('status')=='ready' and health.get('runtimeLocation')=='pulse_container','api_laya_route_not_ready')
             status,health=public_api('/api/celar-ai/v1/documents/runtime/readiness',session)
-            check(status==200 and health.get('readiness',{}).get('malwareScannerEndpointPrivate') is True,'api_documents_route_not_ready')
+            check(status==200,'api_documents_route_not_ready')
+            validate_document_runtime(health)
         return identity
     finally:
         if session:
@@ -162,7 +164,7 @@ def cleanup_staged():
             check(current.get('tags',{}).get('source')==SHA and current.get('tags',{}).get('managedBy')=='pulse-services-reviewed-cutover','cleanup_ownership_mismatch')
             rest('DELETE',ROOT+'/providers/Microsoft.App/containerApps/'+item['name'])
         elif item['kind']=='job':
-            check(item['name']=='pulse-services-verify-'+RUN,'cleanup_job_scope')
+            check(item['name']==acceptance_job_name(RUN),'cleanup_job_scope')
             rest('DELETE',ROOT+'/providers/Microsoft.App/jobs/'+item['name'])
         else:raise CutoverError('cleanup_resource_scope')
     print('PULSE_STAGED_RESOURCE_CLEANUP=PASS existing_apps_untouched=true')
@@ -191,7 +193,7 @@ def prepare():
         check(a['properties']['configuration'].get('ingress',{}).get('external') is False,'service_ingress_drift')
         check(runtime_identity_isolated(a['properties']['configuration']),'service_identity_drift')
         print('PULSE_SERVICE_READY='+kind)
-    job='pulse-services-verify-'+RUN
+    job=acceptance_job_name(RUN)
     job_env=[{'name':'PULSE_EXPECTED_SOURCE','value':SHA}]
     job_secrets=[]
     for kind,c in credentials.items():

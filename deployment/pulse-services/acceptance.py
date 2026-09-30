@@ -2,9 +2,9 @@
 import hashlib,http.client,io,ipaddress,json,os,socket,ssl,time,uuid
 from datetime import datetime,timezone
 from urllib.parse import urlsplit
-from PIL import Image,ImageDraw,ImageFont
 from test_resources import DOMAIN,APPS
 from laya_protocol import normalized
+from activation_contracts import validate_laya_health
 class PinnedHTTPS(http.client.HTTPSConnection):
     def connect(self):
         addresses=socket.getaddrinfo(self.host,443,type=socket.SOCK_STREAM)
@@ -38,10 +38,11 @@ def upload(content,ocr=False):
     chunks.append(f'--{boundary}--'.encode()+crlf)
     return call('documents','/v1/extract' if ocr else '/v1/scan','POST',b''.join(chunks),'multipart/form-data; boundary='+boundary)
 def main():
+    from PIL import Image,ImageDraw,ImageFont
     for kind,path in [('documents','/health'),('laya','/v1/decisions/health')]:
         status,_=call(kind,path,authorized=False);assert status==401,'unauthorized_request_accepted'
         status,body=call(kind,path);assert status==200,'service_not_ready'
-        if kind=='laya':normalized(body,health=True)
+        if kind=='laya':validate_laya_health(body)
         else:
             assert body['modelProviderRequired'] is False and body['scanner']=='clamav'
             age=(datetime.now(timezone.utc)-datetime.fromisoformat(body['engine']['updated_at'])).total_seconds()
