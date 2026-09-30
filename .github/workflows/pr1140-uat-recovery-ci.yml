@@ -39,7 +39,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
-          if [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'codex/flowhive-save-schedule-approval-polish' ]]; then
+            python3 tests/flowhive-save-release/scope.py
+            python3 tests/flowhive-save-release/test_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/security-audit-followup-20260929' ]]; then

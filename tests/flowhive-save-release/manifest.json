@@ -1,8 +1,12 @@
 {
   "base": "98f80675b50e72c450f96f278c87168939a0ad2e",
   "files": [
+    ".github/workflows/contracts-approval-funding-ci.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "docs/validation/flowhive-approval-uat-2026-09-29.md",
     "scripts/release-test/validate-module025-governed-release.sh",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
@@ -28,8 +32,12 @@
     "tests/security-release/admission_fixture.py"
   ],
   "sha256": {
+    ".github/workflows/contracts-approval-funding-ci.yml": "0fc26951058e8d3147a0c72a12dc078064a81f621e419523bce1f8a139d22488",
     ".github/workflows/flowhive-enterprise-psa-ci.yml": "a53e4d9699f526b6c688b30aefb9d450e01f138ac6cd88907ce4444016a56dc4",
     ".github/workflows/flowhive-psa-release-control-ci.yml": "4c4a8afa0929d28cc40447a1ee01ff7bfb33141609316e5e00aafab48d1e46c7",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "6c053bb4eca0d925d5fd090d0fbf77ab005ac6f548a2d19ad8f6a1eca13b746d",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "db3ce7600bc140570f644a0b8b754a247640f132ab2ccdce35205b60f2b7466a",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "78bee7c6ca5ae9327d10d15ce67651e0902e7defa17061390975deb51a42deba",
     "docs/validation/flowhive-approval-uat-2026-09-29.md": "1a3f8bb27532e0c3863610f1790f6703b1cac3df7ec511bbc91b33a1fb69de16",
     "scripts/release-test/validate-module025-governed-release.sh": "8bb778afebacdf22a838fd39ae960b471cd4c6bc52d0dc4401074a6e28bd9db9",
     "scripts/release-test/validate-protected-test-controller-branches.sh": "40b450d6675f92c5f85cef15150db5f6a09672c8761cc246c3a6f7174373b333",
