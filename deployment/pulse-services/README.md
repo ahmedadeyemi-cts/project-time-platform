@@ -77,3 +77,32 @@ that blocked edit. Accordingly the integration mode cannot be invoked by the
 current deployed workflow and must not be executed manually. This source update
 is a readiness repair, not activation, not installed acceptance, and not closure
 of any original security finding.
+
+## Canonical activation integration (PR #1229)
+
+The current PR adds a private-service phase to the existing canonical protected
+Test workflow. It does not install the separate proposed controller, edit the
+trusted root validator, or disable any checks. Every pre-existing workflow step
+is retained byte-for-byte around the additive block and tested accordingly.
+
+After full existing UAT succeeds, the workflow builds the four rootless service
+images, applies the existing pinned High/Critical vulnerability scan gates,
+verifies each scan's local image identity, and publishes those exact images to
+ACR. Registry digests are pulled back and matched to the scanned identities.
+The activation phase independently verifies the live canonical job and all
+preceding scan/UAT results. It stages private services in the existing managed
+environment, tests the native services, then switches the two service selections.
+Failures restore the prior selection before deleting only deployment-owned
+resources. Temporary local administrator sessions are closed; identity, role,
+password and all existing API credentials are preserved.
+
+Subsequent application releases do not replace already-active services merely
+because the application SHA changed. They require an unchanged service-source
+fingerprint, rescan the installed immutable images, verify private boundaries
+and both administrator/runtime checks. A genuine service-source change requires
+its own reviewed upgrade rather than overwriting live services implicitly.
+
+This implementation is not an installed result until the protected run finishes
+and its new activation receipt reports success. Kernel, sockets, signature feed,
+private TLS, role, credentials and rollback remain mandatory live checks. The
+original 149 findings continue to require individual closure evidence.

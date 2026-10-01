@@ -15,6 +15,12 @@ REQUIRED_STEPS=(
  'Run protected-Test Module 025 SOW/GSD generation lifecycle UAT',
  'Disable exact-run Module 025 protected-Test authorization fixture',
  'Verify normal Solution Architect browser and retained register',
+ 'Build private Pulse service images',
+ 'Scan private Pulse documents image',
+ 'Scan private Pulse scanner image',
+ 'Scan private Pulse laya-gateway image',
+ 'Scan private Pulse laya image',
+ 'Publish scanned private Pulse service images',
 )
 ACTIVATION_STEP='Activate and verify private Pulse document and Laya services'
 def require(value,code):

@@ -36,7 +36,11 @@ class Contracts(unittest.TestCase):
         changed=subprocess.check_output(['git','diff','--name-only','c8ac122653b2d948343727815dfc3279d98c9cc6'],cwd=ROOT,text=True).splitlines()
         self.assertFalse(any(p.startswith('database/') for p in changed))
         self.assertFalse(any(any(x in p for x in ('PasswordReset','LocalAccount','Session','SecurityHardeningModule')) for p in changed))
-        self.assertNotIn('.github/workflows/projectpulse-deploy-test.yml',changed)
+        controller=(ROOT/'.github/workflows/projectpulse-deploy-test.yml').read_text()
+        start=controller.index('      - name: Build private Pulse service images\n')
+        end=controller.index('      - name: Restore exact prior Test images after application failure\n',start)
+        expected=subprocess.check_output(['git','show','6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f:.github/workflows/projectpulse-deploy-test.yml'],cwd=ROOT,text=True)
+        self.assertEqual(controller[:start]+controller[end:],expected)
         self.assertNotIn('.github/workflows/projectpulse-deploy-production.yml',changed)
         # PR1226 already changed queueing and passed installed Protected UAT.
         # Preserve those exact reviewed bytes rather than treating that inherited

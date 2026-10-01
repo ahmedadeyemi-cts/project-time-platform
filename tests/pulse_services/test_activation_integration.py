@@ -71,7 +71,12 @@ class SourcePreservation(unittest.TestCase):
           'scripts/validate-deployment-concurrency-governance.mjs',
           '.github/workflows/deployment-concurrency-governance-ci.yml'):
             expected=subprocess.check_output(['git','show',base+':'+name],cwd=ROOT)
-            self.assertEqual((ROOT/name).read_bytes(),expected)
+            actual=(ROOT/name).read_bytes()
+            if name=='.github/workflows/projectpulse-deploy-test.yml':
+                start=actual.index(b'      - name: Build private Pulse service images\n')
+                end=actual.index(b'      - name: Restore exact prior Test images after application failure\n',start)
+                actual=actual[:start]+actual[end:]
+            self.assertEqual(actual,expected)
 
 class SecretPreservation(unittest.TestCase):
     def setUp(self):

@@ -101,7 +101,7 @@ def local_admin(after=False):
             status,_=public_api('/api/auth/session/logout',session,{})
             check(status in (200,204),'admin_session_cleanup_failed')
 
-def preflight():
+def preflight(*,allow_selected=False):
     check(os.environ.get('GITHUB_REPOSITORY')==REPO and os.environ.get('GITHUB_REF')=='refs/heads/main','trusted_main_required')
     canonical=os.environ.get('PULSE_CANONICAL_RELEASE')=='true'
     if canonical:
@@ -132,7 +132,8 @@ def preflight():
     check(any(x['name']=='Consumption' and x['workloadProfileType']=='Consumption' for x in environment['properties']['workloadProfiles']),'qualified_consumption_profile_required')
     app=get_app(API);source_matches(app)
     check(app['properties']['configuration']['activeRevisionsMode']=='Single','single_revision_required')
-    for prefix in PREFIXES:check(env_map(app).get(prefix+'MODE',{}).get('value','legacy')=='legacy','initial_cutover_only')
+    modes=[env_map(app).get(prefix+'MODE',{}).get('value','legacy') for prefix in PREFIXES]
+    check(modes==['legacy','legacy'] or (allow_selected and modes==['pulse_container','pulse_container']),'initial_cutover_only')
     admin=local_admin()
     if (PRIVATE/'before.json').exists():
         previous=json.loads((PRIVATE/'before.json').read_text())
@@ -193,6 +194,9 @@ def prepare():
         token=secrets.token_urlsafe(48);secret=('pulse-documents-' if kind=='documents' else 'pulse-laya-')+RUN
         credentials[kind]={'token':token,'secret':secret}
         body=application(kind,images,token,secret,SHA,RUN)
+        build_receipt=json.loads((SAFE/'build-identities.json').read_text())
+        check(build_receipt.get('source')==SHA and re.fullmatch('[0-9a-f]{64}',build_receipt.get('fingerprint','')),'build_receipt_invalid')
+        body['tags']['serviceFingerprint']=build_receipt['fingerprint']
         rest('PUT',ROOT+'/providers/Microsoft.App/containerApps/'+name,body)
         if name in created:journal({'kind':'application','name':name,'run':RUN,'source':SHA})
         print('PULSE_SERVICE_STAGED='+kind)
