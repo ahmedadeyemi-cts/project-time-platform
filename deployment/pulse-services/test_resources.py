@@ -12,6 +12,10 @@ IDENTITY=ROOT+'/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-ph
 API='ca-phd-test-api-westus3'
 APPS={'documents':'ca-phd-test-documents-westus3','laya':'ca-phd-test-laya-westus3'}
 STORAGE='pulse-antivirus-signatures'
+# Azure Files rejects VFS-only flags nosuid/nodev/noexec in mountOptions.
+# Existing mandatory no-new-privileges, Landlock execute/device restrictions
+# and non-root runtime identities enforce those controls at process scope.
+SIGNATURE_MOUNT_OPTIONS='uid=65534,gid=65534,dir_mode=0750,file_mode=0640'
 COMPONENTS={'documents','scanner','laya-gateway','laya'}
 def require(value,reason):
     if not value:raise ValueError(reason)
@@ -47,7 +51,7 @@ def application(kind,images,token,secret,sha,run):
         containers.extend([{'name':'scanner','image':images['scanner'],'resources':{'cpu':2,'memory':'4Gi'},'volumeMounts':[mount,sig]},
             {'name':'signature-updater','image':images['scanner'],'command':['python3','/opt/pulse-services/runtime.py','updater'],
              'resources':{'cpu':1,'memory':'2Gi'},'volumeMounts':[mount,sig]}])
-        volumes.append({'name':'signatures','storageName':STORAGE,'storageType':'AzureFile','mountOptions':'uid=65534,gid=65534,dir_mode=0750,file_mode=0640,nosuid,nodev,noexec'})
+        volumes.append({'name':'signatures','storageName':STORAGE,'storageType':'AzureFile','mountOptions':SIGNATURE_MOUNT_OPTIONS})
     else:containers.append({'name':'laya-model','image':images['laya'],'resources':{'cpu':2,'memory':'4Gi'},'volumeMounts':[mount]})
     resource={'location':'westus3','identity':{'type':'UserAssigned','userAssignedIdentities':{IDENTITY:{}}},
         'tags':{'owner':'Pulse','environment':'test','source':sha,'managedBy':'pulse-services-reviewed-cutover','deploymentRun':str(run)},
@@ -75,6 +79,12 @@ def validate_resource(body,kind,images):
         require(x['image'] in images.values(),'image_drift')
         for v in x.get('env',[]):require(v['name']=='PULSE_SERVICE_TOKEN','unexpected_runtime_credential')
         if x['name'] in ('scanner','signature-updater','laya-model'):require(not x.get('env'),'credential_isolation')
+    signatures=[x for x in t['volumes'] if x['name']=='signatures']
+    if kind=='documents':
+        require(len(signatures)==1 and signatures[0].get('storageType')=='AzureFile'
+            and signatures[0].get('storageName')==STORAGE
+            and signatures[0].get('mountOptions')==SIGNATURE_MOUNT_OPTIONS,'signature_mount_permissions')
+    else:require(not signatures,'unexpected_signature_mount')
     require(not t.get('initContainers'),'privileged_initialization_not_permitted')
     require(all(x.get('storageName') in (None,STORAGE) for x in t['volumes']),'business_share_mounted')
     require(any(x['name']=='local-socket' and x['storageType']=='EmptyDir' for x in t['volumes']),'nonlocal_socket')

@@ -46,6 +46,35 @@ class Resources(unittest.TestCase):
             lookup={x['name']:x for x in values}
             self.assertEqual(lookup[prefix+'TOKEN']['secretRef'],'synthetic-token')
             self.assertRegex(lookup[prefix+'CONFIGURATION_SHA256']['value'],r'^[0-9a-f]{64}$')
+    def test_signature_mount_uses_supported_nonroot_permissions(self):
+        body=self.body()
+        volume=next(v for v in body['properties']['template']['volumes'] if v['name']=='signatures')
+        self.assertEqual(volume['mountOptions'],'uid=65534,gid=65534,dir_mode=0750,file_mode=0640')
+        self.assertEqual(volume['storageName'],spec.STORAGE)
+        self.assertEqual(volume['storageType'],'AzureFile')
+    def test_signature_mount_permissions_cannot_be_relaxed_or_extended(self):
+        for options in ('uid=0,gid=0,dir_mode=0777,file_mode=0777',
+            'uid=65534,gid=65534,dir_mode=0750,file_mode=0640,nosuid',
+            'uid=65534,gid=65534,dir_mode=0750,file_mode=0640,nodev',
+            'uid=65534,gid=65534,dir_mode=0750,file_mode=0640,noexec',''):
+            body=self.body();volume=next(v for v in body['properties']['template']['volumes'] if v['name']=='signatures')
+            volume['mountOptions']=options
+            with self.subTest(options=options),self.assertRaises(ValueError):spec.validate_resource(body,'documents',self.images)
+    def test_signature_mount_is_unique_and_required(self):
+        for mode in ('missing','duplicate','wrong_type'):
+            body=self.body();volumes=body['properties']['template']['volumes'];entry=next(v for v in volumes if v['name']=='signatures')
+            if mode=='missing':volumes.remove(entry)
+            elif mode=='duplicate':volumes.append(copy.deepcopy(entry))
+            else:entry['storageType']='EmptyDir'
+            with self.subTest(mode=mode),self.assertRaises(ValueError):spec.validate_resource(body,'documents',self.images)
+    def test_mount_compatibility_keeps_mandatory_process_controls(self):
+        source=(D/'sandbox.c').read_text()
+        for control in ('PR_SET_NO_NEW_PRIVS','LANDLOCK_ACCESS_FS_EXECUTE','LANDLOCK_ACCESS_FS_MAKE_CHAR','LANDLOCK_ACCESS_FS_MAKE_BLOCK','SYS_landlock_restrict_self','geteuid()==0'):
+            self.assertIn(control,source)
+        self.assertNotIn('getenv(',source)
+        self.assertIn('if(updater && path_rule(fd,"/var/lib/clamav",writes))',source)
+        self.assertNotIn('path_rule(fd,"/var/lib/clamav",LANDLOCK_ACCESS_FS_EXECUTE)',source)
+
     def test_scanner_reload_protocol_and_nonconcurrent_memory(self):
         s=(D/'scanner_start.py').read_text()
         self.assertIn("c.sendall(b'zRELOAD'+bytes((0,)))",s)
