@@ -12,9 +12,14 @@ class PinnedHTTPS(http.client.HTTPSConnection):
         if not addresses:raise ValueError('private_dns_empty')
         record_dns_addresses([row[4][0] for row in addresses])
         safe=[]
+        # Azure Container Apps workload-profile environments reserve these
+        # platform CIDRs for internal infrastructure/service addressing.
+        allowed_networks=tuple(ipaddress.ip_network(n) for n in (
+            '10.0.0.0/8','172.16.0.0/12','192.168.0.0/16',
+            '100.100.0.0/17','100.100.128.0/19','100.100.160.0/19','100.100.192.0/19'))
         for row in addresses:
             ip=ipaddress.ip_address(row[4][0])
-            if ip.is_loopback or ip.is_link_local or not any(ip in ipaddress.ip_network(n) for n in ('10.0.0.0/8','172.16.0.0/12','192.168.0.0/16') if ip.version==4):
+            if ip.is_loopback or ip.is_link_local or not any(ip in network for network in allowed_networks if ip.version==network.version):
                 raise ValueError('private_dns_rejected')
             safe.append(row[4][0])
         self.sock=ssl.create_default_context().wrap_socket(socket.create_connection((safe[0],443),self.timeout),server_hostname=self.host)
