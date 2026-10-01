@@ -46,6 +46,17 @@ def previous_acceptance_projection(doc):
 
 def deployment_projection(doc):
     doc = copy.deepcopy(doc)
+    # Exercise historical assertions on the exact preserved pre-activation
+    # controller; independently reject any change to the registered new block.
+    if any(s.get('name')=='Build private Pulse service images' for s in doc['jobs']['deploy']['steps']):
+        from pathlib import Path
+        import importlib.util,yaml
+        root=Path(__file__).resolve().parents[1]
+        spec=importlib.util.spec_from_file_location('activation_projection',root/'tests/pulse-activation-release/controller.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        current=(root/'.github/workflows/projectpulse-deploy-test.yml').read_bytes()
+        assert doc==yaml.safe_load(current),'Controller fixture differs from exact current source'
+        doc=yaml.safe_load(module.normalize(current))
     trigger = doc.get('on', doc.get(True))
     dispatch = trigger.get('workflow_dispatch') if isinstance(trigger, dict) else None
     if not isinstance(dispatch, dict) or 'qualification_provider' not in dispatch.get('inputs', {}):

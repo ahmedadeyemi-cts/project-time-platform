@@ -1,0 +1,62 @@
+{
+  "controllerBlob": "07efc1eafc6b210e3b038de7b024805912f2ede6",
+  "controllerSha256": "11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3",
+  "patches": {
+    "scripts/release-test/recover-pr1139-uat-orphan.py": [
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\n# Exact additive private-service controller; all run/orphan/approval checks remain.\nPULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\""
+      ],
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB),",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-uat-orphan.py": [
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\n# Exact additive private-service controller; all run/orphan/approval checks remain.\nPULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\""
+      ],
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB),",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-migration-retry-orphan.py": [
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\n# Exact additive private-service controller; all run/orphan/approval checks remain.\nPULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\""
+      ],
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB),",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1151-uat-supersession.py": [
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\n# Exact additive private-service controller; all run/orphan/approval checks remain.\nPULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\""
+      ],
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB),",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1204-uat-supersession.py": [
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB = \"94fe4bf498c3d89347db62749279f566d0c26ce7\"\n# Exact additive private-service controller; all run/orphan/approval checks remain.\nPULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\""
+      ],
+      [
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB),",
+        "SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-module025-quarantine-controller.py": [
+      [
+        "def permitted(original, current):\n",
+        "def permitted(original, current):\n    # PR1229 adds one exact service phase after the previous full acceptance.\n    # Unknown old bases or any different new bytes still fail quarantine admission.\n    if hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256, \"6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff\") and hashlib.sha256(current).hexdigest() == \"11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3\":\n        return True\n"
+      ]
+    ]
+  }
+}
