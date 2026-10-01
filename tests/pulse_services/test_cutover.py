@@ -200,8 +200,11 @@ class SignatureStorage(unittest.TestCase):
         self.assertFalse(Path(filenames[0]).exists())
     def test_missing_and_denied_are_not_conflated(self):
         import subprocess
-        with patch.object(self.m.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','(ResourceNotFound) unavailable')):
-            self.assertIsNone(self.m.run([],missing=True))
+        for code in ('ResourceNotFound','ShareNotFound','ManagedEnvironmentStorageNotFound'):
+            for output in ('('+code+') unavailable',json.dumps({'error':{'code':code,'message':'unavailable'}})):
+                with self.subTest(code=code),patch.object(self.m.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'',output)):
+                    self.assertIsNone(self.m.run([],missing=True))
+                    with self.assertRaises(self.m.PreparationError):self.m.run([],missing=False)
         with patch.object(self.m.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','(AuthorizationFailed) SECRET')),self.assertRaises(self.m.PreparationError) as error:
             self.m.run([],missing=True)
         self.assertEqual(str(error.exception),'infrastructure_operation_failed')

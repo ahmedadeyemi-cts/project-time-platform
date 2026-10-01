@@ -31,7 +31,7 @@ def run(args, missing=False):
     result=subprocess.run(args,cwd=ROOT,capture_output=True,text=True,timeout=60)
     if result.returncode:
         code=(result.stderr or '').lower()
-        if missing and any(x in code for x in ('resourcenotfound','sharenotfound','(notfound)')):
+        if missing and any(x in code for x in ('resourcenotfound','sharenotfound','managedenvironmentstoragenotfound','(notfound)')):
             return None
         raise PreparationError('infrastructure_operation_failed')
     return json.loads(result.stdout) if result.stdout.strip() else {}
