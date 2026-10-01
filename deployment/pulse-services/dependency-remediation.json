@@ -28,5 +28,23 @@
   "modelCheckpointChanged": false,
   "original149FindingsClosed": 0,
   "currentOracleInstalledPackageNotIndependentlyVerified": true,
-  "yanked5_10_0Rejected": true
+  "yanked5_10_0Rejected": true,
+  "expatSecurityCorrection": {
+    "sourceRun": 36814652461,
+    "artifactId": 11140992012,
+    "package": "libexpat1",
+    "observedVersion": "2.5.0-1+deb12u3",
+    "pinnedFixedVersion": "2.5.0-1+deb12u4",
+    "advisorySource": "https://security-tracker.debian.org/tracker/source-package/expat",
+    "reportedHighCves": [
+      "CVE-2024-28757",
+      "CVE-2025-59375",
+      "CVE-2026-25210",
+      "CVE-2026-45186",
+      "CVE-2026-66046",
+      "CVE-2026-93990"
+    ],
+    "scanExclusionsAdded": false,
+    "status": "fresh_image_build_and_scan_required"
+  }
 }

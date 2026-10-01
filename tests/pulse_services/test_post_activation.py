@@ -57,6 +57,11 @@ class OrderGates(unittest.TestCase):
         for field,value in [('id',1),('head_sha','b'*40),('path','other.yml'),('event','push'),('run_attempt',2)]:
             bad=copy.deepcopy(run);bad[field]=value
             with self.subTest(field=field),self.assertRaises(cutover.CutoverError):final.canonical_finalization(bad,jobs,SHA,RUN)
+    def test_document_parser_images_require_patched_expat(self):
+        for component in ('documents','scanner','laya-gateway'):
+            source=(ROOT/'deployment/pulse-services'/('Dockerfile.'+component)).read_text()
+            self.assertIn('libexpat1=2.5.0-1+deb12u4',source)
+            self.assertIn('USER 65534:65534',source)
     def test_failure_finalizer_is_always_and_api_rollback_is_mandatory(self):
         doc=yaml.safe_load((ROOT/'.github/workflows/projectpulse-deploy-test.yml').read_text())
         steps=doc['jobs']['deploy']['steps']
