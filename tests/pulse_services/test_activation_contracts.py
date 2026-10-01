@@ -169,17 +169,32 @@ class NativeAcceptanceEvidence(unittest.TestCase):
         import socket,ssl,json
         for error,code in ((json.JSONDecodeError('PRIVATE_SECRET','PRIVATE_BODY',0),'response_invalid_json'),(ssl.SSLCertVerificationError('PRIVATE_SECRET'),'tls_verification_failed'),(socket.gaierror('PRIVATE_SECRET'),'dns_resolution_failed'),(TimeoutError('PRIVATE_SECRET'),'request_deadline_exceeded')):
             self.assertEqual(self.e.failure_record(error)['diagnostic'],code)
-    def test_instrumentation_does_not_authorize_platform_addresses(self):
+    def test_platform_reserved_addresses_are_authorized_for_internal_container_apps(self):
+        import acceptance,socket
+        from unittest.mock import Mock,patch
+        self.e.set_stage('documents_unauthorized')
+        for address in ('100.100.0.12','100.100.128.12','100.100.160.12','100.100.192.12'):
+            with self.subTest(address=address):
+                client=acceptance.PinnedHTTPS('ca-phd-test-documents-westus3.internal.'+acceptance.DOMAIN)
+                row=(socket.AF_INET,socket.SOCK_STREAM,6,'',(address,443))
+                context=Mock();context.wrap_socket.return_value=Mock()
+                with patch.object(acceptance.socket,'getaddrinfo',return_value=[row]), \
+                     patch.object(acceptance.socket,'create_connection',return_value=Mock()) as connect, \
+                     patch.object(acceptance.ssl,'create_default_context',return_value=context):
+                    client.connect()
+                connect.assert_called_once()
+                self.assertEqual(self.e.failure_record(ValueError())['dnsAddressClasses'],['azure_platform_reserved'])
+    def test_non_private_non_platform_addresses_remain_rejected(self):
         import acceptance,socket
         from unittest.mock import patch
-        self.e.set_stage('documents_unauthorized')
-        client=acceptance.PinnedHTTPS('ca-phd-test-documents-westus3.internal.'+acceptance.DOMAIN)
-        row=(socket.AF_INET,socket.SOCK_STREAM,6,'',('100.100.0.12',443))
-        with patch.object(acceptance.socket,'getaddrinfo',return_value=[row]),patch.object(acceptance.socket,'create_connection') as connect:
-            with self.assertRaisesRegex(ValueError,'private_dns_rejected') as error:client.connect()
-            connect.assert_not_called()
-        record=self.e.failure_record(error.exception)
-        self.assertEqual(record['dnsAddressClasses'],['azure_platform_reserved']);self.assertFalse(record['passed'])
+        for address in ('8.8.8.8','127.0.0.1','169.254.169.254','100.99.255.255','100.100.224.1'):
+            with self.subTest(address=address):
+                client=acceptance.PinnedHTTPS('ca-phd-test-documents-westus3.internal.'+acceptance.DOMAIN)
+                row=(socket.AF_INET,socket.SOCK_STREAM,6,'',(address,443))
+                with patch.object(acceptance.socket,'getaddrinfo',return_value=[row]), \
+                     patch.object(acceptance.socket,'create_connection') as connect:
+                    with self.assertRaisesRegex(ValueError,'private_dns_rejected'):client.connect()
+                    connect.assert_not_called()
     def test_container_includes_diagnostic_helper(self):
         source=(ROOT/'deployment/pulse-services/Dockerfile.documents').read_text()
         self.assertIn('deployment/pulse-services/acceptance_evidence.py',source)
