@@ -547,6 +547,13 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       '.github/workflows/flowhive-psa-installed-acceptance.yml',
       'scripts/release-test/flowhive-psa-admission.mjs'
     ];
+    if (process.env.GITHUB_HEAD_REF === 'feature/pulse-private-services-activation-20260930') {
+      // The exact new block is independently hash-bound; every old execution,
+      // approval and UAT step must remain byte-identical. Other paths stay frozen.
+      execFileSync('python3', ['tests/pulse-activation-release/scope.py']);
+      execFileSync('python3', ['tests/pulse_services/test_release_phase.py']);
+      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
+    }
     if (enterpriseCompletionCorrection) {
       // Application migrations extend the existing Test runner. Pin those exact
       // bytes while proving the candidate, admission and approval remain unchanged.

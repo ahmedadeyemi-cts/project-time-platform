@@ -1,4 +1,4 @@
-"""Only evidence publication changes; execution and authorization remain identical."""
+"""Retain the evidence-only controller regressions; separately verify the additive activation controller."""
 from pathlib import Path
 from copy import deepcopy
 import hashlib
@@ -14,6 +14,11 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTROLLER = '.github/workflows/projectpulse-deploy-test.yml'
 BASE = 'a562371a0bbed74e881c40a4c246928dac9ec72e'
 REGISTRATION = json.loads((ROOT/'tests/security-release/controller_registration.json').read_text())
+_spec=importlib.util.spec_from_file_location('activation_controller_regression',ROOT/'tests/pulse-activation-release/controller.py')
+_activation=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(_activation)
+ACTIVATION_REGISTRATION = json.loads((ROOT/'tests/pulse-activation-release/recovery_registration.json').read_text())
+def historical_controller():
+    return _activation.normalize((ROOT/CONTROLLER).read_bytes())
 
 def load(name):
     spec=importlib.util.spec_from_file_location(name, ROOT/'scripts/release-test'/name)
@@ -23,7 +28,7 @@ def old_bytes():
     return subprocess.check_output(['git','show',BASE+':'+CONTROLLER],cwd=ROOT)
 
 def verify_publication_only(current):
-    original=yaml.safe_load(old_bytes()); secured=yaml.safe_load(current)
+    original=yaml.safe_load(old_bytes()); secured=yaml.safe_load(_activation.normalize(current))
     steps=secured['jobs']['deploy']['steps']
     preparation=[s for s in steps if s.get('id')=='safe_uat_evidence']
     assert len(preparation)==1
@@ -43,8 +48,14 @@ def verify_publication_only(current):
     assert secured==original, 'Execution, permission, concurrency or authorization changed'
 
 class ControllerTests(unittest.TestCase):
+    def test_actual_activation_controller_is_exact_and_additive(self):
+        current=(ROOT/CONTROLLER).read_bytes()
+        self.assertEqual(hashlib.sha256(current).hexdigest(),_activation.CURRENT_SHA256)
+        self.assertEqual(hashlib.sha256(historical_controller()).hexdigest(),_activation.BASE_SHA256)
+        for changed in (current+b'\n',current.replace(b"exit-code: '1'",b"exit-code: '0'",1)):
+            with self.assertRaises(AssertionError):_activation.normalize(changed)
     def test_exact_registered_workflow_and_evidence_only_delta(self):
-        data=(ROOT/CONTROLLER).read_bytes()
+        data=historical_controller()
         self.assertEqual(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest(), REGISTRATION['controllerBlob'])
         self.assertEqual(hashlib.sha256(data).hexdigest(),REGISTRATION['controllerSha256'])
         verify_publication_only(data)
@@ -60,6 +71,8 @@ class ControllerTests(unittest.TestCase):
             old=subprocess.check_output(['git','show',BASE+':'+file],cwd=ROOT,text=True)
             for before,after in edits:
                 self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
+            for before,after in ACTIVATION_REGISTRATION['patches'][file]:
+                self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
             self.assertEqual((ROOT/file).read_text(),old)
     def test_all_five_recovery_contexts_accept_only_exact_current_controller(self):
         current='b'*40
@@ -69,20 +82,23 @@ class ControllerTests(unittest.TestCase):
             class Api:
                 def read(self,*_): return {'object':{'sha':current}}
             env={'GITHUB_REPOSITORY':m.REPOSITORY,'GITHUB_REF':'refs/heads/main','GITHUB_EVENT_NAME':'push','GITHUB_SHA':current,'GITHUB_WORKFLOW_REF':f'{m.REPOSITORY}/{m.SUPERVISOR}@refs/heads/main'}
-            for blob in [REGISTRATION['controllerBlob'],'0'*40]:
+            for blob in [REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],'0'*40]:
                 def git(*args):
                     if args==('rev-parse','HEAD'): return current
                     if args==('rev-parse',f'{current}:{m.DEPLOYMENT}'): return blob
                     if args[0]=='rev-parse': return m.DEPLOYMENT_BLOB
                     return ''
                 with patch.dict(os.environ,env,clear=True),patch.object(m,'git',side_effect=git):
-                    if blob==REGISTRATION['controllerBlob']: self.assertEqual(m.verify_context(Api()),current)
+                    if blob in (REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob']): self.assertEqual(m.verify_context(Api()),current)
                     else:
                         with self.assertRaises(RuntimeError): m.verify_context(Api())
     def test_known_quarantine_base_and_byte_changes(self):
         m=load('verify-module025-quarantine-controller.py')
-        current=(ROOT/CONTROLLER).read_bytes()
+        current=historical_controller()
         self.assertTrue(m.permitted(old_bytes(),current))
+        self.assertTrue(m.permitted(old_bytes(),(ROOT/CONTROLLER).read_bytes()))
+        self.assertFalse(m.permitted(b'unknown base',(ROOT/CONTROLLER).read_bytes()))
+        self.assertFalse(m.permitted(old_bytes(),(ROOT/CONTROLLER).read_bytes()+b'\n'))
         self.assertFalse(m.permitted(b'unknown base',current))
         self.assertFalse(m.permitted(old_bytes(),current+b'\n'))
 

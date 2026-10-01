@@ -78,7 +78,7 @@ jobs:
             --publish 127.0.0.1:5432:5432 --env POSTGRES_PASSWORD \
             --env POSTGRES_USER=postgres --env POSTGRES_DB=laya_ci postgres:16
           for attempt in {1..30}; do
-            if docker exec "laya-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" pg_isready -U postgres -d laya_ci >/dev/null; then
+            if docker exec "laya-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" pg_isready -h 127.0.0.1 -U postgres -d laya_ci >/dev/null; then
               exit 0
             fi
             sleep 1

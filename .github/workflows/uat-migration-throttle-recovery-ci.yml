@@ -52,6 +52,9 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/pulse-private-services-activation-20260930' ]]; then
+            python3 tests/pulse-activation-release/scope.py
+            python3 tests/pulse-activation-release/test_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'feature/pulse-services-cutover-laya-20260930' ]]; then
             python3 tests/pulse-services-release/scope.py
             python3 tests/pulse-services-release/test_scope.py
