@@ -106,3 +106,28 @@ This implementation is not an installed result until the protected run finishes
 and its new activation receipt reports success. Kernel, sockets, signature feed,
 private TLS, role, credentials and rollback remain mandatory live checks. The
 original 149 findings continue to require individual closure evidence.
+
+## PR #1230: full acceptance after service activation
+
+The initial #1229 rollout stopped at the legacy FlowHive planner before reaching
+service activation. A read-only incident projection confirmed `needs_attention`
+and `provider_celar_ai_private_rag_model_not_used`; it did not establish the
+underlying model/evidence cause. No planner gate or model-content requirement is
+weakened by this change, and it is not presented as a model root-cause repair.
+
+The corrected release order is: install API/web; build and scan the service
+images; stage and run native scan/OCR/Laya checks; provisionally select the new
+services; run every existing full application/UAT check; then finalize only if
+all checks passed. The exact previous UAT steps and assertions remain present.
+
+Native readiness writes `pending_application_uat`, not final success. Private
+rollback snapshots remain inside the protected runner until an `always()`
+finalization step. Failed post-activation UAT restores the previous service
+selection and makes the existing API/web rollback mandatory. A successful
+finalizer rechecks local Super Administrator identity and immutable service
+images, removes the owned acceptance job, publishes the final receipt, and
+removes the temporary private evidence. No raw content or secrets are exported.
+
+Changing Test service selection does not change model inference/embedding routes
+or constitute closure of any original security finding. Final installed receipts,
+not source or CI claims, determine whether the requested migration succeeded.

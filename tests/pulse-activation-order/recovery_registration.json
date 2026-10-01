@@ -1,0 +1,62 @@
+{
+  "controllerBlob": "7150435ed8ca175f683dd92bcb3ccaeca556c8d0",
+  "controllerSha256": "6c7d701fc02599626f5fcfb638f4f5d4809e27102dbeb2085ac5c7f81532ca62",
+  "patches": {
+    "scripts/release-test/recover-pr1139-uat-orphan.py": [
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"\n# Exact post-activation full-UAT controller; prior recognized versions retained.\nPULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB = \"7150435ed8ca175f683dd92bcb3ccaeca556c8d0\""
+      ],
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB),",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-uat-orphan.py": [
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"\n# Exact post-activation full-UAT controller; prior recognized versions retained.\nPULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB = \"7150435ed8ca175f683dd92bcb3ccaeca556c8d0\""
+      ],
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB),",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-migration-retry-orphan.py": [
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"\n# Exact post-activation full-UAT controller; prior recognized versions retained.\nPULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB = \"7150435ed8ca175f683dd92bcb3ccaeca556c8d0\""
+      ],
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB),",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1151-uat-supersession.py": [
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"\n# Exact post-activation full-UAT controller; prior recognized versions retained.\nPULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB = \"7150435ed8ca175f683dd92bcb3ccaeca556c8d0\""
+      ],
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB),",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1204-uat-supersession.py": [
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB = \"07efc1eafc6b210e3b038de7b024805912f2ede6\"\n# Exact post-activation full-UAT controller; prior recognized versions retained.\nPULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB = \"7150435ed8ca175f683dd92bcb3ccaeca556c8d0\""
+      ],
+      [
+        "PULSE_SERVICES_DEPLOYMENT_BLOB),",
+        "PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-module025-quarantine-controller.py": [
+      [
+        "def permitted(original, current):\n",
+        "def permitted(original, current):\n    # Exact reviewed reordered controller; every existing UAT gate remains mandatory.\n    if hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256, \"6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff\", \"11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3\") and hashlib.sha256(current).hexdigest() == \"6c7d701fc02599626f5fcfb638f4f5d4809e27102dbeb2085ac5c7f81532ca62\":\n        return True\n"
+      ]
+    ]
+  }
+}

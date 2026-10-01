@@ -17,6 +17,7 @@ REGISTRATION = json.loads((ROOT/'tests/security-release/controller_registration.
 _spec=importlib.util.spec_from_file_location('activation_controller_regression',ROOT/'tests/pulse-activation-release/controller.py')
 _activation=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(_activation)
 ACTIVATION_REGISTRATION = json.loads((ROOT/'tests/pulse-activation-release/recovery_registration.json').read_text())
+ORDER_REGISTRATION = json.loads((ROOT/'tests/pulse-activation-order/recovery_registration.json').read_text())
 def historical_controller():
     return _activation.normalize((ROOT/CONTROLLER).read_bytes())
 
@@ -73,6 +74,8 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
             for before,after in ACTIVATION_REGISTRATION['patches'][file]:
                 self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
+            for before,after in ORDER_REGISTRATION['patches'][file]:
+                self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
             self.assertEqual((ROOT/file).read_text(),old)
     def test_all_five_recovery_contexts_accept_only_exact_current_controller(self):
         current='b'*40
@@ -82,14 +85,14 @@ class ControllerTests(unittest.TestCase):
             class Api:
                 def read(self,*_): return {'object':{'sha':current}}
             env={'GITHUB_REPOSITORY':m.REPOSITORY,'GITHUB_REF':'refs/heads/main','GITHUB_EVENT_NAME':'push','GITHUB_SHA':current,'GITHUB_WORKFLOW_REF':f'{m.REPOSITORY}/{m.SUPERVISOR}@refs/heads/main'}
-            for blob in [REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],'0'*40]:
+            for blob in [REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],'0'*40]:
                 def git(*args):
                     if args==('rev-parse','HEAD'): return current
                     if args==('rev-parse',f'{current}:{m.DEPLOYMENT}'): return blob
                     if args[0]=='rev-parse': return m.DEPLOYMENT_BLOB
                     return ''
                 with patch.dict(os.environ,env,clear=True),patch.object(m,'git',side_effect=git):
-                    if blob in (REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob']): self.assertEqual(m.verify_context(Api()),current)
+                    if blob in (REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob']): self.assertEqual(m.verify_context(Api()),current)
                     else:
                         with self.assertRaises(RuntimeError): m.verify_context(Api())
     def test_known_quarantine_base_and_byte_changes(self):

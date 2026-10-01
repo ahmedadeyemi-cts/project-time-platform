@@ -33,6 +33,8 @@ SELF = "scripts/release-test/verify-pr1151-uat-supersession.py"
 SECURITY_EVIDENCE_DEPLOYMENT_BLOB = "94fe4bf498c3d89347db62749279f566d0c26ce7"
 # Exact additive private-service controller; all run/orphan/approval checks remain.
 PULSE_SERVICES_DEPLOYMENT_BLOB = "07efc1eafc6b210e3b038de7b024805912f2ede6"
+# Exact post-activation full-UAT controller; prior recognized versions retained.
+PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB = "7150435ed8ca175f683dd92bcb3ccaeca556c8d0"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -100,7 +102,7 @@ def verify_context(api: GitHub) -> str:
     require(git("rev-parse", f"{OLD_SHA}:{DEPLOYMENT}") == DEPLOYMENT_BLOB,
             "The pinned historical deployment controller changed")
     require(git("rev-parse", f"{current}:{DEPLOYMENT}") in
-            (DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB),
+            (DEPLOYMENT_BLOB, MIGRATION125_DEPLOYMENT_BLOB, NORMAL_SA_DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB),
             "The deployment controller is not an exact reviewed version")
     git("diff", "--exit-code", "HEAD", "--", DEPLOYMENT, SUPERVISOR, SELF)
     return current

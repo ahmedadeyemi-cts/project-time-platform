@@ -55,8 +55,9 @@ def execute():
             cutover.prepare();cutover.switch()
             receipt=json.loads((safe/'cutover.json').read_text())
             receipt.update(servicesActivated=True,mode='initial_activation',runId=run)
-            remove_success_job()
-        print('PULSE_PRIVATE_SERVICE_PHASE=PASS mode='+receipt['mode'],flush=True)
+        receipt.update(status='pending_application_uat',applicationUatPassed=False)
+        (safe/'cutover.json').write_text(json.dumps(receipt,indent=2)+'\n')
+        print('PULSE_PRIVATE_SERVICES=NATIVE_READY applicationAcceptancePending=true mode='+receipt['mode'],flush=True)
         return 0
     except Exception as error:
         code=str(error) if isinstance(error,(ValueError,cutover.CutoverError)) and re.fullmatch('[a-z_]{1,100}',str(error)) else type(error).__name__
@@ -71,11 +72,16 @@ def execute():
         return 1
     finally:
         (safe/'activation-receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
-        shutil.rmtree(private)
+        if receipt.get('status')=='failed':shutil.rmtree(private)
 
 if __name__=='__main__':
     def interrupted(signum,frame):raise RuntimeError('activation_interrupted')
     signal.signal(signal.SIGTERM,interrupted)
-    try:raise SystemExit(execute())
+    try:
+        if len(sys.argv)>2 or (len(sys.argv)==2 and sys.argv[1]!='finalize'):raise ValueError('invalid_phase')
+        if len(sys.argv)==2:
+            from post_activation_acceptance import finalize
+            raise SystemExit(finalize())
+        raise SystemExit(execute())
     except Exception as error:
         print('PULSE_PRIVATE_SERVICE_INITIALIZATION_FAILED='+type(error).__name__);raise SystemExit(1)

@@ -1,5 +1,5 @@
 """Real orchestration and retained workflow checks with synthetic cloud operations."""
-import copy,hashlib,json,os,subprocess,sys,tempfile,unittest
+import copy,hashlib,json,os,subprocess,sys,tempfile,unittest,importlib.util
 from pathlib import Path
 from unittest.mock import patch
 import yaml
@@ -18,8 +18,9 @@ class Workflow(unittest.TestCase):
         current=(ROOT/WORKFLOW).read_text()
         original=subprocess.check_output(['git','show',BASE+':'+WORKFLOW],cwd=ROOT,text=True)
         self.assertEqual(current.count(START),1);self.assertEqual(current.count(END),1)
-        lo=current.index(START);hi=current.index(END,lo)
-        self.assertEqual(current[:lo]+current[hi:],original)
+        spec=importlib.util.spec_from_file_location('reviewed_order_projection',ROOT/'tests/pulse-activation-release/controller.py')
+        projection=importlib.util.module_from_spec(spec);spec.loader.exec_module(projection)
+        self.assertEqual(projection.normalize(current).decode(),original)
         for path in ['scripts/validate-deployment-concurrency-governance.mjs','.github/workflows/module025-protected-uat-control.yml']:
             self.assertEqual((ROOT/path).read_bytes(),subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT))
     def test_feature_merge_is_pinned_without_requesting_extra_token_permission(self):
@@ -40,11 +41,13 @@ class Workflow(unittest.TestCase):
         a=yaml.safe_load((ROOT/WORKFLOW).read_text());job=a['jobs']['deploy']
         self.assertEqual(job['environment'],'test');self.assertEqual(a['concurrency']['queue'],'max');self.assertFalse(a['concurrency']['cancel-in-progress'])
         steps=job['steps'];names=[s.get('name','') for s in steps]
-        ordered=['Verify normal Solution Architect browser and retained register','Build private Pulse service images']+[f'Scan private Pulse {c} image' for c in ('documents','scanner','laya-gateway','laya')]+['Publish scanned private Pulse service images','Activate and verify private Pulse document and Laya services']
+        ordered=['Seal server-confirmed deployment identity','Build private Pulse service images']+[f'Scan private Pulse {c} image' for c in ('documents','scanner','laya-gateway','laya')]+['Publish scanned private Pulse service images','Activate and verify private Pulse document and Laya services']
         positions=[names.index(n) for n in ordered];self.assertEqual(positions,sorted(positions))
         for name in ordered[1:]:
             step=steps[names.index(name)]
             self.assertIn("inputs.release_branch == 'main'",step['if']);self.assertIn("inputs.acceptance_scope == 'full'",step['if']);self.assertIn('success()',step['if'])
+        self.assertLess(names.index('Activate and verify private Pulse document and Laya services'),names.index('Run protected-Test authenticated functional UAT'))
+        self.assertLess(names.index('Verify normal Solution Architect browser and retained register'),names.index('Finalize private Pulse activation after full application acceptance'))
         for step in steps:
             if step.get('name','').startswith('Scan private Pulse'):
                 self.assertEqual(str(step['with']['exit-code']),'1');self.assertIn('CRITICAL',step['with']['severity']);self.assertRegex(step['uses'],r'@[0-9a-f]{40}$')
@@ -86,13 +89,15 @@ class Orchestration(unittest.TestCase):
         self.events=[]
     def mocks(self):
         return patch.object(phase,'initialize',return_value=(self.source,self.run,self.safe,self.private)),patch.object(phase,'fingerprint',return_value=self.fp)
-    def test_success_runs_prepare_switch_and_cleanup_in_order(self):
+    def test_native_success_retains_rollback_until_full_application_uat(self):
         def switched():
             self.events.append('switch');(self.safe/'cutover.json').write_text(json.dumps({'status':'passed','sourceSha':self.source}))
         a,b=self.mocks()
         with a,b,patch.object(phase,'installed_selection',return_value=False),patch.object(cutover,'prepare',side_effect=lambda:self.events.append('prepare')),patch.object(cutover,'switch',side_effect=switched),patch.object(phase,'remove_success_job',side_effect=lambda:self.events.append('cleanup')),patch.object(cutover,'rollback') as rollback:
             self.assertEqual(phase.execute(),0);rollback.assert_not_called()
-        self.assertEqual(self.events,['prepare','switch','cleanup']);self.assertFalse(self.private.exists())
+        self.assertEqual(self.events,['prepare','switch']);self.assertTrue(self.private.exists())
+        receipt=json.loads((self.safe/'activation-receipt.json').read_text())
+        self.assertEqual(receipt['status'],'pending_application_uat');self.assertFalse(receipt['applicationUatPassed'])
         self.assertTrue(json.loads((self.safe/'activation-receipt.json').read_text())['servicesActivated'])
     def test_failed_staging_never_switches_and_attempts_rollback(self):
         a,b=self.mocks()

@@ -1,0 +1,10 @@
+{
+  "name": "libexpat",
+  "upstreamVersion": "2.8.5",
+  "packageVersion": "2.8.5-0pulse1",
+  "sourceUrl": "https://github.com/libexpat/libexpat/releases/download/R_2_8_5/expat-2.8.5.tar.xz",
+  "sourceSha256": "1e727b8933ec51a77a9a9d9afcf8e688bce45d907c13e36ab7393fe36e703182",
+  "upstreamRelease": "https://github.com/libexpat/libexpat/releases/tag/R_2_8_5",
+  "license": "MIT",
+  "reason": "Debian live Bookworm indexes still serve 2.5.0-1+deb12u3; fixed upstream is built and tested without scan exclusions."
+}
