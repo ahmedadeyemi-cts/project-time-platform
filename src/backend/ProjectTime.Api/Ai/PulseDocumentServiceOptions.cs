@@ -79,7 +79,9 @@ public sealed class PulseDocumentServiceOptions
         return new Uri(Origin + path);
     }
     public static bool AddressesApproved(IReadOnlyCollection<IPAddress> addresses) =>
-        addresses.Count > 0 && addresses.All(PulseAiPrivateEndpointPolicy.IsConnectablePrivateAddress);
+        addresses.Count > 0 && addresses.All(address =>
+            PulseAiPrivateEndpointPolicy.IsConnectablePrivateAddress(address)
+            || PulseAiPrivateEndpointPolicy.IsAzureContainerAppsPlatformAddress(address));
     public async Task<PulseAiPrivateEndpointPolicy.ResolutionResult> ResolveAsync(string path, CancellationToken token)
     {
         if (!Valid) return new(false, null, ErrorCode, 0);

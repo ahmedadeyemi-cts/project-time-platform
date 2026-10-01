@@ -32,9 +32,9 @@ foreach(var (key,value) in new[]{("MODE","unknown"),("ORIGIN","http://localhost"
 }
 d["PROJECTPULSE_ENVIRONMENT"]="production";Require(!Read().Valid,"No Production activation");d["PROJECTPULSE_ENVIRONMENT"]="test";
 Require(!JsonSerializer.Serialize(good).Contains(new string('q',64)),"Laya credential omitted from JSON");
-foreach(var ip in new[]{"127.0.0.1","169.254.169.254","8.8.8.8","::1","fe80::1"})Require(!PulseLayaServiceOptions.AddressesApproved([IPAddress.Parse(ip)]),"Laya rejects unsafe destination "+ip);
-Require(PulseLayaServiceOptions.AddressesApproved([IPAddress.Parse("10.1.2.3")]),"Private Laya address accepted");
-Require(!PulseLayaServiceOptions.AddressesApproved([IPAddress.Parse("10.1.2.3"),IPAddress.Parse("8.8.8.8")]),"Mixed DNS rejected");
+foreach(var ip in new[]{"127.0.0.1","169.254.169.254","8.8.8.8","::1","fe80::1","100.99.255.255","100.100.224.1","100.101.0.1"})Require(!PulseLayaServiceOptions.AddressesApproved([IPAddress.Parse(ip)]),"Laya rejects unsafe destination "+ip);
+foreach(var ip in new[]{"10.1.2.3","100.100.0.12","100.100.128.12","100.100.160.12","100.100.192.12"})Require(PulseLayaServiceOptions.AddressesApproved([IPAddress.Parse(ip)]),"Private Laya address accepted "+ip);
+Require(!PulseLayaServiceOptions.AddressesApproved([IPAddress.Parse("100.100.0.12"),IPAddress.Parse("8.8.8.8")]),"Mixed DNS rejected");
 foreach(var path in new[]{"/v1/scan","/v1/chat/completions","/health","/v1/decisions/document-type?url=x"}){
  var rejected=false;try{good.Endpoint(path);}catch(PulseLayaServiceException){rejected=true;}Require(rejected,"Laya cannot use unrelated paths");
 }

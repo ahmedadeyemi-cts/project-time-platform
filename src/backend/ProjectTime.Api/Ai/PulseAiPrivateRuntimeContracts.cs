@@ -402,6 +402,18 @@ public static class PulseAiPrivateEndpointPolicy
     /// addresses are intentionally excluded even when an endpoint hostname was
     /// already approved by the application-level allowlist.
     /// </summary>
+    internal static bool IsAzureContainerAppsPlatformAddress(IPAddress address)
+    {
+        if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+        if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork) return false;
+        var bytes = address.GetAddressBytes();
+        if (bytes[0] != 100 || bytes[1] != 100) return false;
+        return bytes[2] <= 127
+            || bytes[2] is >= 128 and <= 159
+            || bytes[2] is >= 160 and <= 191
+            || bytes[2] is >= 192 and <= 223;
+    }
+
     internal static bool IsConnectablePrivateAddress(IPAddress address)
     {
         if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
