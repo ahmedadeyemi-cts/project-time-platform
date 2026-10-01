@@ -120,6 +120,34 @@ class StatePreservationTests(unittest.TestCase):
             with self.subTest(name=name), self.assertRaises(ValueError):
                 require_new_service_names({resources.API, name}, set(resources.APPS.values()))
 
+    def test_failed_canonical_unselected_orphans_can_be_recovered(self):
+        old_source='c'*40;old_run='202'
+        records=[]
+        for name in resources.APPS.values():
+            body=state(revision=name+'--svc-'+old_run,run=old_run)
+            body['tags']['source']=old_source
+            records.append(body)
+        prior={'conclusion':'failure','event':'workflow_dispatch','head_branch':'main','head_sha':old_source,
+               'path':'.github/workflows/projectpulse-deploy-test.yml'}
+        deletes=[]
+        with patch.object(cutover,'get_app',side_effect=records),patch.object(cutover,'gh',return_value=prior),              patch.object(cutover,'rest',side_effect=lambda method,path,*args:deletes.append((method,path))):
+            self.assertTrue(cutover.recover_failed_orphan_services(set(resources.APPS.values())))
+        self.assertEqual(deletes,[("DELETE",resources.ROOT+'/providers/Microsoft.App/containerApps/'+name) for name in resources.APPS.values()])
+
+    def test_orphan_recovery_rejects_partial_unowned_or_nonfailed_resources(self):
+        desired=set(resources.APPS.values())
+        with patch.object(cutover,'get_app') as read,patch.object(cutover,'rest') as writes:
+            with self.assertRaises(cutover.CutoverError):cutover.recover_failed_orphan_services({next(iter(desired))})
+            read.assert_not_called();writes.assert_not_called()
+        old_source='c'*40;old_run='202';records=[]
+        for name in resources.APPS.values():
+            body=state(revision=name+'--svc-'+old_run,run=old_run);body['tags']['source']=old_source;records.append(body)
+        prior={'conclusion':'success','event':'workflow_dispatch','head_branch':'main','head_sha':old_source,
+               'path':'.github/workflows/projectpulse-deploy-test.yml'}
+        with patch.object(cutover,'get_app',side_effect=records),patch.object(cutover,'gh',return_value=prior),patch.object(cutover,'rest') as writes:
+            with self.assertRaises(cutover.CutoverError):cutover.recover_failed_orphan_services(desired)
+            writes.assert_not_called()
+
     def test_actual_prepare_rejects_collision_before_storage_or_resource_writes(self):
         images = {n: resources.ACR + "/pulse-services-" + n + "@sha256:" + "a" * 64 for n in resources.COMPONENTS}
         path = cutover.PRIVATE / "images.json"
@@ -127,7 +155,7 @@ class StatePreservationTests(unittest.TestCase):
         with patch.dict(os.environ, {"PULSE_IMAGE_MANIFEST": str(path)}), \
              patch.object(cutover, "preflight"), patch.object(cutover, "az", return_value=[{"name": NAME}]), \
              patch.object(cutover, "signatures") as storage, patch.object(cutover, "rest") as writes:
-            with self.assertRaises(ValueError): cutover.prepare()
+            with self.assertRaises(cutover.CutoverError): cutover.prepare()
             storage.assert_not_called()
             writes.assert_not_called()
 

@@ -19,6 +19,11 @@ def run(args,json_output=True):
     return json.loads(p.stdout) if json_output and p.stdout.strip() else p.stdout
 
 def az(*args):return run(['az',*args,'--only-show-errors','-o','json'])
+def az_stage(code,*args):
+    try:return az(*args)
+    except CutoverError as error:
+        if str(error)=='command_failed_az':raise CutoverError(code) from None
+        raise
 def gh(path):return run(['gh','api','repos/'+REPO+'/'+path])
 def write_private(path,body):
     fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
@@ -166,6 +171,28 @@ def journal(record):
     fd=os.open(path,os.O_WRONLY|os.O_APPEND|os.O_CREAT|os.O_NOFOLLOW,0o600)
     with os.fdopen(fd,'w') as f:f.write(json.dumps(record)+'\n')
 
+def recover_failed_orphan_services(app_names):
+    desired=set(APPS.values());existing=set(app_names).intersection(desired)
+    if not existing:return False
+    check(existing==desired,'partial_orphan_inventory_requires_review')
+    records=[get_app(name) for name in APPS.values()]
+    tags=[record.get('tags',{}) for record in records]
+    source=tags[0].get('source','');run_id=tags[0].get('deploymentRun','')
+    check(run_id!=RUN,'current_run_resource_collision')
+    for record in records:require_cleanup_ownership(record,source,run_id,application=True)
+    check(all(record.get('tags',{}).get('source')==source and record.get('tags',{}).get('deploymentRun')==run_id for record in records),
+          'orphan_identity_mismatch')
+    prior=gh('actions/runs/'+run_id)
+    check(prior.get('conclusion')=='failure' and prior.get('event')=='workflow_dispatch'
+          and prior.get('head_branch')=='main' and prior.get('head_sha')==source
+          and prior.get('path')=='.github/workflows/projectpulse-deploy-test.yml',
+          'orphan_prior_run_not_failed_canonical')
+    for name in APPS.values():
+        rest('DELETE',ROOT+'/providers/Microsoft.App/containerApps/'+name)
+    print('PULSE_ORPHAN_RECOVERY=PASS priorFailedRun='+run_id+' selectedRoutes=false')
+    return True
+
+
 def cleanup_staged():
     path=PRIVATE/'resource-journal.jsonl'
     if not path.exists():return
@@ -190,7 +217,9 @@ def cleanup_staged():
 def prepare():
     preflight()
     images=json.loads(Path(os.environ['PULSE_IMAGE_MANIFEST']).read_text());validate_images(images)
-    app_names={x['name'] for x in az('containerapp','list','-g',GROUP)}
+    app_names={x['name'] for x in az_stage('service_inventory_read_failed','containerapp','list','-g',GROUP)}
+    if recover_failed_orphan_services(app_names):
+        app_names={x['name'] for x in az_stage('service_inventory_read_failed','containerapp','list','-g',GROUP)}
     require_new_service_names(app_names,set(APPS.values()))
     signatures()
     credentials={};created=[]
@@ -227,9 +256,10 @@ def prepare():
                 'command':['python3','/opt/pulse-services/acceptance.py'],'resources':{'cpu':0.5,'memory':'1Gi'},'env':job_env}]}}}
     rest('PUT',ROOT+'/providers/Microsoft.App/jobs/'+job,body)
     journal({'kind':'job','name':job,'run':RUN,'source':SHA})
-    execution=az('containerapp','job','start','-g',GROUP,'-n',job);name=execution['name'];end=time.monotonic()+1000
+    execution=az_stage('acceptance_job_start_failed','containerapp','job','start','-g',GROUP,'-n',job)
+    name=execution['name'];end=time.monotonic()+1000
     while time.monotonic()<end:
-        e=az('containerapp','job','execution','show','-g',GROUP,'-n',job,'--job-execution-name',name)
+        e=az_stage('acceptance_job_execution_read_failed','containerapp','job','execution','show','-g',GROUP,'-n',job,'--job-execution-name',name)
         status=e['properties']['status']
         if status=='Succeeded':break
         if status in ('Failed','Stopped','Degraded'):raise CutoverError('private_service_acceptance_failed')
