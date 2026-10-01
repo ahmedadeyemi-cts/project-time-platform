@@ -46,9 +46,11 @@ var dormant=Configuration(); dormant[Prefix+"MODE"]="legacy";
 Require(!Read(dormant).Requested, "explicit rollback retains dormant credentials without using them");
 Require(!options.ToString().Contains(syntheticToken), "configuration text redacts credential");
 Require(!JsonSerializer.Serialize(options).Contains(syntheticToken), "JSON redacts credential");
-foreach (var address in new[] {"10.0.0.1","172.16.2.1","192.168.0.2","fc00::1","::ffff:10.0.0.1"})
+foreach (var address in new[] {"10.0.0.1","172.16.2.1","192.168.0.2","fc00::1","::ffff:10.0.0.1",
+    "100.100.0.12","100.100.128.12","100.100.160.12","100.100.192.12"})
     Require(PulseDocumentServiceOptions.AddressesApproved([IPAddress.Parse(address)]), "private destination: "+address);
-foreach (var address in new[] {"8.8.8.8","127.0.0.1","169.254.169.254","0.0.0.0","::1","fe80::1","::ffff:127.0.0.1"})
+foreach (var address in new[] {"8.8.8.8","127.0.0.1","169.254.169.254","0.0.0.0","::1","fe80::1","::ffff:127.0.0.1",
+    "100.99.255.255","100.100.224.1","100.101.0.1"})
     Require(!PulseDocumentServiceOptions.AddressesApproved([IPAddress.Parse(address)]), "unsafe destination: "+address);
 Require(!PulseDocumentServiceOptions.AddressesApproved([]), "empty DNS fails closed");
 Require(!PulseDocumentServiceOptions.AddressesApproved([IPAddress.Parse("10.0.0.1"),IPAddress.Parse("8.8.8.8")]), "mixed DNS fails closed");

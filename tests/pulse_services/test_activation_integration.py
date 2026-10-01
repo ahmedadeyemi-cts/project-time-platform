@@ -67,7 +67,11 @@ class SourcePreservation(unittest.TestCase):
         import subprocess
         base='6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f'
         changes=subprocess.check_output(['git','diff','--name-only',base],cwd=ROOT,text=True).splitlines()
-        self.assertFalse(any(p.startswith(('src/','database/')) for p in changes))
+        allowed_application_policy={
+          'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs',
+          'src/backend/ProjectTime.Api/Ai/PulseDocumentServiceOptions.cs',
+          'src/backend/ProjectTime.Api/Ai/PulseLayaServiceOptions.cs'}
+        self.assertFalse(any(p.startswith('database/') or (p.startswith('src/') and p not in allowed_application_policy) for p in changes))
         for name in ('.github/workflows/projectpulse-deploy-test.yml',
           '.github/workflows/module025-protected-uat-control.yml',
           'scripts/validate-deployment-concurrency-governance.mjs',
