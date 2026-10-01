@@ -126,8 +126,8 @@ The final multi-region hostname will be `phd-test.onenecklab.com` and will use a
 - Registry: `acrphdtest7825cc`
 - SKU: Premium
 - Primary location: West US 3
-- Geo-replica: East US
-- Zone redundancy: enabled in both regions
+- Geo-replica: none (East US replica removed 2026-09-14, cost review — no Container Apps environment exists in East US to consume it)
+- Zone redundancy: enabled in West US 3
 - Admin user: disabled
 - Public access: temporarily enabled for image build and migration
 - West private endpoint: `pe-phd-test-acr-westus3`
@@ -213,7 +213,7 @@ The generated West Container Apps zone contains a wildcard A record pointing to 
 - Database: `project_health_dashboard`
 - Public network access: disabled
 - Private delegated subnet: `vnet-phd-test-westus3/snet-postgresql`
-- High availability: SameZone, healthy, with both instances in zone 1 due regional capacity
+- High availability: **Disabled** (2026-09-14, cost review). Was SameZone HA, both instances in zone 1 due to regional capacity. Disabling removes the standby instance only; no data loss. Re-enabling is a single online operation (`az postgres flexible-server update --high-availability SameZone`), no rebuild required.
 - Initial source export restore and validation: passed
 
 The East US PostgreSQL read replica is deferred because Azure reports a subscription-level regional provisioning restriction. No replica resource exists and no replica billing has started.
@@ -261,6 +261,47 @@ The first AZ-06B validation displayed `LOCATION_MATCH=no` because Azure returned
 4. AZ-05A completed without corrective action. The change-feed retention argument produced a preview warning only.
 5. AZ-06B initially treated the display location `West US 3` as different from canonical location `westus3`; normalization was added and no resource repair was required.
 6. Do not rerun completed creation scripts unless the script is explicitly idempotent and the reason for rerunning is documented.
+
+## Cost review changes (2026-09-14)
+
+The test-subscription budget is $200/month (`project-health-dashboard-test-monthly-200`); actual spend was running ~$838/month. A cost review of the deployed resources against that budget produced these changes:
+
+| Change | Est. monthly savings | Status |
+|---|---:|---|
+| Deleted completed database-migration VM, disk, and NIC (`rg-project-health-dashboard-test-migration-eastus`) | ~$5 | Done |
+| Removed unused ACR East US geo-replication (no Container Apps environment exists there to consume it) | ~$49 | Done |
+| Disabled PostgreSQL Same-Zone HA on `pg-phd-test-w3-7825cc` | ~$126 | Done |
+| Removed idle East US network/monitoring stack: NAT Gateway `nat-phd-test-aca-eastus`, public IPs `pip-phd-test-ingress-eastus`/`pip-phd-test-egress-eastus`, Log Analytics workspace `log-phd-test-eastus`, Application Insights `appi-phd-test-eastus` (with its Failure Anomalies alert rule), and the unused managed identity `id-phd-test-app-eastus` | ~$60-110 | Done (2026-09-16) |
+| Downgraded `agw-phd-test-westus3` from WAF_v2 to Standard_v2 (~$284 → ~$158/month); WAF policy `waf-phd-test-westus3` was detached, not deleted, so re-attaching WAF_v2 is a single reversible SKU update | ~$126 | Done (2026-09-16) |
+
+All items from the cost review are now resolved.
+
+The East US VNet, NSGs, route tables, private endpoints (ACR/KV/Blob), and Key Vault `kv-phd-t-eus-7825cc` were deliberately left in place — removing them would mean tearing down the East US DR posture entirely, which is a separate decision from clearing idle compute/monitoring spend.
+
+## Extended cost review (2026-09-17)
+
+Two more items found during a follow-up pass, applied while Ahmed was offline and no one was actively using the environment:
+
+| Change | Est. monthly savings | Status |
+|---|---:|---|
+| Deleted orphaned West US 3 network interface `nic-phd-test-db-migrate-w3` (unattached leftover from the same migration VM cleanup as the East US entry above) | $0 (already unattached, no billing) | Done (2026-09-17) |
+| Downsized `pg-phd-test-w3-7825cc` from General Purpose `Standard_D2ds_v4` to Burstable `Standard_B2s` — 7-day metrics showed 5.8% avg CPU (7.6% peak) and ~25% memory, well within Burstable capacity | ~$80 | Done (2026-09-17) |
+
+One item considered and rejected: setting Container Apps `ca-phd-test-api-westus3`/`ca-phd-test-web-westus3` min-replicas to 0. The Application Gateway health probe (`probe-phd-test-web-health`) polls `/health` every 30 seconds with a 20-second timeout — well inside Container Apps' idle-scale-down window, so the probe traffic would keep a replica warm continuously (no real savings) while risking probe-failure flapping if a cold start ever exceeded 20 seconds. Not implemented.
+
+## Restoring these changes
+
+Every cost-review change is reversible. In rough order of how quickly you'd want each one back if this environment moves toward production:
+
+| Change | Restore command | Notes |
+|---|---|---|
+| Postgres downsize (B2s → D2ds_v4) | `az postgres flexible-server update -g rg-project-health-dashboard-test-data-westus3 -n pg-phd-test-w3-7825cc --sku-name Standard_D2ds_v4 --tier GeneralPurpose --yes` | Triggers a restart (2-5 min downtime), same as the downsize itself |
+| Postgres Same-Zone HA | `az postgres flexible-server update -g rg-project-health-dashboard-test-data-westus3 -n pg-phd-test-w3-7825cc --high-availability SameZone` | Online, no data loss; `--high-availability` is deprecated in favor of `--zonal-resiliency Enabled` but both work on the current CLI |
+| Application Gateway WAF_v2 | `az network application-gateway update -n agw-phd-test-westus3 -g rg-project-health-dashboard-test-network-westus3 --sku WAF_v2 --set sku.tier=WAF_v2 firewallPolicy.id="/subscriptions/cd32baeb-7b71-4bc0-8ea3-9f23a50903fe/resourceGroups/rg-project-health-dashboard-test-network-westus3/providers/Microsoft.Network/ApplicationGatewayWebApplicationFirewallPolicies/waf-phd-test-westus3"` | The policy `waf-phd-test-westus3` was never deleted, only detached; before production, switch its mode from Detection to Prevention |
+| ACR East US geo-replication | `az acr replication create --registry acrphdtest7825cc --location eastus` | Only useful once an East US Container Apps environment exists again to pull from it |
+| East US network/monitoring stack | Re-run `deployment/azure/scripts/az03b-public-ip-egress-foundation.sh` and `deployment/azure/scripts/az04-shared-services.sh` | These are the original provisioning scripts (idempotent creates); West US 3 resources are untouched so only the missing East US pieces get recreated. Not tested as a re-run in this review. |
+| West US 3 migration NIC | `az network nic create --name nic-phd-test-db-migrate-w3 --resource-group rg-project-health-dashboard-test-data-westus3 --vnet-name vnet-phd-test-westus3 --subnet snet-management --private-ip-address 10.30.7.4` | Recreates an equivalent NIC, not the literal original resource; nothing currently depends on it |
+| Migration VM/disk/NIC (East US) | Not applicable | The VM had already completed its one-time job; there's nothing to restore |
 
 ## Next action
 
