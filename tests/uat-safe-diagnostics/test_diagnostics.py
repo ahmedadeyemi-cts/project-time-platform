@@ -195,6 +195,56 @@ class DiagnosticTests(unittest.TestCase):
         p = self.source / 'uat-http-diagnostics.ndjson'; p.write_text('{}\n' * 513)
         self.assertEqual(self.project()['httpEvidence'], {'state': 'over_budget', 'observations': []})
 
+    def test_http_records_match_actual_multiline_jq_writer(self):
+        workflow = (ROOT / '.github/workflows/projectpulse-deploy-test.yml').read_text()
+        self.assertIn("'{name:$name,path:$path,attempt:$attempt,curlExit:$curlExit,httpStatus:$httpStatus,contentType:$contentType,bodyBytes:$bodyBytes}'", workflow)
+        chunks = []
+        for name, status in [('Project Management summary', '200'), ('Customer directory', '403')]:
+            chunks.append(subprocess.check_output(['jq', '-n', '--arg', 'name', name,
+                '--arg', 'path', 'SENTINEL_private_path', '--argjson', 'attempt', '1',
+                '--argjson', 'curlExit', '0', '--arg', 'httpStatus', status,
+                '--arg', 'contentType', 'SENTINEL_private_type', '--argjson', 'bodyBytes', '987654',
+                '{name:$name,path:$path,attempt:$attempt,curlExit:$curlExit,httpStatus:$httpStatus,contentType:$contentType,bodyBytes:$bodyBytes}']))
+        (self.source / 'uat-http-diagnostics.ndjson').write_bytes(b''.join(chunks))
+        result = self.project()['httpEvidence']
+        self.assertEqual(result, {'state': 'recorded', 'observations': [
+            {'stage': 'project_management', 'httpStatus': '200', 'transportSucceeded': True},
+            {'stage': 'customers', 'httpStatus': '403', 'transportSucceeded': True}]})
+        self.assertNotIn('SENTINEL', json.dumps(result)); self.assertNotIn('987654', json.dumps(result))
+
+    def test_http_pretty_record_budget_counts_objects_not_lines(self):
+        row = {'name': 'Customer directory', 'httpStatus': '200', 'curlExit': 0}
+        p = self.source / 'uat-http-diagnostics.ndjson'
+        p.write_text(''.join(json.dumps(row, indent=2) + '\n' for _ in range(512)))
+        result = self.project()['httpEvidence']
+        self.assertEqual(result['state'], 'recorded'); self.assertEqual(len(result['observations']), 512)
+        with p.open('a') as stream: stream.write(json.dumps(row, indent=2))
+        self.assertEqual(self.project()['httpEvidence'], {'state': 'over_budget', 'observations': []})
+
+    def test_http_invalid_stream_discards_all_partial_observations(self):
+        valid = json.dumps({'name': 'Customer directory', 'httpStatus': '200', 'curlExit': 0}).encode()
+        p = self.source / 'uat-http-diagnostics.ndjson'
+        for suffix in (b'SENTINEL', b'{', b'{"name":"x","name":"y"}', b'{"x":NaN}', b'[]', b'null', b'\xff'):
+            with self.subTest(suffix=suffix):
+                p.write_bytes(valid + b'\n' + suffix)
+                self.assertEqual(self.project()['httpEvidence'], {'state': 'invalid_json', 'observations': []})
+
+    def test_http_record_separator_is_required(self):
+        row = b'{"name":"Customer directory","httpStatus":"200","curlExit":0}'
+        (self.source / 'uat-http-diagnostics.ndjson').write_bytes(row + row)
+        self.assertEqual(self.project()['httpEvidence'], {'state': 'invalid_json', 'observations': []})
+
+    def test_http_depth_is_bounded_for_each_pretty_record(self):
+        (self.source / 'uat-http-diagnostics.ndjson').write_text('{"private":' + '['*65 + '0' + ']'*65 + '}')
+        self.assertEqual(self.project()['httpEvidence'], {'state': 'invalid_json', 'observations': []})
+
+    def test_http_escaped_brackets_do_not_change_record_boundaries(self):
+        row = {'name': 'Customer directory', 'httpStatus': '200', 'curlExit': 0,
+               'private': '[{}]\n' * 100 + '\\"SENTINEL'}
+        (self.source / 'uat-http-diagnostics.ndjson').write_text(json.dumps(row, indent=2) + '\n')
+        result = self.project()['httpEvidence']
+        self.assertEqual(len(result['observations']), 1); self.assertNotIn('SENTINEL', json.dumps(result))
+
     def test_publisher_modes_and_original_summary_preserved(self):
         self.write('uat-summary.json', {'status': 'passed', 'productionMutation': False, 'private': 'SENTINEL'})
         self.write('module064-provider-routing-smoke.json', model('local'))
