@@ -131,3 +131,22 @@ removes the temporary private evidence. No raw content or secrets are exported.
 Changing Test service selection does not change model inference/embedding routes
 or constitute closure of any original security finding. Final installed receipts,
 not source or CI claims, determine whether the requested migration succeeded.
+
+## Registry publication verification
+
+Publication verifies each immutable Azure registry manifest against the exact
+scanned configuration digest without a redundant local download/unpack. Only
+recognized Docker/OCI manifests and bounded content-addressed layer descriptors
+are accepted; external layer URLs and image indexes are rejected. Metadata reads
+can retry transient visibility/network errors three times; mutations and
+authorization failures are not retried. Failure receipts contain fixed codes only.
+
+The September 30 release reached the registry for documents and Laya with
+matching scanned configuration IDs before failing during publication. The exact
+original subprocess error was not available for review; no particular network,
+disk or authorization cause is asserted. This repair removes the redundant pull
+and adds diagnosable bounded readback. Actual protected activation and full UAT
+remain required before any success or security-finding closure is claimed.
+
+Manifest reference: https://learn.microsoft.com/en-us/cli/azure/acr/manifest
+Content identity: https://github.com/opencontainers/image-spec/blob/main/config.md

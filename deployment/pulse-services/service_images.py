@@ -1,7 +1,7 @@
 """Build and publish the exact scanned service images within protected Test.
 No account or application secrets are needed by this process.
 """
-import hashlib,json,os,re,subprocess,sys
+import hashlib,json,os,re,subprocess,sys,time
 from pathlib import Path
 from test_resources import ACR,COMPONENTS,validate_images,APPS,GROUP,API,runtime_identity_isolated
 ROOT=Path(__file__).resolve().parents[2]
@@ -10,9 +10,66 @@ def require(condition,code):
     if not condition:raise ValueError(code)
 
 def command(args):
-    result=subprocess.run(args,cwd=ROOT,capture_output=True,text=True,timeout=1500)
-    require(result.returncode==0,'image_operation_failed')
+    # Export fixed codes only. Never include command arguments, credentials,
+    # registry responses or raw stderr in an exception or published receipt.
+    prefixes = ((['docker','push'],'docker_push'), (['docker','pull'],'docker_pull'),
+        (['docker','image','inspect'],'docker_inspect'), (['docker','build'],'docker_build'),
+        (['docker','tag'],'docker_tag'), (['az','acr','login'],'registry_login'),
+        (['az','acr','manifest','show'],'registry_manifest'),
+        (['az','acr','repository','show'],'registry_metadata'))
+    operation = next((name for prefix,name in prefixes if args[:len(prefix)]==prefix),'operation')
+    try:
+        result=subprocess.run(args,cwd=ROOT,capture_output=True,text=True,timeout=1500)
+    except subprocess.TimeoutExpired:
+        raise ValueError('image_'+operation+'_timeout') from None
+    if result.returncode != 0:
+        text=(result.stderr or '')[-8192:].lower()
+        patterns=(('unauthorized',('unauthorized','authentication required','authorizationfailed','denied:')),
+            ('disk_full',('no space left on device','disk quota exceeded')),
+            ('not_visible',('manifest unknown','manifest_unknown','name_unknown','not found')),
+            ('throttled',('too many requests','toomanyrequests','429')),
+            ('transport',('connection reset','connection refused','i/o timeout','tls handshake timeout')))
+        category=next((name for name,terms in patterns if any(term in text for term in terms)),'failed')
+        raise ValueError('image_'+operation+'_'+category)
     return result.stdout.strip()
+
+def read_registry(args):
+    require(args[:4] in (['az','acr','manifest','show'],['az','acr','repository','show']),
+        'registry_retry_must_be_read_only')
+    for attempt in range(3):
+        try:
+            return command(args)
+        except ValueError as error:
+            if attempt==2 or not str(error).endswith(('_not_visible','_transport','_timeout','_throttled')):
+                raise
+            time.sleep(attempt+1)
+
+def manifest_verified(manifest,identity):
+    # The immutable registry manifest's config digest is the scanned image ID.
+    # That configuration also commits to the rootfs diff IDs. Azure will pull
+    # the content-addressed layers; a second local unpack is not an identity test.
+    require(isinstance(manifest,dict) and type(manifest.get('schemaVersion')) is int
+        and manifest['schemaVersion']==2 and 'manifests' not in manifest,'registry_manifest_invalid')
+    require(manifest.get('mediaType') in ('application/vnd.docker.distribution.manifest.v2+json',
+        'application/vnd.oci.image.manifest.v1+json'),'registry_manifest_type_invalid')
+    require(re.fullmatch('sha256:[0-9a-f]{64}',identity or '') is not None,'scanned_identity_invalid')
+    config=manifest.get('config')
+    require(isinstance(config,dict) and config.get('digest')==identity
+        and type(config.get('size')) is int and 0<config['size']<=1048576
+        and not config.get('urls') and config.get('mediaType') in
+        ('application/vnd.docker.container.image.v1+json','application/vnd.oci.image.config.v1+json'),
+        'published_image_different_from_scanned')
+    layers=manifest.get('layers')
+    require(isinstance(layers,list) and 1<=len(layers)<=256,'registry_layers_invalid')
+    for layer in layers:
+        require(isinstance(layer,dict) and isinstance(layer.get('digest'),str)
+            and re.fullmatch('sha256:[0-9a-f]{64}',layer['digest']) is not None
+            and type(layer.get('size')) is int and 0<layer['size']<=21474836480
+            and not layer.get('urls') and layer.get('mediaType') in
+            ('application/vnd.docker.image.rootfs.diff.tar.gzip','application/vnd.oci.image.layer.v1.tar',
+             'application/vnd.oci.image.layer.v1.tar+gzip','application/vnd.oci.image.layer.v1.tar+zstd'),
+            'registry_layer_descriptor_invalid')
+    return True
 
 def fingerprint():
     names=command(['git','ls-files','deployment/pulse-services','deployment/pulse-document-processing']).splitlines()
@@ -94,8 +151,8 @@ def build():
         ids[component]=meta['Id'];print('PULSE_IMAGE_BUILT='+component,flush=True)
     (safe/'build-identities.json').write_text(json.dumps({'source':source,'fingerprint':fp,'images':ids,'mode':'verify_existing' if selected else 'initial','installedImages':installed},indent=2)+'\n')
 
-def publish():
-    source,safe=context();receipt=json.loads((safe/'build-identities.json').read_text())
+def _publish(source,safe):
+    receipt=json.loads((safe/'build-identities.json').read_text())
     require(receipt['source']==source and receipt['fingerprint']==fingerprint(),'build_source_mismatch')
     for component in sorted(COMPONENTS):
         meta=inspect(component);require(meta['Id']==receipt['images'][component],'image_changed_after_build')
@@ -110,15 +167,31 @@ def publish():
         tag='pulse-services-'+component+':svc-'+run
         remote=ACR+'/'+tag
         command(['docker','tag','pulse-services-'+component+':cutover',remote]);command(['docker','push',remote])
-        digest=command(['az','acr','repository','show','-n',ACR.split('.')[0],'--image',tag,'--query','digest','-o','tsv','--only-show-errors'])
+        digest=read_registry(['az','acr','repository','show','-n',ACR.split('.')[0],'--image',tag,'--query','digest','-o','tsv','--only-show-errors'])
         require(re.fullmatch('sha256:[0-9a-f]{64}',digest),'registry_digest_missing')
         immutable=ACR+'/pulse-services-'+component+'@'+digest
-        command(['docker','pull',immutable]);remote_meta=json.loads(command(['docker','image','inspect',immutable]))[0]
-        require(remote_meta['Id']==receipt['images'][component],'published_image_different_from_scanned')
+        manifest=json.loads(read_registry(['az','acr','manifest','show','-r',ACR.split('.')[0],
+            '-n','pulse-services-'+component+'@'+digest,'-o','json','--only-show-errors']))
+        manifest_verified(manifest,receipt['images'][component])
         images[component]=immutable
+        (safe/'publication-progress.json').write_text(json.dumps({'source':source,'run':run,
+            'status':'in_progress','verifiedComponents':sorted(images),'rawOutputPublished':False},indent=2)+'\n')
+        print('PULSE_REGISTRY_IMAGE_VERIFIED='+component,flush=True)
     validate_images(images)
     (safe/'registry-images.json').write_text(json.dumps(images,indent=2)+'\n')
     print('PULSE_SCANNED_IMMUTABLE_IMAGES=VERIFIED',flush=True)
+
+def publish():
+    source,safe=context()
+    try:
+        _publish(source,safe)
+        (safe/'publication-status.json').write_text(json.dumps({'source':source,'status':'passed',
+            'rawOutputPublished':False})+'\n')
+    except Exception as error:
+        code=str(error) if isinstance(error,ValueError) and re.fullmatch('[a-z_]{1,100}',str(error)) else type(error).__name__
+        (safe/'publication-status.json').write_text(json.dumps({'source':source,'status':'failed',
+            'diagnostic':code,'rawOutputPublished':False})+'\n')
+        raise
 
 if __name__=='__main__':
     try:
