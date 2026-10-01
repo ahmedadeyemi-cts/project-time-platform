@@ -60,7 +60,13 @@ class OrderGates(unittest.TestCase):
     def test_document_parser_images_require_patched_expat(self):
         for component in ('documents','scanner','laya-gateway'):
             source=(ROOT/'deployment/pulse-services'/('Dockerfile.'+component)).read_text()
-            self.assertIn('libexpat1=2.5.0-1+deb12u4',source)
+            self.assertIn('COPY --from=expat /libexpat1-pulse.deb',source)
+            self.assertIn('/tmp/libexpat1-pulse.deb',source)
+            self.assertIn("e.EXPAT_VERSION == 'expat_2.8.5'",source)
+            build=(ROOT/'deployment/pulse-services/build-expat-package.sh').read_text()
+            self.assertIn('make check',build)
+            self.assertIn('1e727b8933ec51a77a9a9d9afcf8e688bce45d907c13e36ab7393fe36e703182',build)
+            self.assertIn('Version: 2.8.5-0pulse1',build)
             self.assertIn('USER 65534:65534',source)
     def test_failure_finalizer_is_always_and_api_rollback_is_mandatory(self):
         doc=yaml.safe_load((ROOT/'.github/workflows/projectpulse-deploy-test.yml').read_text())

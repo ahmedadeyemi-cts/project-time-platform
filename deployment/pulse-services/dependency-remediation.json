@@ -34,7 +34,6 @@
     "artifactId": 11140992012,
     "package": "libexpat1",
     "observedVersion": "2.5.0-1+deb12u3",
-    "pinnedFixedVersion": "2.5.0-1+deb12u4",
     "advisorySource": "https://security-tracker.debian.org/tracker/source-package/expat",
     "reportedHighCves": [
       "CVE-2024-28757",
@@ -45,6 +44,12 @@
       "CVE-2026-93990"
     ],
     "scanExclusionsAdded": false,
-    "status": "fresh_image_build_and_scan_required"
+    "status": "upstream_build_and_scan_required",
+    "unavailableRepositoryVersion": "2.5.0-1+deb12u4",
+    "upstreamFixedVersion": "2.8.5",
+    "packageVersion": "2.8.5-0pulse1",
+    "sourceSha256": "1e727b8933ec51a77a9a9d9afcf8e688bce45d907c13e36ab7393fe36e703182",
+    "upstreamTestsRequired": true,
+    "runtimeLinkedVersionVerified": true
   }
 }

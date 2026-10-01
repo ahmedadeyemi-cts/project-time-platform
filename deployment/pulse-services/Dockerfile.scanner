@@ -2,9 +2,14 @@ FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev libseccomp-dev linux-libc-dev
 COPY deployment/pulse-services/sandbox.c /src/sandbox.c
 RUN gcc -O2 -Wall -Wextra -Werror /src/sandbox.c -lseccomp -o /pulse-sandbox && gcc -O2 -Wall -Wextra -Werror -fPIC -shared -DPULSE_SHARED /src/sandbox.c -lseccomp -o /libpulse-sandbox.so
+FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251 AS expat
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl make g++ dpkg-dev xz-utils
+COPY deployment/pulse-services/build-expat-package.sh deployment/pulse-services/expat-source.json /build/
+RUN /bin/sh /build/build-expat-package.sh
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 TZ=UTC
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates libexpat1=2.5.0-1+deb12u4 clamav-daemon clamav-freshclam python3 libseccomp2 && rm -rf /var/lib/apt/lists/*
+COPY --from=expat /libexpat1-pulse.deb /tmp/libexpat1-pulse.deb
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates /tmp/libexpat1-pulse.deb clamav-daemon clamav-freshclam python3 libseccomp2 && python3 -c "import xml.parsers.expat as e; assert e.EXPAT_VERSION == 'expat_2.8.5', e.EXPAT_VERSION" && rm /tmp/libexpat1-pulse.deb && rm -rf /var/lib/apt/lists/*
 RUN install -d -m 0770 -o nobody -g nogroup /run/clamav /var/lib/clamav
 COPY --from=isolation /pulse-sandbox /usr/local/bin/pulse-sandbox
 COPY --from=isolation /libpulse-sandbox.so /usr/local/lib/libpulse-sandbox.so
