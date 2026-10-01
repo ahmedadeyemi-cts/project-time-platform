@@ -75,7 +75,7 @@ def public_api(path,session='',payload=None):
     req=urllib.request.Request(ORIGIN+path,data=data,headers=headers,method='GET' if data is None else 'POST')
     try:
         with urllib.request.build_opener(NoRedirect).open(req,timeout=45) as response:
-            raw=response.read(2_000_001);check(len(raw)<=2_000_001,'api_response_budget')
+            raw=response.read(2_000_001);check(len(raw)<=2_000_000,'api_response_budget')
             return response.status,json.loads(raw) if raw else {}
     except urllib.error.HTTPError as error:
         status=error.code;error.close();return status,{}
