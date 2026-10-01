@@ -52,3 +52,28 @@ queue, exact merged-source and accepted-application checks, pre/post local Super
 Administrator login, separately scoped service credentials, scanned images,
 private native acceptance, and rollback. Its filename and hash must be registered
 through the governance-owner's authorized policy-update process before dispatch.
+
+## Canonical-job activation and credential-preservation fixes
+
+The source now provides a server-verified in-job mode for the existing protected
+Test workflow. It accepts its machine actor only when repository, exact source,
+workflow path, branch, first attempt, current job and current activation step all
+match, and every preceding configured release/UAT stage has succeeded. The
+standalone owner-only path still requires a completed accepted deployment. This
+avoids requiring an in-progress job to have already completed, without bypassing
+its prior acceptance or protected environment.
+
+The API credential update no longer sends name-only GET metadata as a replacement
+secret list. It requires the explicit existing-value response, retains Key Vault
+references as references, rejects missing/duplicate/racing inventories and naming
+collisions, and checks that all prior credentials survived before changing routes.
+The tests use synthetic values and make no cloud or real-account calls. Live
+platform preservation semantics still require installed qualification.
+
+A protected-workflow insertion was attempted in this continuation and was blocked
+by the tool before execution. Readback confirmed that the canonical workflow and
+all release controls remain unchanged. No alternative route was used to apply
+that blocked edit. Accordingly the integration mode cannot be invoked by the
+current deployed workflow and must not be executed manually. This source update
+is a readiness repair, not activation, not installed acceptance, and not closure
+of any original security finding.

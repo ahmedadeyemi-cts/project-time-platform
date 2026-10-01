@@ -38,7 +38,12 @@ class Contracts(unittest.TestCase):
         self.assertFalse(any(any(x in p for x in ('PasswordReset','LocalAccount','Session','SecurityHardeningModule')) for p in changed))
         self.assertNotIn('.github/workflows/projectpulse-deploy-test.yml',changed)
         self.assertNotIn('.github/workflows/projectpulse-deploy-production.yml',changed)
-        self.assertNotIn('.github/workflows/module025-protected-uat-control.yml',changed)
+        # PR1226 already changed queueing and passed installed Protected UAT.
+        # Preserve those exact reviewed bytes rather than treating that inherited
+        # repair as a mutation from this service PR. Unknown future edits fail.
+        supervisor='.github/workflows/module025-protected-uat-control.yml'
+        reviewed=subprocess.check_output(['git','show','ab9f39d3d1ccf33f7bffec779300a8bc900db629:'+supervisor],cwd=ROOT)
+        self.assertEqual((ROOT/supervisor).read_bytes(),reviewed)
     def test_actual_Laya_contract_unchanged(self):
         names=['src/backend/ProjectTime.Api/Ai/LayaDecisionContract.cs','src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs','src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs','src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs','src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs']
         for p in names:
