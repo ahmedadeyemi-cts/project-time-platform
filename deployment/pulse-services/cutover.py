@@ -24,6 +24,11 @@ def az_stage(code,*args):
     except CutoverError as error:
         if str(error)=='command_failed_az':raise CutoverError(code) from None
         raise
+def rest_stage(code,method,resource,body=None,version=VERSION):
+    try:return rest(method,resource,body,version)
+    except CutoverError as error:
+        if str(error)=='command_failed_az':raise CutoverError(code) from None
+        raise
 def gh(path):return run(['gh','api','repos/'+REPO+'/'+path])
 def write_private(path,body):
     fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
@@ -40,9 +45,19 @@ def rest(method,resource,body=None,version=VERSION):
     finally:
         if path:path.unlink(missing_ok=True)
 
-def get_app(name):
+def get_app(name,read_code='service_state_read_failed'):
     check(name in {API,*APPS.values()},'application_scope')
-    return az('containerapp','show','-g',GROUP,'-n',name)
+    return az_stage(read_code,'containerapp','show','-g',GROUP,'-n',name)
+
+def wait_app_operation_settled(name,*,read_code='service_state_read_failed',deadline_code='service_operation_settle_deadline'):
+    end=time.monotonic()+900
+    while time.monotonic()<end:
+        app=get_app(name,read_code)
+        state=app.get('properties',{}).get('provisioningState')
+        if state=='Succeeded':return app
+        if state=='Failed':raise CutoverError('service_provisioning_failed')
+        time.sleep(10)
+    raise CutoverError(deadline_code)
 
 def env_map(app):return {v['name']:v for v in app['properties']['template']['containers'][0].get('env',[])}
 def source_matches(app):
@@ -278,14 +293,14 @@ def switch():
     from secret_preservation import existing_payload,merged_payload,unchanged_existing
     resource=ROOT+'/providers/Microsoft.App/containerApps/'+API
     metadata=current['properties']['configuration'].get('secrets',[])
-    retrieved=rest('POST',resource+'/listSecrets')
+    retrieved=rest_stage('api_secret_inventory_read_failed','POST',resource+'/listSecrets')
     preserved=existing_payload(metadata,retrieved)
     additions=[{'name':c['secret'],'value':c['token']} for c in credentials.values()]
     merged=merged_payload(metadata,retrieved,additions)
-    rest('PATCH',resource,{'properties':{'configuration':{'secrets':merged}}})
-    readback=get_app(API)
+    rest_stage('api_secret_update_failed','PATCH',resource,{'properties':{'configuration':{'secrets':merged}}})
+    readback=wait_app_operation_settled(API,read_code='api_secret_update_state_read_failed',deadline_code='api_secret_update_settle_deadline')
     unchanged_existing(preserved,readback['properties']['configuration'].get('secrets',[]),
-        rest('POST',resource+'/listSecrets'))
+        rest_stage('api_secret_readback_failed','POST',resource+'/listSecrets'))
     check(readback['properties']['template']==current['properties']['template'],'api_changed_during_credential_update')
     del retrieved,preserved,merged
     template=copy.deepcopy(before['properties']['template']);env=template['containers'][0].get('env',[])
@@ -293,7 +308,7 @@ def switch():
     for kind,c in credentials.items():env.extend(configuration(kind,c['token'],c['secret'],'PR-1222-'+SHA))
     template['containers'][0]['env']=env;template['revisionSuffix']='psvc-'+RUN
     write_private(PRIVATE/'switch-started.json',{'source':SHA})
-    rest('PATCH',ROOT+'/providers/Microsoft.App/containerApps/'+API,{'properties':{'template':template}})
+    rest_stage('api_route_switch_update_failed','PATCH',ROOT+'/providers/Microsoft.App/containerApps/'+API,{'properties':{'template':template}})
     after=wait_app(API,expected_revision=API+'--psvc-'+RUN);source_matches(after)
     check(after['properties']['template']['containers'][0]['image']==before['properties']['template']['containers'][0]['image'],'api_image_changed')
     check(local_admin(after=True)==pre['adminIdentity'],'local_superadmin_identity_changed')
@@ -309,14 +324,15 @@ def rollback():
     if not (PRIVATE/'switch-started.json').exists():
         cleanup_staged()
         return
-    before=json.loads((PRIVATE/'before.json').read_text());current=get_app(API)
+    before=json.loads((PRIVATE/'before.json').read_text())
+    current=wait_app_operation_settled(API,read_code='rollback_state_read_failed',deadline_code='rollback_operation_settle_deadline')
     check(env_map(current).get('PROJECTPULSE_SOURCE_COMMIT',{}).get('value')==SHA,'rollback_source_changed')
     check(current['properties']['template']['containers'][0]['image']==before['properties']['template']['containers'][0]['image'],'rollback_image_changed')
     old={v['name']:v for v in before['properties']['template']['containers'][0].get('env',[]) if v['name'].startswith(PREFIXES)}
     template=copy.deepcopy(current['properties']['template'])
     template['containers'][0]['env']=[v for v in template['containers'][0].get('env',[]) if not v['name'].startswith(PREFIXES)]+list(old.values())
     template['revisionSuffix']='psvcr-'+RUN
-    rest('PATCH',ROOT+'/providers/Microsoft.App/containerApps/'+API,{'properties':{'template':template}})
+    rest_stage('rollback_route_update_failed','PATCH',ROOT+'/providers/Microsoft.App/containerApps/'+API,{'properties':{'template':template}})
     wait_app(API,expected_revision=API+'--psvcr-'+RUN);check(local_admin()==json.loads((PRIVATE/'preflight.json').read_text())['adminIdentity'],'rollback_admin_check_failed')
     cleanup_staged()
     print('PULSE_SERVICE_ROLLBACK=PASS verified_legacy_route_restored=true')

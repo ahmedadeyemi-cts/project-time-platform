@@ -117,7 +117,7 @@ class CutoverLogic(unittest.TestCase):
         broken=copy.deepcopy(self.before);broken['properties']['latestRevisionName']='broken'
         broken['properties']['template']['containers'][0]['env']+=spec.configuration('documents','q'*64,'synthetic-token','PR-1222-'+cutover.SHA)
         calls=[]
-        with patch.object(cutover,'get_app',return_value=broken),patch.object(cutover,'wait_app',return_value=self.before),patch.object(cutover,'local_admin',return_value='same'),patch.object(cutover,'rest',side_effect=lambda *x:calls.append(x)),patch.object(cutover,'cleanup_staged'):
+        with patch.object(cutover,'wait_app_operation_settled',return_value=broken),patch.object(cutover,'wait_app',return_value=self.before),patch.object(cutover,'local_admin',return_value='same'),patch.object(cutover,'rest_stage',side_effect=lambda *x:calls.append(x[1:])),patch.object(cutover,'cleanup_staged'):
             cutover.rollback()
         self.assertEqual(len(calls),1);self.assertEqual(calls[0][0],'PATCH')
         body=calls[0][2];self.assertEqual(body['properties']['template']['containers'][0]['env'],self.env)
@@ -143,6 +143,19 @@ class CutoverLogic(unittest.TestCase):
                 cutover.az_stage('acceptance_job_start_failed','containerapp','job','start')
             with self.assertRaisesRegex(cutover.CutoverError,'acceptance_job_execution_read_failed'):
                 cutover.az_stage('acceptance_job_execution_read_failed','containerapp','job','execution','show')
+    def test_cutover_rest_failures_have_finite_operation_codes(self):
+        with patch.object(cutover,'rest',side_effect=cutover.CutoverError('command_failed_az')):
+            with self.assertRaisesRegex(cutover.CutoverError,'api_secret_update_failed'):
+                cutover.rest_stage('api_secret_update_failed','PATCH','/subscriptions/'+cutover.SUB+'/fixture',{})
+    def test_operation_wait_serializes_in_progress_before_success(self):
+        states=[{'properties':{'provisioningState':'InProgress'}},{'properties':{'provisioningState':'Succeeded'}}]
+        with patch.object(cutover,'get_app',side_effect=states) as read,patch.object(cutover.time,'sleep') as sleep:
+            result=cutover.wait_app_operation_settled(cutover.API,read_code='fixture_read',deadline_code='fixture_deadline')
+        self.assertEqual(result['properties']['provisioningState'],'Succeeded');self.assertEqual(read.call_count,2);sleep.assert_called_once_with(10)
+    def test_operation_wait_rejects_failed_state(self):
+        with patch.object(cutover,'get_app',return_value={'properties':{'provisioningState':'Failed'}}):
+            with self.assertRaisesRegex(cutover.CutoverError,'service_provisioning_failed'):
+                cutover.wait_app_operation_settled(cutover.API)
 class SignatureStorage(unittest.TestCase):
     def setUp(self):
         import signature_storage
