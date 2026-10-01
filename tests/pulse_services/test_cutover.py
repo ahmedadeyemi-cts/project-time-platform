@@ -137,6 +137,12 @@ class CutoverLogic(unittest.TestCase):
             with patch.object(cutover,'rest') as remote:
                 with self.assertRaises(cutover.CutoverError):cutover.cleanup_staged()
                 remote.assert_not_called()
+    def test_acceptance_job_azure_failures_have_finite_operation_codes(self):
+        with patch.object(cutover,'az',side_effect=cutover.CutoverError('command_failed_az')):
+            with self.assertRaisesRegex(cutover.CutoverError,'acceptance_job_start_failed'):
+                cutover.az_stage('acceptance_job_start_failed','containerapp','job','start')
+            with self.assertRaisesRegex(cutover.CutoverError,'acceptance_job_execution_read_failed'):
+                cutover.az_stage('acceptance_job_execution_read_failed','containerapp','job','execution','show')
 class SignatureStorage(unittest.TestCase):
     def setUp(self):
         import signature_storage

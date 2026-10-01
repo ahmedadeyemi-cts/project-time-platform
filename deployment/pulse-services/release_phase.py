@@ -65,9 +65,11 @@ def execute():
         try:
             if initial_started:cutover.rollback()
             receipt['rollbackCompleted']=True
-        except Exception:
-            receipt['rollbackCompleted']=False
-            print('PULSE_PRIVATE_SERVICE_ROLLBACK_REQUIRES_REVIEW',flush=True)
+        except Exception as rollback_error:
+            rollback_code=(str(rollback_error) if isinstance(rollback_error,(ValueError,cutover.CutoverError))
+                           and re.fullmatch('[a-z_]{1,100}',str(rollback_error)) else type(rollback_error).__name__)
+            receipt['rollbackCompleted']=False;receipt['rollbackDiagnostic']=rollback_code
+            print('PULSE_PRIVATE_SERVICE_ROLLBACK_REQUIRES_REVIEW diagnostic='+rollback_code,flush=True)
         print('PULSE_PRIVATE_SERVICE_PHASE=FAILED diagnostic='+code,flush=True)
         return 1
     finally:
