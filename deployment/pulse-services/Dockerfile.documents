@@ -14,7 +14,7 @@ COPY --from=isolation /pulse-sandbox /usr/local/bin/pulse-sandbox
 COPY --from=isolation /libpulse-sandbox.so /usr/local/lib/libpulse-sandbox.so
 COPY deployment/pulse-document-processing/clamd_client.py deployment/pulse-document-processing/gateway.py deployment/pulse-document-processing/ocr_job.py /opt/pulse-documents/
 COPY deployment/pulse-services/runtime.py deployment/pulse-services/docs_wsgi.py deployment/pulse-services/gunicorn.conf.py /opt/pulse-services/
-COPY deployment/pulse-services/acceptance.py deployment/pulse-services/test_resources.py deployment/pulse-services/laya_protocol.py deployment/pulse-services/activation_contracts.py /opt/pulse-services/
+COPY deployment/pulse-services/acceptance.py deployment/pulse-services/acceptance_evidence.py deployment/pulse-services/test_resources.py deployment/pulse-services/laya_protocol.py deployment/pulse-services/activation_contracts.py /opt/pulse-services/
 ENV PYTHONPATH=/opt/pulse-documents:/opt/pulse-services
 WORKDIR /opt/pulse-services
 USER 65534:65534
