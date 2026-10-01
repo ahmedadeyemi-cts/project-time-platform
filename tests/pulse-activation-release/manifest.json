@@ -3,6 +3,7 @@
   "files": [
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/pr1139-uat-recovery-ci.yml",
     ".github/workflows/pr1140-uat-recovery-ci.yml",
     ".github/workflows/pr1151-uat-supersession-ci.yml",
     ".github/workflows/projectpulse-deploy-test.yml",
@@ -39,6 +40,7 @@
   "sha256": {
     ".github/workflows/flowhive-enterprise-psa-ci.yml": "4842eb8a0c06808227407b88c767f7fc1d2906046fb6d4e826140ac4157b85f0",
     ".github/workflows/flowhive-psa-release-control-ci.yml": "7f8d67eec9a4ff0f9274ec232eceaf8c323a7638240a1cb7d020255fad6c3459",
+    ".github/workflows/pr1139-uat-recovery-ci.yml": "a86085fe1fa155eaeabea43202c67e93c67d5ece97c766ac726ea92d7cd363e2",
     ".github/workflows/pr1140-uat-recovery-ci.yml": "a6123e6a1a8c11f02e7a7a549d62f4b1c458f1ac5a994ed7432d0f76cfe6d857",
     ".github/workflows/pr1151-uat-supersession-ci.yml": "9dff956cce35f30b236853f07967ee9e2152d6dfb8f37c807debd401a0972d69",
     ".github/workflows/projectpulse-deploy-test.yml": "11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3",
@@ -63,7 +65,7 @@
     "tests/module025_qualification_workflow.py": "50766c232184f04f85c722891299e0e3ea532c151b4ff369d5225019d79edfd3",
     "tests/pulse-activation-release/controller.py": "77d0b5b7ce0ec984881f00676c3d24fcaab104e828072bbfb137d2cb517eeb61",
     "tests/pulse-activation-release/recovery_registration.json": "cee55459d8426c5b20c0bcee305e4b873fd9318c0e5caabf633a823d72146c94",
-    "tests/pulse-activation-release/scope.py": "fa2cbd62a545ec372bf3da0ae07486345d62dbe614cfb4a1d4ad757ff42aea3f",
+    "tests/pulse-activation-release/scope.py": "353b4ca6d50e497f840a4bd24a07212860da1a1ca76634751faee01ca899195f",
     "tests/pulse-activation-release/test_scope.py": "02f6d30d5cd2be0cdd1c5c8fb3d57aeb5fad02936e8d5b92b28bc1845cda4a89",
     "tests/pulse_services/test_activation_integration.py": "1d1dd59b993c273be4c585589d37874635bf11b034a677ff01eccbc5b86fc9bc",
     "tests/pulse_services/test_contracts.py": "f42bfef96c3cff446aad8e069f9ea10c045ebe378af73fa312095555b718e6a5",
