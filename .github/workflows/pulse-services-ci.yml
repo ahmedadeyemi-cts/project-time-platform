@@ -36,6 +36,7 @@ jobs:
       - run: python3 tests/pulse_services/test_activation_integration.py
       - run: python3 tests/pulse_services/test_activation_contracts.py
       - run: python3 tests/pulse_services/test_state_preservation.py
+      - run: python3 tests/pulse_services/test_native_startup.py
       - run: dotnet run --project tests/PulseServiceCutoverTests -c Release
       - run: dotnet run --project tests/PulseDocumentServiceTests -c Release
   containers:
