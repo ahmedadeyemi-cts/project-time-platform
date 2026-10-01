@@ -79,7 +79,7 @@ def _constant(_):
     raise ValueError('nonfinite_number')
 
 
-def _load(data):
+def _check_depth(data):
     # Bound nesting before the JSON parser allocates deeply nested containers.
     # Braces inside escaped JSON strings are content, not structural depth.
     depth = 0
@@ -101,6 +101,10 @@ def _load(data):
                 raise ValueError('json_depth')
         elif char in (93, 125):
             depth -= 1
+
+
+def _load(data):
+    _check_depth(data)
     return json.loads(data, object_pairs_hook=_unique, parse_constant=_constant)
 
 
@@ -215,22 +219,36 @@ def _provider_evidence(obj):
 
 
 def _http_projection(data):
-    result = []
-    lines = data.splitlines()
-    if len(lines) > 512:
+    # jq -n emits multiline objects. Preserve all existing privacy constraints
+    # while decoding that bounded, whitespace-separated JSON object stream.
+    if len(data) > MAX_BYTES:
         return {'state': 'over_budget', 'observations': []}
-    for line in lines:
-        state, obj = _object(line)
-        if state != 'recorded':
-            return {'state': 'invalid_json', 'observations': []}
-        name = obj.get('name')
-        if not isinstance(name, str) or name not in HTTP_STAGES:
-            continue
-        code = obj.get('httpStatus')
-        result.append({'stage': HTTP_STAGES[name],
-                       'httpStatus': code if isinstance(code, str) and code in HTTP_CODES else 'unrecognized',
-                       'transportSucceeded': type(obj.get('curlExit')) is int and obj['curlExit'] == 0})
-    return {'state': 'recorded', 'observations': result}
+    observations = []
+    try:
+        _check_depth(data)
+        text = data.decode('utf-8')
+        decoder = json.JSONDecoder(object_pairs_hook=_unique, parse_constant=_constant)
+        position, count = 0, 0
+        while True:
+            while position < len(text) and text[position] in ' \t\r\n':
+                position += 1
+            if position == len(text):
+                break
+            if count >= 512:
+                return {'state': 'over_budget', 'observations': []}
+            obj, position = decoder.raw_decode(text, position)
+            count += 1
+            if not isinstance(obj, dict) or (position < len(text) and text[position] not in ' \t\r\n'):
+                raise ValueError('invalid_record')
+            name = obj.get('name')
+            if isinstance(name, str) and name in HTTP_STAGES:
+                status = obj.get('httpStatus')
+                observations.append({'stage': HTTP_STAGES[name],
+                    'httpStatus': status if isinstance(status, str) and status in HTTP_CODES else 'unrecognized',
+                    'transportSucceeded': type(obj.get('curlExit')) is int and obj['curlExit'] == 0})
+    except (ValueError, UnicodeError, RecursionError):
+        return {'state': 'invalid_json', 'observations': []}
+    return {'state': 'recorded', 'observations': observations}
 
 
 def project(source: Path):
