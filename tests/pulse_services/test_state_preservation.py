@@ -64,12 +64,11 @@ class StatePreservationTests(unittest.TestCase):
             {"name": "documents", "ready": True, "runningState": "Running"}]}}]
         with patch.object(cutover, "get_app", side_effect=[old, expected]) as read, \
              patch.object(cutover.time, "sleep") as sleep, \
-             patch.object(cutover, "az", return_value=replicas) as azure:
+             patch.object(cutover, "read_service_replicas", return_value=replicas) as azure:
             self.assertIs(cutover.wait_app(NAME, [IMAGE], expected_revision=NAME + "--svc-101"), expected)
             self.assertEqual(read.call_count, 2)
             sleep.assert_called_once_with(10)
-            azure.assert_called_once_with("containerapp", "replica", "list", "-g", resources.GROUP,
-                                          "-n", NAME, "--revision", NAME + "--svc-101")
+            azure.assert_called_once_with(NAME, NAME + "--svc-101")
 
     def test_waiter_requires_explicit_target(self):
         with self.assertRaises(TypeError): cutover.wait_app(NAME)

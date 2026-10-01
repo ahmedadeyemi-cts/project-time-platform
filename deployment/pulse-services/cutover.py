@@ -4,7 +4,7 @@ from pathlib import Path
 from test_resources import *
 from activation_contracts import acceptance_job_name, validate_document_runtime
 from state_preservation import revision_is_ready, require_cleanup_ownership, require_new_service_names
-from replica_readiness import service_replicas_ready
+from replica_readiness import service_replicas_ready, read_service_replicas
 REPO='ahmedadeyemi-cts/project-time-platform'
 ORIGIN='https://phd-west-test.onenecklab.com'
 PREFIXES=('PROJECTPULSE_DOCUMENT_SERVICE_','PROJECTPULSE_LAYA_SERVICE_')
@@ -52,7 +52,7 @@ def wait_app(name,expected_images=None,*,expected_revision):
         if p.get('provisioningState')=='Failed':raise CutoverError('service_provisioning_failed')
         if revision_is_ready(a,name,expected_revision,expected_images):
             if name in APPS.values():
-                replicas=az('containerapp','replica','list','-g',GROUP,'-n',name,'--revision',expected_revision)
+                replicas=read_service_replicas(name,expected_revision)
                 expected_names=[c['name'] for c in p['template']['containers']]
                 if not service_replicas_ready(replicas,expected_names):
                     time.sleep(10)
