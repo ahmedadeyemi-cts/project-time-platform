@@ -28,8 +28,15 @@ class ScopeTests(unittest.TestCase):
         scope.verify_content(b'a',hashlib.sha256(b'a').hexdigest(),'100644')
         for content,mode in [(b'b','100644'),(b'a','120000'),(b'a','160000')]:
             with self.assertRaises(RuntimeError): scope.verify_content(content,hashlib.sha256(b'a').hexdigest(),mode)
+    def test_only_exact_additive_deployment_controller_is_recognized(self):
+        import controller
+        data=(scope.ROOT/'.github/workflows/projectpulse-deploy-test.yml').read_bytes()
+        self.assertEqual(hashlib.sha256(data).hexdigest(),controller.CURRENT_SHA256)
+        self.assertEqual(hashlib.sha256(controller.normalize(data)).hexdigest(),controller.BASE_SHA256)
+        for replacement in (data+b'\n',data.replace(b'environment: test',b'environment: production',1)):
+            with self.assertRaises(AssertionError):controller.normalize(replacement)
     def test_authority_remains_frozen(self):
-        for path in ['scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh','.github/workflows/projectpulse-deploy-test.yml','.github/workflows/projectpulse-deploy-production.yml',
+        for path in ['scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh','.github/workflows/projectpulse-deploy-production.yml',
                      '.github/workflows/module025-protected-uat-control.yml','.github/workflows/flowhive-psa-installed-acceptance.yml',
                      '.github/CODEOWNERS','.github/flowhive-psa-protected-test-candidate.json',
                      'scripts/release-test/flowhive-psa-admission.mjs','scripts/release-test/run-project-planning-document-authority-migration-job.sh']:

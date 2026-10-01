@@ -11,6 +11,7 @@
     "deployment/pulse-services/secret_preservation.py",
     "deployment/pulse-services/service_images.py",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "tests/flowhive-psa-admission.test.mjs",
     "tests/laya/processed-source-scope.py",
     "tests/pulse-activation-release/controller.py",
     "tests/pulse-activation-release/manifest.json",
@@ -33,14 +34,15 @@
     "deployment/pulse-services/secret_preservation.py": "b916df44ab5b5e2d48e4859fe9eaddd7b925939a3056adbae2e65a5b172d79e5",
     "deployment/pulse-services/service_images.py": "cf65212bdc430d58006d59b8fe987d0b02fc0293064091d73a1bb45560e10a37",
     "scripts/release-test/validate-protected-test-controller-branches.sh": "80654f678a7ec92a1ef39c07e97f616969c530bada5d5fc5a9814dd3176ed1e5",
+    "tests/flowhive-psa-admission.test.mjs": "a03fb92e7f99bcf1d9078685a3d9227cc4c168384959a06baef0ad868079c871",
     "tests/laya/processed-source-scope.py": "2673a0a22d2fa5f6796ee0526264bd26b617ced7e3a6df2773f67ece8bb977eb",
     "tests/pulse-activation-release/controller.py": "77d0b5b7ce0ec984881f00676c3d24fcaab104e828072bbfb137d2cb517eeb61",
-    "tests/pulse-activation-release/scope.py": "ef59466e4efff0af1e675f2711d56f4f63100874ecbf42378bbd6ff41331a821",
-    "tests/pulse-activation-release/test_scope.py": "1dfe32c1e48e9a0538ed3bbc5e667cd8cc126b83218ceeeb74602be003d0a334",
+    "tests/pulse-activation-release/scope.py": "b3696d14d9da684fa66a6c176242169a20814d6c0ee348dc2f3face4063ac644",
+    "tests/pulse-activation-release/test_scope.py": "02f6d30d5cd2be0cdd1c5c8fb3d57aeb5fad02936e8d5b92b28bc1845cda4a89",
     "tests/pulse_services/test_activation_integration.py": "1d1dd59b993c273be4c585589d37874635bf11b034a677ff01eccbc5b86fc9bc",
     "tests/pulse_services/test_contracts.py": "f42bfef96c3cff446aad8e069f9ea10c045ebe378af73fa312095555b718e6a5",
     "tests/pulse_services/test_release_phase.py": "5b8c544d0a252dc889cd61ed00c11fb589bc61e647645d2d6d123dc641d9136d",
-    "tests/security-release/admission_fixture.py": "ba8671aa2fc1b346cb352998d3f132cd518e5a2caf36d40d744f5b69303bbafc",
+    "tests/security-release/admission_fixture.py": "68fb0feed4da3851dc65aa9f8f30b9b8820a7871e378db8118a4cee341e32544",
     "tests/security-release/test_controller_registration.py": "418cd925b7ef59f4a432adfaf5938153dd20d4d340628d9f45838a229c524896"
   }
 }
