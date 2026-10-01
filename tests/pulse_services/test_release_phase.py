@@ -122,4 +122,79 @@ class Orchestration(unittest.TestCase):
             self.assertEqual(phase.execute(),1)
         self.assertNotIn('SECRET_SENTINEL',(self.safe/'activation-receipt.json').read_text())
 
+class RegistryPublication(unittest.TestCase):
+    def manifest(self, identity):
+        return {'schemaVersion': 2, 'mediaType':'application/vnd.docker.distribution.manifest.v2+json',
+          'config': {'digest':identity,'size':9000,'mediaType':'application/vnd.docker.container.image.v1+json'},
+          'layers':[{'digest':'sha256:'+'d'*64,'size':100,'mediaType':'application/vnd.docker.image.rootfs.diff.tar.gzip'}]}
+    def test_publication_binds_registry_manifest_without_unpacking_images_again(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            safe=Path(tmp);source='a'*40;fp='b'*64
+            identities={c:'sha256:'+hashlib.sha256(c.encode()).hexdigest() for c in images.COMPONENTS}
+            (safe/'build-identities.json').write_text(json.dumps({'source':source,'fingerprint':fp,'images':identities,'mode':'initial'}))
+            for component,identity in identities.items():
+                (safe/(component+'-scan.json')).write_text(json.dumps({'SchemaVersion':2,
+                    'Metadata':{'ImageID':identity},'ArtifactType':'container_image','Results':[{'Target':'linux','Vulnerabilities':[]}]}))
+            calls=[]
+            def fake(args):
+                calls.append(args)
+                if args[:3]==['docker','image','inspect']:
+                    component=args[3].removeprefix('pulse-services-').removesuffix(':cutover')
+                    return json.dumps([{'Id':identities[component]}])
+                if args[:2]==['docker','pull']:raise ValueError('redundant_image_unpack_failed')
+                if args[:2] in (['docker','tag'],['docker','push']) or args[:3]==['az','acr','login']:return ''
+                if args[:4]==['az','acr','repository','show']:return 'sha256:'+'c'*64
+                if args[:4]==['az','acr','manifest','show']:
+                    component=args[args.index('-n')+1].split('@')[0].removeprefix('pulse-services-')
+                    return json.dumps(self.manifest(identities[component]))
+                raise AssertionError('Unexpected external operation')
+            with patch.object(images,'context',return_value=(source,safe)),patch.object(images,'fingerprint',return_value=fp),patch.object(images,'command',side_effect=fake),patch.dict(os.environ,{'GITHUB_RUN_ID':'123'}):
+                images.publish()
+            receipt=json.loads((safe/'registry-images.json').read_text())
+            self.assertEqual(set(receipt),images.COMPONENTS)
+            self.assertEqual(len([c for c in calls if c[:2]==['docker','push']]),4)
+            self.assertFalse(any(c[:2]==['docker','pull'] for c in calls))
+    def test_manifest_wrong_configuration_is_rejected(self):
+        with self.assertRaises(ValueError):images.manifest_verified(self.manifest('sha256:'+'a'*64),'sha256:'+'b'*64)
+    def test_manifest_requires_typed_bounded_descriptors(self):
+        identity='sha256:'+'a'*64
+        for mutation in ('schema','index','layers','config_type','digest','size','urls','count'):
+            a=self.manifest(identity)
+            if mutation=='schema':a['schemaVersion']=True
+            elif mutation=='index':a['manifests']=[]
+            elif mutation=='layers':a['layers']=[]
+            elif mutation=='config_type':a['config']['mediaType']='unknown'
+            elif mutation=='digest':a['layers'][0]['digest']='unsafe'
+            elif mutation=='size':a['layers'][0]['size']=True
+            elif mutation=='urls':a['layers'][0]['urls']=['https://untrusted.invalid']
+            else:a['layers']*=257
+            with self.subTest(mutation=mutation),self.assertRaises(ValueError):images.manifest_verified(a,identity)
+    def test_oci_and_docker_manifests_match_exact_scanned_configuration(self):
+        identity='sha256:'+'a'*64;a=self.manifest(identity)
+        self.assertTrue(images.manifest_verified(a,identity))
+        a['mediaType']='application/vnd.oci.image.manifest.v1+json';a['config']['mediaType']='application/vnd.oci.image.config.v1+json'
+        a['layers'][0]['mediaType']='application/vnd.oci.image.layer.v1.tar+gzip'
+        self.assertTrue(images.manifest_verified(a,identity))
+    def test_failed_command_never_exports_secret_or_full_stderr(self):
+        result=subprocess.CompletedProcess(['docker','push'],1,'','unauthorized SECRET_SENTINEL')
+        with patch.object(images.subprocess,'run',return_value=result),self.assertRaises(ValueError) as caught:
+            images.command(['docker','push','example.invalid/private'])
+        self.assertEqual(str(caught.exception),'image_docker_push_unauthorized')
+        self.assertNotIn('SECRET',str(caught.exception))
+    def test_metadata_reads_retry_only_transient_codes(self):
+        args=['az','acr','manifest','show','-r','acrphdtest7825cc','-n','pulse-services-laya@sha256:'+'a'*64]
+        with patch.object(images,'command',side_effect=[ValueError('image_registry_manifest_not_visible'),'{"ok":true}']) as command,patch.object(images.time,'sleep'):
+            self.assertEqual(images.read_registry(args),'{"ok":true}');self.assertEqual(command.call_count,2)
+        with patch.object(images,'command',side_effect=ValueError('image_registry_manifest_unauthorized')) as command,patch.object(images.time,'sleep'),self.assertRaises(ValueError):
+            images.read_registry(args)
+        self.assertEqual(command.call_count,1)
+    def test_metadata_retries_are_bounded(self):
+        with patch.object(images,'command',side_effect=ValueError('image_registry_manifest_not_visible')) as command,patch.object(images.time,'sleep'),self.assertRaises(ValueError):
+            images.read_registry(['az','acr','manifest','show'])
+        self.assertEqual(command.call_count,3)
+    def test_registry_helper_never_retries_mutations(self):
+        with patch.object(images,'command') as command,self.assertRaises(ValueError):
+            images.read_registry(['docker','push','anything'])
+        command.assert_not_called()
+
 if __name__=='__main__':unittest.main(verbosity=2)
