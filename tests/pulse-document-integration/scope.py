@@ -6,15 +6,15 @@ import os
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = 'bb2c9cccaf4d95cbfe32818e3f55ccb58cf029dc'
-BRANCH = 'feature/pulse-documents-integration-20260930'
+BASE = 'cbd8d433e3b47ac7d5dfab9cf8293733e758921a'
+BRANCH = 'fix/pulse-api-containerapps-platform-dns-20261001'
 REPOSITORY = 'ahmedadeyemi-cts/project-time-platform'
 MANIFEST = 'tests/pulse-document-integration/manifest.json'
 CI_DISPATCH = {'scripts/release-test/validate-protected-test-controller-branches.sh',
                'scripts/release-test/validate-module025-governed-release.sh'}
 CI_WORKFLOWS = {'.github/workflows/'+name for name in ('flowhive-enterprise-psa-ci.yml', 'flowhive-psa-release-control-ci.yml', 'pr1140-uat-recovery-ci.yml', 'pr1151-uat-supersession-ci.yml', 'uat-migration-throttle-recovery-ci.yml', 'pulse-document-integration-ci.yml')}
 
-ALLOWED = {'tests/laya/processed-source-scope.py', 'src/backend/ProjectTime.Api/Ai/PulseDocumentServiceClient.cs', 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs', '.github/workflows/pulse-document-integration-ci.yml', 'tests/PulseDocumentServiceTests/PulseDocumentServiceTests.csproj', 'tests/validate-celar-ai-pr630-consolidated.mjs', 'scripts/release-test/validate-protected-test-controller-branches.sh', 'docs/security/pulse-document-integration-20260930.md', 'tests/pulse-document-integration/test_scope.py', 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateOcrClient.cs', 'tests/security-release/admission_fixture.py', 'tests/PulseDocumentServiceTests/Program.cs', 'src/backend/ProjectTime.Api/Ai/PulseDocumentServiceOptions.cs', '.github/workflows/pr1140-uat-recovery-ci.yml', 'scripts/release-test/validate-module025-governed-release.sh', 'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs', '.github/workflows/flowhive-psa-release-control-ci.yml', 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateMalwareScanner.cs', 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentPipelineContracts.cs', '.github/workflows/pr1151-uat-supersession-ci.yml', 'tests/validate-celar-ai-pr630-consolidated-legacy.mjs', '.github/workflows/uat-migration-throttle-recovery-ci.yml', 'tests/pulse-document-integration/manifest.json', 'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs', '.github/workflows/flowhive-enterprise-psa-ci.yml', 'tests/pulse-document-integration/scope.py'}
+ALLOWED = {'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs', 'src/backend/ProjectTime.Api/Ai/PulseDocumentServiceOptions.cs', 'src/backend/ProjectTime.Api/Ai/PulseLayaServiceOptions.cs', 'tests/PulseDocumentServiceTests/Program.cs', 'tests/PulseServiceCutoverTests/Program.cs', 'tests/pulse-document-integration/manifest.json', 'tests/pulse-document-integration/scope.py', 'tests/pulse-document-integration/test_scope.py', 'tests/pulse_services/test_activation_integration.py'}
 
 def require(value, message):
     if not value: raise RuntimeError(message)
@@ -30,7 +30,7 @@ def frozen(path):
             or path == 'src/backend/ProjectTime.Api/Program.cs')
 
 def verify_identity(branch, repository, base, number):
-    require((branch, repository, base, str(number)) == (BRANCH, REPOSITORY, 'main', '1221'), 'Wrong source identity')
+    require((branch, repository, base, str(number)) == (BRANCH, REPOSITORY, 'main', '1241'), 'Wrong source identity')
 
 def verify_paths(paths, manifest):
     require(manifest['base'] == BASE, 'Wrong fixed baseline')
@@ -49,7 +49,7 @@ def verify_content(data, digest, mode):
 def main():
     verify_identity(os.getenv('GITHUB_HEAD_REF') or git('branch', '--show-current').decode().strip(),
                     os.getenv('GITHUB_REPOSITORY', REPOSITORY), os.getenv('GITHUB_BASE_REF', 'main'),
-                    os.getenv('PR_NUMBER', '1221'))
+                    os.getenv('PR_NUMBER', '1241'))
     if os.getenv('GITHUB_EVENT_PATH'):
         event = json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
         if event.get('pull_request'):
