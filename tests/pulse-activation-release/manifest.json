@@ -1,6 +1,7 @@
 {
   "base": "6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f",
   "files": [
+    ".github/workflows/celar-laya-integration.yml",
     ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/pr1139-uat-recovery-ci.yml",
@@ -38,6 +39,7 @@
     "tests/security-release/test_controller_registration.py"
   ],
   "sha256": {
+    ".github/workflows/celar-laya-integration.yml": "fb56cafde33f86045b66f8961dc95bc6d9ef3100a15ce99915980d44d4e0c0ea",
     ".github/workflows/flowhive-enterprise-psa-ci.yml": "4842eb8a0c06808227407b88c767f7fc1d2906046fb6d4e826140ac4157b85f0",
     ".github/workflows/flowhive-psa-release-control-ci.yml": "7f8d67eec9a4ff0f9274ec232eceaf8c323a7638240a1cb7d020255fad6c3459",
     ".github/workflows/pr1139-uat-recovery-ci.yml": "a86085fe1fa155eaeabea43202c67e93c67d5ece97c766ac726ea92d7cd363e2",
@@ -65,11 +67,11 @@
     "tests/module025_qualification_workflow.py": "50766c232184f04f85c722891299e0e3ea532c151b4ff369d5225019d79edfd3",
     "tests/pulse-activation-release/controller.py": "77d0b5b7ce0ec984881f00676c3d24fcaab104e828072bbfb137d2cb517eeb61",
     "tests/pulse-activation-release/recovery_registration.json": "cee55459d8426c5b20c0bcee305e4b873fd9318c0e5caabf633a823d72146c94",
-    "tests/pulse-activation-release/scope.py": "353b4ca6d50e497f840a4bd24a07212860da1a1ca76634751faee01ca899195f",
+    "tests/pulse-activation-release/scope.py": "d04dcdc03528007065f66b476b26172628238f9fdc1a8cd64ec7620adc4c6f06",
     "tests/pulse-activation-release/test_scope.py": "02f6d30d5cd2be0cdd1c5c8fb3d57aeb5fad02936e8d5b92b28bc1845cda4a89",
     "tests/pulse_services/test_activation_integration.py": "1d1dd59b993c273be4c585589d37874635bf11b034a677ff01eccbc5b86fc9bc",
     "tests/pulse_services/test_contracts.py": "f42bfef96c3cff446aad8e069f9ea10c045ebe378af73fa312095555b718e6a5",
-    "tests/pulse_services/test_release_phase.py": "5e2bac320f916ed40396dc9ce98c3812db897ec11a3de7a042f9d51627331fa8",
+    "tests/pulse_services/test_release_phase.py": "984193956d10b9abb21e8085a5abc85c1dc1c7064626f0552c55d05017aefc95",
     "tests/security-release/admission_fixture.py": "68fb0feed4da3851dc65aa9f8f30b9b8820a7871e378db8118a4cee341e32544",
     "tests/security-release/test_controller_registration.py": "0c61fa9c01d6879a2a1aaee56f51e01b6646c554b81b123851a05770d0c7d937"
   }

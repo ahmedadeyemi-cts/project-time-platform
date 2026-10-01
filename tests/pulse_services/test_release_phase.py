@@ -27,6 +27,15 @@ class Workflow(unittest.TestCase):
         self.assertIn("'492d991c38fb87237beb570284403aee792e446c',SHA",source)
         self.assertNotIn("gh('pulls/",source)
         subprocess.run(['git','merge-base','--is-ancestor','492d991c38fb87237beb570284403aee792e446c','HEAD'],cwd=ROOT,check=True)
+    def test_ci_database_waits_for_final_tcp_server(self):
+        path='.github/workflows/celar-laya-integration.yml'
+        current=(ROOT/path).read_text()
+        original=subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT,text=True)
+        old='pg_isready -U postgres -d laya_ci'
+        new='pg_isready -h 127.0.0.1 -U postgres -d laya_ci'
+        self.assertEqual(original.count(old),1)
+        self.assertEqual(current,original.replace(old,new,1))
+        self.assertIn('psql -v ON_ERROR_STOP=1 -f deployment/laya/schema.sql',current)
     def test_security_gates_precede_activation(self):
         a=yaml.safe_load((ROOT/WORKFLOW).read_text());job=a['jobs']['deploy']
         self.assertEqual(job['environment'],'test');self.assertEqual(a['concurrency']['queue'],'max');self.assertFalse(a['concurrency']['cancel-in-progress'])
