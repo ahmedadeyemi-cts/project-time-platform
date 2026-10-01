@@ -1,6 +1,7 @@
 {
   "base": "6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f",
   "files": [
+    ".github/workflows/flowhive-enterprise-psa-ci.yml",
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/projectpulse-deploy-test.yml",
     ".github/workflows/pulse-services-ci.yml",
@@ -24,6 +25,7 @@
     "tests/security-release/test_controller_registration.py"
   ],
   "sha256": {
+    ".github/workflows/flowhive-enterprise-psa-ci.yml": "4842eb8a0c06808227407b88c767f7fc1d2906046fb6d4e826140ac4157b85f0",
     ".github/workflows/flowhive-psa-release-control-ci.yml": "7f8d67eec9a4ff0f9274ec232eceaf8c323a7638240a1cb7d020255fad6c3459",
     ".github/workflows/projectpulse-deploy-test.yml": "11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3",
     ".github/workflows/pulse-services-ci.yml": "107ce384260e69ce02a2b2c9752a25d9072c6e2bf47b34eef1111fb91868388a",
@@ -37,7 +39,7 @@
     "tests/flowhive-psa-admission.test.mjs": "a03fb92e7f99bcf1d9078685a3d9227cc4c168384959a06baef0ad868079c871",
     "tests/laya/processed-source-scope.py": "2673a0a22d2fa5f6796ee0526264bd26b617ced7e3a6df2773f67ece8bb977eb",
     "tests/pulse-activation-release/controller.py": "77d0b5b7ce0ec984881f00676c3d24fcaab104e828072bbfb137d2cb517eeb61",
-    "tests/pulse-activation-release/scope.py": "b3696d14d9da684fa66a6c176242169a20814d6c0ee348dc2f3face4063ac644",
+    "tests/pulse-activation-release/scope.py": "f43fb98071683647cf6cb555b752aa6d2fbe576812ea843d1de9518c90830870",
     "tests/pulse-activation-release/test_scope.py": "02f6d30d5cd2be0cdd1c5c8fb3d57aeb5fad02936e8d5b92b28bc1845cda4a89",
     "tests/pulse_services/test_activation_integration.py": "1d1dd59b993c273be4c585589d37874635bf11b034a677ff01eccbc5b86fc9bc",
     "tests/pulse_services/test_contracts.py": "f42bfef96c3cff446aad8e069f9ea10c045ebe378af73fa312095555b718e6a5",
