@@ -108,4 +108,102 @@ class CutoverLogic(unittest.TestCase):
             with patch.object(cutover,'rest') as remote:
                 with self.assertRaises(cutover.CutoverError):cutover.cleanup_staged()
                 remote.assert_not_called()
+class SignatureStorage(unittest.TestCase):
+    def setUp(self):
+        import signature_storage
+        self.m=signature_storage;self.source='a'*40
+        self.mount={'properties':{'azureFile':{'accountName':self.m.ACCOUNT_NAME,
+            'shareName':spec.STORAGE,'accessMode':'ReadWrite'}}}
+        self.share={'id':self.m.SHARE,'properties':{'shareQuota':10,'enabledProtocols':'SMB',
+            'metadata':{'purpose':'pulse_antivirus_signatures'}}}
+        self.account={'id':self.m.ACCOUNT,'location':'westus3','properties':{
+            'provisioningState':'Succeeded','publicNetworkAccess':'Disabled','allowSharedKeyAccess':True}}
+        self.business={'properties':{'azureFile':{'accountName':self.m.ACCOUNT_NAME,
+            'shareName':'project-health-dashboard','accessMode':'ReadWrite'}}}
+    def fake(self,existing=False,bad_share=False,bad_mount=False):
+        self.calls=[];self.present_share=existing;self.present_mount=existing
+        def call(method,path,body=None,missing=False):
+            self.calls.append((method,path,copy.deepcopy(body)))
+            if path==self.m.ACCOUNT:return copy.deepcopy(self.account)
+            if path==self.m.BUSINESS_MOUNT:return copy.deepcopy(self.business)
+            if path==self.m.SHARE:
+                if method=='PUT':self.present_share=True;return self.share
+                if not self.present_share:return None
+                value=copy.deepcopy(self.share)
+                if bad_share:value['properties']['metadata']={}
+                return value
+            if path==self.m.MOUNT:
+                if method=='PUT':self.present_mount=True;return self.mount
+                if not self.present_mount:return None
+                value=copy.deepcopy(self.mount)
+                if bad_mount:value['properties']['azureFile']['shareName']='project-health-dashboard'
+                return value
+            if path==self.m.ACCOUNT+'/listKeys':return {'keys':[{'keyName':'key1','value':'SECRET_SENTINEL_'+'x'*40}]}
+            raise AssertionError('Unexpected target')
+        return call
+    def test_activation_only_reads_prepared_mount(self):
+        with patch.object(cutover,'rest',return_value=self.mount) as rest,patch.object(cutover,'az') as az:
+            cutover.signatures()
+        rest.assert_called_once_with('GET',self.m.MOUNT);az.assert_not_called()
+    def test_wrong_account_business_share_and_read_only_mount_rejected(self):
+        for key,value in [('accountName','other'),('shareName','project-health-dashboard'),('accessMode','ReadOnly')]:
+            data=copy.deepcopy(self.mount);data['properties']['azureFile'][key]=value
+            with self.subTest(key=key),self.assertRaises(self.m.PreparationError):self.m.validate_mount(data)
+    def test_owner_prepares_only_dedicated_share_and_mount(self):
+        with patch.object(self.m,'verified_owner_context') as owner,patch.object(self.m,'arm',side_effect=self.fake()):
+            result=self.m.prepare(self.source,1232,self.m.CONFIRMATION)
+        owner.assert_called_once_with(self.source,1232,self.m.CONFIRMATION)
+        writes=[(m,p) for m,p,b in self.calls if m=='PUT']
+        self.assertEqual(writes,[('PUT',self.m.SHARE),('PUT',self.m.MOUNT)])
+        self.assertTrue(result['shareCreated']);self.assertTrue(result['mountCreated']);self.assertFalse(result['rolesChanged'])
+        self.assertNotIn('SECRET_SENTINEL',json.dumps(result))
+        self.assertFalse(any(p==self.m.BUSINESS_MOUNT and m!='GET' for m,p,b in self.calls))
+    def test_prepared_storage_is_idempotent_without_keys_or_writes(self):
+        with patch.object(self.m,'verified_owner_context'),patch.object(self.m,'arm',side_effect=self.fake(existing=True)):
+            result=self.m.prepare(self.source,1232,self.m.CONFIRMATION)
+        self.assertTrue(all(m=='GET' for m,p,b in self.calls));self.assertFalse(result['shareCreated']);self.assertFalse(result['mountCreated'])
+    def test_existing_unowned_resources_never_overwritten(self):
+        for share,mount in [(True,False),(False,True)]:
+            with patch.object(self.m,'verified_owner_context'),patch.object(self.m,'arm',side_effect=self.fake(existing=True,bad_share=share,bad_mount=mount)),self.assertRaises(self.m.PreparationError):
+                self.m.prepare(self.source,1232,self.m.CONFIRMATION)
+            self.assertTrue(all(m=='GET' for m,p,b in self.calls))
+    def test_unknown_source_stops_before_any_infrastructure_call(self):
+        with patch.object(self.m,'verified_owner_context',side_effect=self.m.PreparationError('merged_review_required')),patch.object(self.m,'arm') as arm,self.assertRaises(self.m.PreparationError):
+            self.m.prepare(self.source,1232,self.m.CONFIRMATION)
+        arm.assert_not_called()
+    def test_public_storage_is_rejected_before_preparation(self):
+        self.account['properties']['publicNetworkAccess']='Enabled'
+        with patch.object(self.m,'verified_owner_context'),patch.object(self.m,'arm',side_effect=self.fake()),self.assertRaises(self.m.PreparationError):
+            self.m.prepare(self.source,1232,self.m.CONFIRMATION)
+        self.assertEqual(len(self.calls),1)
+    def test_forbidden_operations_cannot_call_azure(self):
+        for method,path in [('DELETE',self.m.SHARE),('PUT',self.m.ACCOUNT),('PUT',self.m.BUSINESS_MOUNT),
+                ('PATCH',self.m.MOUNT),('PUT',self.m.ENV+'/other'),('POST',self.m.ACCOUNT+'/regenerateKey')]:
+            with self.subTest(method=method,path=path),patch.object(self.m,'run') as run,self.assertRaises(self.m.PreparationError):
+                self.m.arm(method,path,{})
+            run.assert_not_called()
+    def test_preparation_requires_owner_not_ci_before_resource_mutation(self):
+        with patch.dict(os.environ,{'GITHUB_ACTIONS':'true'}),patch.object(self.m,'run') as run,self.assertRaises(self.m.PreparationError):
+            self.m.verified_owner_context(self.source,1232,self.m.CONFIRMATION)
+        run.assert_not_called()
+        with patch.dict(os.environ,{},clear=True),patch.object(self.m,'run',return_value={'id':spec.SUB,'state':'Enabled','user':{'type':'servicePrincipal'}}) as run,self.assertRaises(self.m.PreparationError):
+            self.m.verified_owner_context(self.source,1232,self.m.CONFIRMATION)
+        self.assertEqual(run.call_count,1)
+    def test_private_body_file_is_removed_and_mode_restricted(self):
+        filenames=[]
+        def invoke(args,missing=False):
+            filename=args[args.index('--body')+1][1:];filenames.append(filename)
+            self.assertEqual(Path(filename).stat().st_mode & 0o777,0o600)
+            self.assertEqual(json.loads(Path(filename).read_text())['private'],'synthetic')
+            return {}
+        with patch.object(self.m,'run',side_effect=invoke):self.m.arm('PUT',self.m.MOUNT,{'private':'synthetic'})
+        self.assertFalse(Path(filenames[0]).exists())
+    def test_missing_and_denied_are_not_conflated(self):
+        import subprocess
+        with patch.object(self.m.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','(ResourceNotFound) unavailable')):
+            self.assertIsNone(self.m.run([],missing=True))
+        with patch.object(self.m.subprocess,'run',return_value=subprocess.CompletedProcess([],1,'','(AuthorizationFailed) SECRET')),self.assertRaises(self.m.PreparationError) as error:
+            self.m.run([],missing=True)
+        self.assertEqual(str(error.exception),'infrastructure_operation_failed')
+
 if __name__=='__main__':unittest.main(verbosity=2)

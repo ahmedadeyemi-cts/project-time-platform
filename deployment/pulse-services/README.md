@@ -150,3 +150,25 @@ remain required before any success or security-finding closure is claimed.
 
 Manifest reference: https://learn.microsoft.com/en-us/cli/azure/acr/manifest
 Content identity: https://github.com/opencontainers/image-spec/blob/main/config.md
+
+## One-time signature storage preparation
+
+The GitHub deployment identity is Contributor only on the Test application
+resource group. It must not gain access to business-storage account keys or the
+whole data resource group. The existing private `stphdtestfiles7825cc` account
+and its private network configuration remain unchanged.
+
+After this PR passes review and is merged, an already-authorized Azure user may
+run `signature_storage.py` from exact merged main with `--source`,
+`--pull-request`, and confirmation `PREPARE PULSE TEST ANTIVIRUS STORAGE`.
+It verifies the merged PR/current source and existing private storage identity,
+creates only the dedicated 10-GiB-quota antivirus share and matching environment
+storage mount, and compares the original business mount before/after. The owner
+connection supplies the existing account key directly to Azure; it is never
+returned, logged, committed or passed to GitHub. No role assignment is created.
+
+This preparation does not create containers, select application routes, execute
+cutover or assert acceptance. The existing protected deployment subsequently
+checks that exact dedicated mount, then performs the full native scan/OCR/Laya,
+local administration, application acceptance and rollback sequence. No new VM,
+server, managed environment, storage account or business-file access is required.

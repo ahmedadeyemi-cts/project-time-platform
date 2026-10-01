@@ -146,16 +146,13 @@ def preflight(*,allow_selected=False):
     print('PULSE_SERVICE_PREFLIGHT=PASS local_superadmin_login=true existing_environment=true')
 
 def signatures():
-    accounts=az('storage','account','list')
-    matches=[x for x in accounts if x['name']=='stphdtestfiles7825cc'];check(len(matches)==1,'signature_account_not_found')
-    account=matches[0];check(account['id'].lower().startswith('/subscriptions/'+SUB+'/'),'signature_subscription')
-    share=account['id']+'/fileServices/default/shares/'+STORAGE
-    rest('PUT',share,{'properties':{'shareQuota':10}},'2024-01-01')
-    keys=az('storage','account','keys','list','-n',account['name'],'-g',account['resourceGroup'])
-    key=keys[0]['value'];check(key,'signature_storage_credential_missing')
-    rest('PUT',ENV+'/storages/'+STORAGE,{'properties':{'azureFile':{'accountName':account['name'],'accountKey':key,'shareName':STORAGE,'accessMode':'ReadWrite'}}})
-    key='';keys=[]
-    print('PULSE_SIGNATURE_STORAGE=READY existing_storage_account=true business_share_not_mounted=true')
+    # Infrastructure preparation is owner-reviewed and separate from activation.
+    # The deployment identity stays scoped to the app RG; never discover or
+    # retrieve keys from the business-storage account in the data RG.
+    from signature_storage import validate_mount
+    validate_mount(rest('GET',ENV+'/storages/'+STORAGE))
+    print('PULSE_SIGNATURE_STORAGE=READY verified_dedicated_mount=true business_share_not_mounted=true')
+
 
 def journal(record):
     path=PRIVATE/'resource-journal.jsonl'
