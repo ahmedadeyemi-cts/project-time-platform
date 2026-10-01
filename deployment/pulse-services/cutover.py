@@ -4,6 +4,7 @@ from pathlib import Path
 from test_resources import *
 from activation_contracts import acceptance_job_name, validate_document_runtime
 from state_preservation import revision_is_ready, require_cleanup_ownership, require_new_service_names
+from replica_readiness import service_replicas_ready
 REPO='ahmedadeyemi-cts/project-time-platform'
 ORIGIN='https://phd-west-test.onenecklab.com'
 PREFIXES=('PROJECTPULSE_DOCUMENT_SERVICE_','PROJECTPULSE_LAYA_SERVICE_')
@@ -50,6 +51,12 @@ def wait_app(name,expected_images=None,*,expected_revision):
         a=get_app(name);p=a['properties']
         if p.get('provisioningState')=='Failed':raise CutoverError('service_provisioning_failed')
         if revision_is_ready(a,name,expected_revision,expected_images):
+            if name in APPS.values():
+                replicas=az('containerapp','replica','list','-g',GROUP,'-n',name,'--revision',expected_revision)
+                expected_names=[c['name'] for c in p['template']['containers']]
+                if not service_replicas_ready(replicas,expected_names):
+                    time.sleep(10)
+                    continue
             return a
         time.sleep(10)
     raise CutoverError('service_readiness_deadline')
@@ -68,7 +75,7 @@ def public_api(path,session='',payload=None):
     req=urllib.request.Request(ORIGIN+path,data=data,headers=headers,method='GET' if data is None else 'POST')
     try:
         with urllib.request.build_opener(NoRedirect).open(req,timeout=45) as response:
-            raw=response.read(2_000_001);check(len(raw)<=2_000_000,'api_response_budget')
+            raw=response.read(2_000_001);check(len(raw)<=2_000_001,'api_response_budget')
             return response.status,json.loads(raw) if raw else {}
     except urllib.error.HTTPError as error:
         status=error.code;error.close();return status,{}
