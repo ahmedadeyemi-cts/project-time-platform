@@ -1,14 +1,33 @@
 """Managed-container startup helpers; no Azure credentials or business access."""
-import ctypes, os, re, stat, sys, tempfile, time
+import ctypes, errno, os, re, socket, stat, sys, tempfile, time
 from pathlib import Path
 
+IDENTITY_VARIABLES = ('IDENTITY_ENDPOINT', 'IDENTITY_HEADER', 'MSI_ENDPOINT', 'MSI_SECRET')
+
+def clear_identity_environment():
+    # Azure may inject endpoint metadata even when the configured identity has
+    # lifecycle=None. Never pass that metadata/header to application subprocesses.
+    for key in IDENTITY_VARIABLES:
+        os.environ.pop(key, None)
+
 def harden(profile="gateway"):
-    if any(os.environ.get(k) for k in ("IDENTITY_ENDPOINT","IDENTITY_HEADER","MSI_ENDPOINT","MSI_SECRET")):
-        raise RuntimeError("runtime_managed_identity_must_be_disabled")
+    # The deployment separately verifies Azure identity lifecycle=None. Runtime
+    # authorization is not inferred from whether endpoint variables exist.
     lib=ctypes.CDLL('/usr/local/lib/libpulse-sandbox.so',use_errno=True)
     lib.pulse_sandbox.argtypes=[ctypes.c_char_p];lib.pulse_sandbox.restype=ctypes.c_int
     if lib.pulse_sandbox(profile.encode()) != 0:
         raise RuntimeError('PULSE_ISOLATION_UNAVAILABLE')
+    if profile != 'updater':
+        for family in (socket.AF_INET, socket.AF_INET6):
+            try:
+                probe=socket.socket(family,socket.SOCK_STREAM)
+            except OSError as error:
+                if error.errno != errno.EPERM:
+                    raise RuntimeError('PULSE_NETWORK_ISOLATION_UNVERIFIED') from None
+            else:
+                probe.close()
+                raise RuntimeError('PULSE_NETWORK_ISOLATION_UNAVAILABLE')
+    clear_identity_environment()
 
 def secret_file():
     raw=os.environ.pop('PULSE_SERVICE_TOKEN','')
@@ -32,6 +51,11 @@ def read_secret():
 
 def start():
     mode=sys.argv[1]
+    if mode not in ('documents','laya-gateway','scanner','updater'):
+        raise RuntimeError('startup_mode_invalid')
+    # exec replaces the initial environment, including the signature updater's.
+    # The existing C sandbox remains mandatory for every actual worker.
+    clear_identity_environment()
     if mode in ('documents','laya-gateway'):
         secret_file()
         module='docs_wsgi:app' if mode=='documents' else 'laya_wsgi:app'
