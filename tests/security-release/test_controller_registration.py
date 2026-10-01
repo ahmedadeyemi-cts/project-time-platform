@@ -1,4 +1,4 @@
-"""Only evidence publication changes; execution and authorization remain identical."""
+"""Retain the evidence-only controller regressions; separately verify the additive activation controller."""
 from pathlib import Path
 from copy import deepcopy
 import hashlib
@@ -14,6 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTROLLER = '.github/workflows/projectpulse-deploy-test.yml'
 BASE = 'a562371a0bbed74e881c40a4c246928dac9ec72e'
 REGISTRATION = json.loads((ROOT/'tests/security-release/controller_registration.json').read_text())
+_spec=importlib.util.spec_from_file_location('activation_controller_regression',ROOT/'tests/pulse-activation-release/controller.py')
+_activation=importlib.util.module_from_spec(_spec);_spec.loader.exec_module(_activation)
+def historical_controller():
+    return _activation.normalize((ROOT/CONTROLLER).read_bytes())
 
 def load(name):
     spec=importlib.util.spec_from_file_location(name, ROOT/'scripts/release-test'/name)
@@ -23,7 +27,7 @@ def old_bytes():
     return subprocess.check_output(['git','show',BASE+':'+CONTROLLER],cwd=ROOT)
 
 def verify_publication_only(current):
-    original=yaml.safe_load(old_bytes()); secured=yaml.safe_load(current)
+    original=yaml.safe_load(old_bytes()); secured=yaml.safe_load(_activation.normalize(current))
     steps=secured['jobs']['deploy']['steps']
     preparation=[s for s in steps if s.get('id')=='safe_uat_evidence']
     assert len(preparation)==1
@@ -43,8 +47,14 @@ def verify_publication_only(current):
     assert secured==original, 'Execution, permission, concurrency or authorization changed'
 
 class ControllerTests(unittest.TestCase):
+    def test_actual_activation_controller_is_exact_and_additive(self):
+        current=(ROOT/CONTROLLER).read_bytes()
+        self.assertEqual(hashlib.sha256(current).hexdigest(),_activation.CURRENT_SHA256)
+        self.assertEqual(hashlib.sha256(historical_controller()).hexdigest(),_activation.BASE_SHA256)
+        for changed in (current+b'\n',current.replace(b"exit-code: '1'",b"exit-code: '0'",1)):
+            with self.assertRaises(AssertionError):_activation.normalize(changed)
     def test_exact_registered_workflow_and_evidence_only_delta(self):
-        data=(ROOT/CONTROLLER).read_bytes()
+        data=historical_controller()
         self.assertEqual(hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest(), REGISTRATION['controllerBlob'])
         self.assertEqual(hashlib.sha256(data).hexdigest(),REGISTRATION['controllerSha256'])
         verify_publication_only(data)
@@ -81,7 +91,7 @@ class ControllerTests(unittest.TestCase):
                         with self.assertRaises(RuntimeError): m.verify_context(Api())
     def test_known_quarantine_base_and_byte_changes(self):
         m=load('verify-module025-quarantine-controller.py')
-        current=(ROOT/CONTROLLER).read_bytes()
+        current=historical_controller()
         self.assertTrue(m.permitted(old_bytes(),current))
         self.assertFalse(m.permitted(b'unknown base',current))
         self.assertFalse(m.permitted(old_bytes(),current+b'\n'))
