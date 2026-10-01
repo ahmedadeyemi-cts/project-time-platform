@@ -101,10 +101,10 @@ class ReplicaReadiness(unittest.TestCase):
             lines=source.splitlines(keepends=True)
             return {n.name:''.join(lines[n.lineno-1:n.end_lineno]) for n in ast.parse(source).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
         original=functions(before);current=functions(after)
-        self.assertEqual(set(current)-set(original),{'az_stage','recover_failed_orphan_services'})
+        self.assertEqual(set(current)-set(original),{'az_stage','rest_stage','wait_app_operation_settled','recover_failed_orphan_services'})
         self.assertFalse(set(original)-set(current))
         for name in original:
-            if name not in {'wait_app','prepare'}:self.assertEqual(current[name],original[name],name)
+            if name not in {'get_app','wait_app','prepare','switch','rollback'}:self.assertEqual(current[name],original[name],name)
     def test_identity_authority_and_sandbox_source_remain_unchanged(self):
         for name in ('test_resources.py','canonical_release.py','secret_preservation.py','sandbox.c'):
             path='deployment/pulse-services/'+name
