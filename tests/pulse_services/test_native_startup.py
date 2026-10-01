@@ -79,19 +79,19 @@ class ReplicaReadiness(unittest.TestCase):
         name=cutover.APPS['documents'];revision=name+'--svc-123'
         app={'properties':{'provisioningState':'Succeeded','template':{'containers':[{'name':n} for n in self.names]}}}
         not_ready=self.replicas();not_ready[0]['properties']['containers'][0]['ready']=False
-        with patch.object(cutover,'get_app',return_value=app),patch.object(cutover,'revision_is_ready',return_value=True),patch.object(cutover,'az',side_effect=[not_ready,self.replicas()]) as azure,patch.object(cutover.time,'sleep') as sleep:
+        with patch.object(cutover,'get_app',return_value=app),patch.object(cutover,'revision_is_ready',return_value=True),patch.object(cutover,'read_service_replicas',side_effect=[not_ready,self.replicas()]) as azure,patch.object(cutover.time,'sleep') as sleep:
             self.assertIs(cutover.wait_app(name,expected_revision=revision),app)
             self.assertEqual(azure.call_count,2)
-            self.assertEqual(azure.call_args.args,('containerapp','replica','list','-g',cutover.GROUP,'-n',name,'--revision',revision))
+            self.assertEqual(azure.call_args.args,(name,revision))
             sleep.assert_called_once_with(10)
     def test_source_revision_guard_precedes_replica_read(self):
         app={'properties':{'provisioningState':'Succeeded'}}
-        with patch.object(cutover,'get_app',return_value=app),patch.object(cutover,'revision_is_ready',return_value=False),patch.object(cutover,'az') as azure,patch.object(cutover.time,'monotonic',side_effect=[0,0,901]),patch.object(cutover.time,'sleep'):
+        with patch.object(cutover,'get_app',return_value=app),patch.object(cutover,'revision_is_ready',return_value=False),patch.object(cutover,'read_service_replicas') as azure,patch.object(cutover.time,'monotonic',side_effect=[0,0,901]),patch.object(cutover.time,'sleep'):
             with self.assertRaisesRegex(cutover.CutoverError,'service_readiness_deadline'):cutover.wait_app(cutover.APPS['documents'],expected_revision='expected')
             azure.assert_not_called()
     def test_existing_api_wait_contract_is_unchanged(self):
         app={'properties':{'provisioningState':'Succeeded'}}
-        with patch.object(cutover,'get_app',return_value=app),patch.object(cutover,'revision_is_ready',return_value=True),patch.object(cutover,'az') as azure:
+        with patch.object(cutover,'get_app',return_value=app),patch.object(cutover,'revision_is_ready',return_value=True),patch.object(cutover,'read_service_replicas') as azure:
             self.assertIs(cutover.wait_app(cutover.API,expected_revision='expected'),app)
             azure.assert_not_called()
     def test_other_cutover_functions_are_byte_identical_to_baseline(self):
@@ -108,5 +108,75 @@ class ReplicaReadiness(unittest.TestCase):
         for name in ('test_resources.py','canonical_release.py','secret_preservation.py','sandbox.c'):
             path='deployment/pulse-services/'+name
             self.assertEqual((ROOT/path).read_bytes(),subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT))
+
+class BoundedReplicaReads(unittest.TestCase):
+    name=cutover.APPS['documents']
+    def revision(self):return self.name+'--svc-12345'
+    def response(self,code=0,body=None,error=''):
+        return types.SimpleNamespace(returncode=code,stdout=json.dumps(body if body is not None else {'value':[]}),stderr=error)
+    def read(self):
+        from replica_readiness import read_service_replicas
+        return read_service_replicas(self.name,self.revision())
+    def test_calls_only_fixed_versioned_test_replica_read(self):
+        with patch('subprocess.run',return_value=self.response()) as process:
+            self.assertEqual(self.read(),[])
+        args=process.call_args.args[0]
+        self.assertEqual(args,['az','rest','--method','GET','--url','https://management.azure.com'+cutover.ROOT+'/providers/Microsoft.App/containerApps/'+self.name+'/revisions/'+self.revision()+'/replicas?api-version=2025-01-01','--only-show-errors','-o','json'])
+        self.assertEqual(process.call_args.kwargs['timeout'],25)
+    def test_foreign_application_or_revision_rejected_before_network(self):
+        from replica_readiness import read_service_replicas
+        for name,revision in [('ca-prod',self.revision()),(self.name,'other--svc-12345'),(self.name,self.revision()+'/../../providers'),(self.name,self.name+'--svc-0')]:
+            with patch('subprocess.run') as process,self.assertRaisesRegex(ValueError,'replica_read_scope_rejected'):
+                read_service_replicas(name,revision)
+            process.assert_not_called()
+    def test_initial_not_found_is_unready_not_success(self):
+        with patch('subprocess.run',return_value=self.response(1,error='ERROR: (ResourceNotFound) pending')):
+            rows=self.read()
+        self.assertEqual(rows,[]);self.assertFalse(service_replicas_ready(rows,['documents']))
+    def test_actual_rest_not_found_envelope_is_unready(self):
+        error='ERROR: Not Found('+json.dumps({'error':{'code':'ResourceNotFound','message':'PRIVATE_SENTINEL'}})+')'
+        with patch('subprocess.run',return_value=self.response(1,error=error)):
+            self.assertEqual(self.read(),[])
+    def test_error_message_cannot_impersonate_transient_code(self):
+        error='ERROR: Forbidden('+json.dumps({'error':{'code':'AuthorizationFailed','message':'ResourceNotFound'}})+')'
+        with patch('subprocess.run',return_value=self.response(1,error=error)),self.assertRaisesRegex(ValueError,'replica_read_authorization_failed'):self.read()
+        malformed='ERROR: Unknown({"message":"ResourceNotFound"})'
+        with patch('subprocess.run',return_value=self.response(1,error=malformed)),self.assertRaisesRegex(ValueError,'replica_read_unclassified_failure'):self.read()
+    def test_authorization_and_unclassified_errors_are_terminal(self):
+        for code in ('AuthorizationFailed','Forbidden','InvalidAuthenticationToken','UnexpectedAzureFailure'):
+            with patch('subprocess.run',return_value=self.response(1,error='ERROR: ('+code+') private details')),self.assertRaises(ValueError) as captured:self.read()
+            self.assertNotIn('private details',str(captured.exception))
+    def test_only_reads_can_be_retried_without_native_success(self):
+        for code in ('ContainerAppRevisionNotFound','ContainerAppReplicaNotFound','TooManyRequests','ServiceUnavailable'):
+            with patch('subprocess.run',return_value=self.response(1,error='ERROR: ('+code+') details')):
+                self.assertEqual(self.read(),[])
+    def test_timeout_keeps_service_unready(self):
+        with patch('subprocess.run',side_effect=subprocess.TimeoutExpired(['az'],25)):
+            self.assertEqual(self.read(),[])
+    def test_raw_stderr_and_response_are_not_exported(self):
+        import contextlib,io
+        capture=io.StringIO()
+        with patch('subprocess.run',return_value=self.response(1,error='ERROR: (ResourceNotFound) PRIVATE_SENTINEL')),contextlib.redirect_stdout(capture):self.read()
+        self.assertNotIn('PRIVATE_SENTINEL',capture.getvalue())
+    def test_invalid_oversized_or_paginated_collection_cannot_pass(self):
+        for value in (None,[],{'value':None},{'value':[{}]*11},{'value':[],'nextLink':'https://untrusted.invalid'},{'value':[],'extra':'value'}):
+            result=self.response();result.stdout=json.dumps(value)
+            with patch('subprocess.run',return_value=result),self.assertRaisesRegex(ValueError,'replica_read_invalid_collection'):self.read()
+        result=self.response();result.stdout='x'*1048577
+        with patch('subprocess.run',return_value=result),self.assertRaisesRegex(ValueError,'replica_read_response_budget'):self.read()
+    def test_positive_collection_still_requires_each_container_running(self):
+        rows=[{'properties':{'containers':[{'name':'documents','ready':True,'runningState':'Waiting'}]}}]
+        with patch('subprocess.run',return_value=self.response(body={'value':rows})):
+            self.assertFalse(service_replicas_ready(self.read(),['documents']))
+        rows[0]['properties']['containers'][0]['runningState']='Running'
+        with patch('subprocess.run',return_value=self.response(body={'value':rows})):
+            self.assertTrue(service_replicas_ready(self.read(),['documents']))
+    def test_transient_missing_replicas_then_healthy_service(self):
+        app={'properties':{'provisioningState':'Succeeded','template':{'containers':[{'name':'documents'}]}}}
+        rows=[{'properties':{'containers':[{'name':'documents','ready':True,'runningState':'Running'}]}}]
+        results=[self.response(1,error='ERROR: (ResourceNotFound) starting'),self.response(body={'value':rows})]
+        with patch.object(cutover,'get_app',return_value=app),patch.object(cutover,'revision_is_ready',return_value=True),patch('subprocess.run',side_effect=results),patch.object(cutover.time,'sleep') as sleep:
+            self.assertIs(cutover.wait_app(self.name,expected_revision=self.revision()),app)
+            sleep.assert_called_once_with(10)
 
 if __name__=='__main__':unittest.main(verbosity=2)
