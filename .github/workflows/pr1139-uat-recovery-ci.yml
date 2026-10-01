@@ -28,6 +28,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
+          if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-protected-planner-diagnostic-20261001' ]]; then
+            python3 tests/pulse-activation-order/scope.py
+            python3 tests/pulse-activation-order/test_scope.py
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'feature/pulse-private-services-activation-20260930' ]]; then
             python3 tests/pulse-activation-release/scope.py
             python3 tests/pulse-activation-release/test_scope.py

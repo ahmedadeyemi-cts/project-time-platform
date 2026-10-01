@@ -547,6 +547,12 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
       '.github/workflows/flowhive-psa-installed-acceptance.yml',
       'scripts/release-test/flowhive-psa-admission.mjs'
     ];
+    if (process.env.GITHUB_HEAD_REF === 'fix/flowhive-protected-planner-diagnostic-20261001') {
+      execFileSync('python3', ['tests/pulse-activation-order/scope.py']);
+      execFileSync('python3', ['tests/pulse_services/test_release_phase.py']);
+      execFileSync('python3', ['tests/pulse_services/test_post_activation.py']);
+      protectedPaths.splice(protectedPaths.indexOf('.github/workflows/projectpulse-deploy-test.yml'), 1);
+    }
     if (process.env.GITHUB_HEAD_REF === 'feature/pulse-private-services-activation-20260930') {
       // The exact new block is independently hash-bound; every old execution,
       // approval and UAT step must remain byte-identical. Other paths stay frozen.

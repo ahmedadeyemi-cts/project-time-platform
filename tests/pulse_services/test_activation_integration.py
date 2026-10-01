@@ -22,6 +22,8 @@ def records():
       'actor':{'login':'github-actions[bot]'}}
     steps=[{'name':n,'status':'completed','conclusion':'success'} for n in gate.REQUIRED_STEPS]
     steps.append({'name':gate.ACTIVATION_STEP,'status':'in_progress','conclusion':None})
+    steps.extend({'name':n,'status':'pending','conclusion':None} for n in gate.APPLICATION_UAT_STEPS)
+    steps.append({'name':gate.FINALIZATION_STEP,'status':'pending','conclusion':None})
     return run,{'jobs':[{'name':gate.JOB,'run_id':int(RUN),'head_sha':SHA,
       'status':'in_progress','conclusion':None,'steps':steps}]}
 class CanonicalGate(unittest.TestCase):
@@ -73,9 +75,9 @@ class SourcePreservation(unittest.TestCase):
             expected=subprocess.check_output(['git','show',base+':'+name],cwd=ROOT)
             actual=(ROOT/name).read_bytes()
             if name=='.github/workflows/projectpulse-deploy-test.yml':
-                start=actual.index(b'      - name: Build private Pulse service images\n')
-                end=actual.index(b'      - name: Restore exact prior Test images after application failure\n',start)
-                actual=actual[:start]+actual[end:]
+                spec=importlib.util.spec_from_file_location('reviewed_order_projection',ROOT/'tests/pulse-activation-release/controller.py')
+                projection=importlib.util.module_from_spec(spec);spec.loader.exec_module(projection)
+                actual=projection.normalize(actual)
             self.assertEqual(actual,expected)
 
 class SecretPreservation(unittest.TestCase):

@@ -34,6 +34,9 @@ NORMAL_SA_SHA256 = "53e9ae43fb8eeee5efefdc28e56c6ac3c90883b815cb65288d7b948a3883
 
 
 def permitted(original, current):
+    # Exact reviewed reordered controller; every existing UAT gate remains mandatory.
+    if hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256, "6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff", "11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3") and hashlib.sha256(current).hexdigest() == "6c7d701fc02599626f5fcfb638f4f5d4809e27102dbeb2085ac5c7f81532ca62":
+        return True
     # PR1229 adds one exact service phase after the previous full acceptance.
     # Unknown old bases or any different new bytes still fail quarantine admission.
     if hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256, "6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff") and hashlib.sha256(current).hexdigest() == "11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3":

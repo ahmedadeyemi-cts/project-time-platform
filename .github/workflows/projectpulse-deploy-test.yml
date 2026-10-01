@@ -1181,6 +1181,91 @@ jobs:
           jq -e '.status == "passed"' "$EVIDENCE_DIR/flowhive-my-role-browser.json" >/dev/null
           echo 'MODULE025_SCOPED_DEPLOYMENT_ACCEPTANCE=PASSED'
 
+      - name: Build private Pulse service images
+        id: pulse_service_images
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        shell: bash
+        working-directory: release
+        env:
+          PULSE_SOURCE_SHA: ${{ env.TARGET_RELEASE_COMMIT }}
+          PULSE_SAFE_EVIDENCE: ${{ runner.temp }}/pulse-services-safe
+        run: python3 deployment/pulse-services/service_images.py build
+
+      - name: Scan private Pulse documents image
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-documents:cutover
+          format: json
+          output: ${{ runner.temp }}/pulse-services-safe/documents-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Scan private Pulse scanner image
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-scanner:cutover
+          format: json
+          output: ${{ runner.temp }}/pulse-services-safe/scanner-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Scan private Pulse laya-gateway image
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-laya-gateway:cutover
+          format: json
+          output: ${{ runner.temp }}/pulse-services-safe/laya-gateway-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Scan private Pulse laya image
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          version: v0.74.0
+          image-ref: pulse-services-laya:cutover
+          format: json
+          output: ${{ runner.temp }}/pulse-services-safe/laya-scan.json
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Publish scanned private Pulse service images
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        shell: bash
+        working-directory: release
+        env:
+          PULSE_SOURCE_SHA: ${{ env.TARGET_RELEASE_COMMIT }}
+          PULSE_SAFE_EVIDENCE: ${{ runner.temp }}/pulse-services-safe
+        run: python3 deployment/pulse-services/service_images.py publish
+
+      - name: Activate and verify private Pulse document and Laya services
+        id: pulse_private_services
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        timeout-minutes: 75
+        shell: bash
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULSE_CANONICAL_RELEASE: 'true'
+          PULSE_SOURCE_SHA: ${{ env.TARGET_RELEASE_COMMIT }}
+          PULSE_CONFIRMATION: 'SWITCH PULSE TEST DOCUMENTS AND LAYA'
+          PULSE_PRIVATE_EVIDENCE: ${{ runner.temp }}/pulse-services-private
+          PULSE_SAFE_EVIDENCE: ${{ runner.temp }}/pulse-services-safe
+          PULSE_IMAGE_MANIFEST: ${{ runner.temp }}/pulse-services-safe/registry-images.json
+          PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+          PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+        run: python3 deployment/pulse-services/release_phase.py
+
       - name: Run protected-Test authenticated functional UAT
         id: uat
         if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role' && inputs.acceptance_scope != 'sow_exports') }}
@@ -2070,77 +2155,9 @@ jobs:
             > "$EVIDENCE_DIR/module025-normal-sa-browser.json"
           echo 'MODULE025_RETAINED_VERSION_BROWSER_LIFECYCLE=PASS authorization=normal-solution-architect authenticatedClicks=true hashes=verified unauthorized=checked reload=verified'
 
-      - name: Build private Pulse service images
-        id: pulse_service_images
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.module025_normal_sa_browser.outcome == 'success' }}
-        shell: bash
-        working-directory: release
-        env:
-          PULSE_SOURCE_SHA: ${{ env.TARGET_RELEASE_COMMIT }}
-          PULSE_SAFE_EVIDENCE: ${{ runner.temp }}/pulse-services-safe
-        run: python3 deployment/pulse-services/service_images.py build
-
-      - name: Scan private Pulse documents image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.module025_normal_sa_browser.outcome == 'success' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          version: v0.74.0
-          image-ref: pulse-services-documents:cutover
-          format: json
-          output: ${{ runner.temp }}/pulse-services-safe/documents-scan.json
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
-
-      - name: Scan private Pulse scanner image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.module025_normal_sa_browser.outcome == 'success' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          version: v0.74.0
-          image-ref: pulse-services-scanner:cutover
-          format: json
-          output: ${{ runner.temp }}/pulse-services-safe/scanner-scan.json
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
-
-      - name: Scan private Pulse laya-gateway image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.module025_normal_sa_browser.outcome == 'success' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          version: v0.74.0
-          image-ref: pulse-services-laya-gateway:cutover
-          format: json
-          output: ${{ runner.temp }}/pulse-services-safe/laya-gateway-scan.json
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
-
-      - name: Scan private Pulse laya image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.module025_normal_sa_browser.outcome == 'success' }}
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          version: v0.74.0
-          image-ref: pulse-services-laya:cutover
-          format: json
-          output: ${{ runner.temp }}/pulse-services-safe/laya-scan.json
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          exit-code: '1'
-
-      - name: Publish scanned private Pulse service images
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.module025_normal_sa_browser.outcome == 'success' }}
-        shell: bash
-        working-directory: release
-        env:
-          PULSE_SOURCE_SHA: ${{ env.TARGET_RELEASE_COMMIT }}
-          PULSE_SAFE_EVIDENCE: ${{ runner.temp }}/pulse-services-safe
-        run: python3 deployment/pulse-services/service_images.py publish
-
-      - name: Activate and verify private Pulse document and Laya services
-        id: pulse_private_services
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.module025_normal_sa_browser.outcome == 'success' }}
-        timeout-minutes: 75
+      - name: Finalize private Pulse activation after full application acceptance
+        id: pulse_private_services_final
+        if: ${{ always() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.pulse_service_images.outcome == 'success' }}
         shell: bash
         working-directory: release
         env:
@@ -2153,7 +2170,7 @@ jobs:
           PULSE_IMAGE_MANIFEST: ${{ runner.temp }}/pulse-services-safe/registry-images.json
           PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
           PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
-        run: python3 deployment/pulse-services/release_phase.py
+        run: python3 deployment/pulse-services/release_phase.py finalize
 
       - name: Publish private Pulse service activation receipt
         if: ${{ always() && steps.pulse_service_images.outcome == 'success' }}
@@ -2165,7 +2182,7 @@ jobs:
           if-no-files-found: error
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true') }}
+        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && ((steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true') || steps.pulse_private_services_final.outcome == 'failure')) }}
         shell: bash
         working-directory: release
         run: |
