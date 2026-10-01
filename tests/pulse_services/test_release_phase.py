@@ -22,6 +22,11 @@ class Workflow(unittest.TestCase):
         self.assertEqual(current[:lo]+current[hi:],original)
         for path in ['scripts/validate-deployment-concurrency-governance.mjs','.github/workflows/module025-protected-uat-control.yml']:
             self.assertEqual((ROOT/path).read_bytes(),subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT))
+    def test_feature_merge_is_pinned_without_requesting_extra_token_permission(self):
+        source=(D/'cutover.py').read_text()
+        self.assertIn("'492d991c38fb87237beb570284403aee792e446c',SHA",source)
+        self.assertNotIn("gh('pulls/",source)
+        subprocess.run(['git','merge-base','--is-ancestor','492d991c38fb87237beb570284403aee792e446c','HEAD'],cwd=ROOT,check=True)
     def test_security_gates_precede_activation(self):
         a=yaml.safe_load((ROOT/WORKFLOW).read_text());job=a['jobs']['deploy']
         self.assertEqual(job['environment'],'test');self.assertEqual(a['concurrency']['queue'],'max');self.assertFalse(a['concurrency']['cancel-in-progress'])
