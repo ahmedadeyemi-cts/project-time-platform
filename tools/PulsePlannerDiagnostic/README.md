@@ -13,3 +13,7 @@ This is an incident-read tool, not an activation/deployment/controller bypass.
 Its source must be reviewed in the PR before its ephemeral execution inside the
 existing Test API. Test application routes and the existing local account remain
 unchanged. Findings are not closed by this diagnostic.
+
+The same fixed incident transaction also reads up to eight associated FlowHive
+answer audit records, returning only enum diagnostics, provider labels, numeric
+coverage and artifact-presence flags. No answer text or identity is selected.

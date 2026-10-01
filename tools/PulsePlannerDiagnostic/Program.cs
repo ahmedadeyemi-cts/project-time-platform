@@ -75,8 +75,36 @@ try
                 validationValid=validation.RootElement.TryGetProperty("valid",out var valid)&&valid.ValueKind==JsonValueKind.True});
         }
     }
+    var answers=new List<object>();
+    await using(var audit=connection.CreateCommand())
+    {
+        audit.Transaction=transaction;audit.CommandTimeout=5;
+        audit.CommandText="""
+            SELECT answer_status,private_model_provider,retrieval_mode,diagnostic_code,
+                   retrieved_chunk_count,cited_source_count,confidence_score,coverage_score,
+                   COALESCE(answer_json->>'modelProvider',''),
+                   COALESCE(answer_json->>'diagnosticCode',''),
+                   COALESCE(jsonb_typeof(answer_json->'flowHivePlan')='object',FALSE)
+            FROM pulse_ai_answer_runs
+            WHERE completed_at >= TIMESTAMPTZ '2026-10-01T03:49:00Z'
+              AND completed_at <= TIMESTAMPTZ '2026-10-01T03:52:00Z'
+              AND feature_code LIKE '%flowhive%'
+              AND project_id IN (SELECT project_id FROM project_flowhive_ai_planner_runs
+                  WHERE updated_at >= TIMESTAMPTZ '2026-10-01T03:49:00Z'
+                    AND updated_at <= TIMESTAMPTZ '2026-10-01T03:52:00Z')
+            ORDER BY completed_at DESC LIMIT 8;
+            """;
+        await using var reader=await audit.ExecuteReaderAsync(deadline.Token);
+        while(await reader.ReadAsync(deadline.Token))
+        {
+            string Safe(int i){var v=reader.IsDBNull(i)?"":reader.GetString(i);return Regex.IsMatch(v,"^[a-z0-9_]{0,180}$")?v:"unrecognized";}
+            answers.Add(new {status=Safe(0),modelProvider=Safe(1),retrievalMode=Safe(2),diagnostic=Safe(3),
+                chunks=reader.GetValue(4),citations=reader.GetValue(5),confidence=reader.GetValue(6),coverage=reader.GetValue(7),
+                retainedAnswerProvider=Safe(8),retainedAnswerDiagnostic=Safe(9),retainedPlan=reader.GetBoolean(10)});
+        }
+    }
     await transaction.RollbackAsync(deadline.Token);
-    Console.WriteLine(JsonSerializer.Serialize(new {source=expectedSource,readOnly=true,incidentWindow="2026-10-01T03:49Z..03:52Z",rows,rawContentPublished=false}));
+    Console.WriteLine(JsonSerializer.Serialize(new {source=expectedSource,readOnly=true,incidentWindow="2026-10-01T03:49Z..03:52Z",rows,answers,rawContentPublished=false}));
 }
 catch(Exception e)
 {
