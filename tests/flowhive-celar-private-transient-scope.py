@@ -13,6 +13,7 @@ EXPECTED = sorted({
     "scripts/release-test/validate-protected-test-controller-branches.sh",
     "src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs",
     "tests/FlowHiveDetailedPlannerTests/Program.cs",
+    "tests/flowhive-psa-admission.test.mjs",
     "tests/flowhive-celar-private-transient-scope.py",
 })
 
