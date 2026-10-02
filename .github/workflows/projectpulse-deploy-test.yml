@@ -942,7 +942,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           bash scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
-          PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-celar-ai-private-runtime-migrations.sh"
+          PROJECTPULSE_RELEASE_ROOT="$PWD" bash scripts/release-test/build-and-run-celar-ai-private-runtime-migrations.sh
           if [[ "$ACCEPTANCE_SCOPE" == sow_role || "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
             bash scripts/release-test/build-and-run-module025-retention-migration-106.sh
           fi
