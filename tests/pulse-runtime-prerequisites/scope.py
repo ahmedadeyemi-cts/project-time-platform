@@ -1,4 +1,4 @@
-"""Exact source registration for PR1243 document-runtime prerequisites.
+"""Exact source registration for PR1245 document-runtime prerequisite path repair.
 
 This records reviewed Test-only source bytes. It does not grant deployment,
 Production, account, or data mutation authority beyond the existing controllers.
@@ -11,7 +11,8 @@ BASE='d81a53a68b5704b4db2838666b02e2a6dfc23618'
 BRANCH='fix/pulse-document-runtime-prereqs-20261002'
 REPOSITORY='ahmedadeyemi-cts/project-time-platform'
 MANIFEST='tests/pulse-runtime-prerequisites/manifest.json'
-ALLOWED={'deployment/pulse-services/cutover.py', 'tests/pulse_services/test_cutover.py', 'scripts/release-test/recover-pr1140-migration-retry-orphan.py', 'tests/pulse-activation-release/test_scope.py', 'src/frontend/project-time-web/scripts/validate-module-011-managed-architecture.mjs', 'scripts/release-test/validate-protected-test-controller-branches.sh', 'scripts/release-test/verify-module025-quarantine-controller.py', 'tests/laya/processed-source-scope.py', 'tests/flowhive-psa-admission.test.mjs', 'tests/security-release/admission_fixture.py', 'tests/pulse-runtime-prerequisites/recovery_registration.json', 'tests/pulse-runtime-prerequisites/test_scope.py', '.github/workflows/pr1151-uat-supersession-ci.yml', 'tests/pulse-activation-release/controller.py', '.github/workflows/flowhive-psa-release-control-ci.yml', '.github/workflows/pr1140-uat-recovery-ci.yml', 'tests/security-release/test_controller_registration.py', 'scripts/release-test/verify-pr1151-uat-supersession.py', 'tests/pulse-runtime-prerequisites/manifest.json', 'scripts/release-test/recover-pr1140-uat-orphan.py', 'scripts/release-test/recover-pr1139-uat-orphan.py', '.github/workflows/projectpulse-deploy-test.yml', 'scripts/release-test/resolve-flowhive-installed-deployment.py', '.github/workflows/uat-migration-throttle-recovery-ci.yml', 'tests/pulse-runtime-prerequisites/scope.py', 'scripts/release-test/validate-module025-governed-release.sh', 'scripts/release-test/build-and-run-celar-ai-private-runtime-migrations.sh', '.github/workflows/pr1139-uat-recovery-ci.yml', 'scripts/release-test/verify-pr1204-uat-supersession.py', 'tests/pulse_services/test_native_startup.py', 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh', 'tests/pulse_services/test_activation_integration.py'}
+PR_NUMBER='1245'
+ALLOWED={'.github/workflows/uat-migration-throttle-recovery-ci.yml', 'scripts/release-test/verify-pr1151-uat-supersession.py', 'scripts/release-test/recover-pr1139-uat-orphan.py', 'scripts/release-test/validate-module025-governed-release.sh', 'scripts/release-test/recover-pr1140-uat-orphan.py', '.github/workflows/flowhive-psa-release-control-ci.yml', 'tests/pulse-runtime-prerequisites/scope.py', 'tests/pulse-runtime-prerequisites/pathfix_registration.json', 'tests/pulse_services/test_native_startup.py', 'tests/flowhive-psa-admission.test.mjs', 'tests/security-release/test_controller_registration.py', 'scripts/ci/validate-celar-ai-enterprise-source-boundary.sh', 'tests/pulse-runtime-prerequisites/recovery_registration.json', 'scripts/release-test/resolve-flowhive-installed-deployment.py', 'scripts/release-test/verify-pr1204-uat-supersession.py', 'tests/pulse-activation-release/controller.py', 'tests/pulse-runtime-prerequisites/manifest.json', 'tests/pulse-runtime-prerequisites/test_scope.py', 'tests/pulse_services/test_activation_integration.py', '.github/workflows/pr1139-uat-recovery-ci.yml', 'src/frontend/project-time-web/scripts/validate-module-011-managed-architecture.mjs', 'tests/pulse-activation-release/test_scope.py', '.github/workflows/projectpulse-deploy-test.yml', 'deployment/pulse-services/cutover.py', '.github/workflows/pr1140-uat-recovery-ci.yml', 'scripts/release-test/recover-pr1140-migration-retry-orphan.py', 'tests/laya/processed-source-scope.py', 'scripts/release-test/verify-module025-quarantine-controller.py', 'tests/pulse_services/test_cutover.py', 'tests/security-release/admission_fixture.py', 'scripts/release-test/validate-protected-test-controller-branches.sh', 'scripts/release-test/build-and-run-celar-ai-private-runtime-migrations.sh', '.github/workflows/pr1151-uat-supersession-ci.yml'}
 
 def require(value,message):
     if not value: raise RuntimeError(message)
@@ -31,7 +32,7 @@ def frozen(path):
             or path == '.github/workflows/projectpulse-deploy-production.yml')
 
 def verify_identity(branch,repository,base,number):
-    require((branch,repository,base,str(number))==(BRANCH,REPOSITORY,'main','1243'),'Wrong source identity')
+    require((branch,repository,base,str(number))==(BRANCH,REPOSITORY,'main',PR_NUMBER),'Wrong source identity')
 
 def verify_paths(paths,manifest):
     require(manifest['base']==BASE,'Wrong fixed baseline')
@@ -52,7 +53,7 @@ def main():
     verify_identity(os.getenv('GITHUB_HEAD_REF') or git('branch','--show-current').decode().strip(),
                     os.getenv('GITHUB_REPOSITORY',REPOSITORY),
                     os.getenv('GITHUB_BASE_REF','main'),
-                    os.getenv('PR_NUMBER','1243'))
+                    os.getenv('PR_NUMBER',PR_NUMBER))
     if os.getenv('GITHUB_EVENT_PATH'):
         event=json.loads(Path(os.environ['GITHUB_EVENT_PATH']).read_text())
         if event.get('pull_request'):
