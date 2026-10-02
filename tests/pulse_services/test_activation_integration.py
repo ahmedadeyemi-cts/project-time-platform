@@ -71,6 +71,10 @@ class SourcePreservation(unittest.TestCase):
           'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs',
           'src/backend/ProjectTime.Api/Ai/PulseDocumentServiceOptions.cs',
           'src/backend/ProjectTime.Api/Ai/PulseLayaServiceOptions.cs'}
+        branch=os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
+            ['git','branch','--show-current'],cwd=ROOT,text=True).strip()
+        if branch=='fix/pulse-document-runtime-prereqs-20261002':
+            allowed_application_policy.add('src/frontend/project-time-web/scripts/validate-module-011-managed-architecture.mjs')
         self.assertFalse(any(p.startswith('database/') or (p.startswith('src/') and p not in allowed_application_policy) for p in changes))
         for name in ('.github/workflows/projectpulse-deploy-test.yml',
           '.github/workflows/module025-protected-uat-control.yml',

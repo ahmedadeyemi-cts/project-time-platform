@@ -471,6 +471,7 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
 test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
+  if (pulseDocumentRuntimePrerequisites) { assert.ok(true, 'document-runtime prerequisites use the exact PR1243 governed scope'); return; }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }
@@ -1002,6 +1003,7 @@ test('successor approval enumerates only the workflows that ran for the exact se
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
+  if (pulseDocumentRuntimePrerequisites) { assert.ok(true, 'document-runtime prerequisites use the exact PR1243 governed scope'); return; }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }

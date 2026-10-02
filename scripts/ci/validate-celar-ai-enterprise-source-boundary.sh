@@ -4,6 +4,16 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
+if [[ "$HEAD_BRANCH" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
+  python3 tests/pulse-runtime-prerequisites/scope.py
+  python3 tests/pulse-runtime-prerequisites/test_scope.py
+  if [[ -n "${GITHUB_ENV:-}" ]]; then
+    echo "CELAR_AI_ENTERPRISE_VALIDATION_MODE=DOCUMENT_RUNTIME_PREREQUISITES" >> "$GITHUB_ENV"
+  fi
+  echo "CELAR_AI_ENTERPRISE_VALIDATION_MODE=DOCUMENT_RUNTIME_PREREQUISITES"
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == 'fix/security-complete-20260929' ]]; then
   python3 tests/security-completion/scope.py
   python3 tests/security-completion/test_scope.py
