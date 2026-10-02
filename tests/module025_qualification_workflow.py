@@ -48,7 +48,8 @@ def deployment_projection(doc):
     doc = copy.deepcopy(doc)
     # Exercise historical assertions on the exact preserved pre-activation
     # controller; independently reject any change to the registered new block.
-    if any(s.get('name')=='Build private Pulse service images' for s in doc['jobs']['deploy']['steps']):
+    deploy_steps = doc.get('jobs', {}).get('deploy', {}).get('steps', [])
+    if any(s.get('name')=='Build private Pulse service images' for s in deploy_steps):
         from pathlib import Path
         import importlib.util,yaml
         root=Path(__file__).resolve().parents[1]
