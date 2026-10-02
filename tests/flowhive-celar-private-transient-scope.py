@@ -6,6 +6,9 @@ BRANCH = "fix/flowhive-celar-private-transient-diagnostics-20261002"
 EXPECTED = sorted({
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/module-management-owner-drawer-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
     "src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs",
