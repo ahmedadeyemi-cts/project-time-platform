@@ -1,15 +1,11 @@
-# 025K Research-Backed SOW Demo
+# 025K Research-Backed SOW Demo (Superseded)
 
-## Purpose
-Make Module 025 a research-backed SOW drafting workflow.
+This document described an earlier hash-route (`#sow-generator`) SOW Generator prototype
+that no longer exists in the codebase, including its research-brief drafting workflow. It
+was fully replaced on 2026-08-30 by the persistent Module 025 SOW/GSD Workspace, which
+generates its Plan/Design/Implement/Validate/Release scope from a Service Overview through
+Celar AI rather than a research brief.
 
-## Changes
-- Research Actual Delivery Process button.
-- Process Research Brief section.
-- Generate SOW Draft from Research.
-- Project scope and deliverables are generated from the research brief.
-- Customer dropdown seeded from Customer Directory.
-- Project Type includes Service Request.
-- Route-isolated SOW Generator page.
-- Word-compatible download.
-- Signed SOW/GSD handoff validation.
+See [025A SOW & GSD Workspace](025A-sow-generator-dashboard-workspace.md) and
+[docs/production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md](../production/025_SOW_GENERATOR_CLAUDE_REVIEW_WORKFLOW.md)
+for the current implementation.
