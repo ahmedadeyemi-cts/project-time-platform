@@ -175,11 +175,12 @@ check(
   'topology, cards, mobile, and dark-theme treatments are scoped'
 );
 check(
-  'PRIVATE_RUNTIME_STILL_DEFERRED',
-  !deployController.includes('081_celar_ai_private_runtime_activation')
+  'PRIVATE_RUNTIME_ACTIVATION_GOVERNED',
+  deployController.includes('081_celar_ai_private_runtime_activation')
+    && deployController.includes('build-and-run-celar-ai-private-runtime-migrations.sh')
     && deferredWorkflow.includes('OPEN_CLOUD_PRIVATE_RUNTIME_DEPLOYMENT=DISABLED')
     && deferredWorkflow.includes('AZURE_PRIVATE_RUNTIME_MUTATION=NONE'),
-  'normal Test deployment excludes migration 081 and the runtime workflow remains non-mutating'
+  'Protected Test activates the reviewed 080/081 database prerequisites through the governed migration job while the separate open-cloud private-runtime workflow remains non-mutating'
 );
 check(
   'BRANDED_ARCHITECTURE_PACKAGE_ALIGNED',

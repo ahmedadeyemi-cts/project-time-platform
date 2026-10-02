@@ -37,7 +37,10 @@ STANDARD_MAIN_MIGRATIONS = (
     "099_module025_sow_gsd_workspace",
     "100_module001b_catalog_ownership_reconciliation",
 )
-CURRENT_MAIN_MIGRATIONS = STANDARD_MAIN_MIGRATIONS + (
+CURRENT_MAIN_MIGRATIONS = (
+    "080_celar_ai_internal_data_intelligence",
+    "081_celar_ai_private_runtime_activation",
+) + STANDARD_MAIN_MIGRATIONS + (
     "109_module025_project_name",
     "115_module_066_task_notifications",
     "121_flowhive_sequential_phase_checkpoints",
