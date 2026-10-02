@@ -78,7 +78,7 @@ jobs:
             python3 tests/pulse-runtime-prerequisites/scope.py
             python3 tests/pulse-runtime-prerequisites/test_scope.py
             python3 tests/flowhive-installed-resolution.test.py
-            python3 tests/security-release/admission_fixture.py --run-all
+            node --test tests/flowhive-psa-admission.test.mjs
             python3 tests/security-release/test_controller_registration.py
             node tests/validate-systemwide-image-build-controller.mjs
             exit 0

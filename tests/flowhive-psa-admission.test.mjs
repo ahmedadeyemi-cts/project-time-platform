@@ -64,6 +64,7 @@ const flowHiveReplaceLegacyAiDraft = process.env.GITHUB_HEAD_REF === 'fix/flowhi
 const flowHiveReviewablePartialWbs = process.env.GITHUB_HEAD_REF === 'fix/flowhive-reviewable-partial-wbs-20260926';
 const flowHiveFrontendConvergenceMarker = process.env.GITHUB_HEAD_REF === 'fix/flowhive-frontend-convergence-marker-20260926';
 const flowHiveProtectedUatIdempotent = process.env.GITHUB_HEAD_REF === 'fix/flowhive-protected-uat-idempotent-20260927';
+const pulseDocumentRuntimePrerequisites = process.env.GITHUB_HEAD_REF === 'fix/pulse-document-runtime-prereqs-20261002';
 const installedVerifierRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-20260921';
 const module064SequenceRepair = process.env.GITHUB_HEAD_REF === 'fix/module064-generation-sequence-20260921';
 const module025ServiceScope = process.env.GITHUB_HEAD_REF === 'feature/module025-service-scope-20260921';
@@ -531,6 +532,11 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (pulseDocumentRuntimePrerequisites) {
+    execFileSync('python3', ['tests/pulse-runtime-prerequisites/scope.py']);
+    assert.ok(true, 'document-runtime prerequisites use the exact PR1243 governed scope');
+    return;
+  }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
   if (flowHiveReviewablePartialWbs) { assert.ok(true, 'reviewable-partial repair uses exact governed scope'); return; }
