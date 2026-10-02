@@ -31,7 +31,7 @@ class ScopeTests(unittest.TestCase):
     def test_only_exact_additive_deployment_controller_is_recognized(self):
         import controller
         data=(scope.ROOT/'.github/workflows/projectpulse-deploy-test.yml').read_bytes()
-        self.assertEqual(hashlib.sha256(data).hexdigest(),controller.CURRENT_SHA256)
+        self.assertEqual(hashlib.sha256(data).hexdigest(),controller.PREREQUISITE_SHA256)
         self.assertEqual(hashlib.sha256(controller.normalize(data)).hexdigest(),controller.BASE_SHA256)
         for replacement in (data+b'\n',data.replace(b'environment: test',b'environment: production',1)):
             with self.assertRaises(AssertionError):controller.normalize(replacement)

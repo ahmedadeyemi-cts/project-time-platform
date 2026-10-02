@@ -101,7 +101,7 @@ class ReplicaReadiness(unittest.TestCase):
             lines=source.splitlines(keepends=True)
             return {n.name:''.join(lines[n.lineno-1:n.end_lineno]) for n in ast.parse(source).body if isinstance(n,(ast.FunctionDef,ast.ClassDef))}
         original=functions(before);current=functions(after)
-        self.assertEqual(set(current)-set(original),{'az_stage','rest_stage','wait_app_operation_settled','recover_failed_orphan_services'})
+        self.assertEqual(set(current)-set(original),{'az_stage','rest_stage','wait_app_operation_settled','recover_failed_orphan_services','configure_document_runtime_prerequisites'})
         self.assertFalse(set(original)-set(current))
         for name in original:
             if name not in {'get_app','wait_app','prepare','switch','rollback'}:self.assertEqual(current[name],original[name],name)
