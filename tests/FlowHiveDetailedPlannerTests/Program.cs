@@ -702,10 +702,29 @@ Assert(!flowHiveRetry.Succeeded && flowHiveRetryCalls == 1
     "flowhive_transient_batch_timeout_returns_immediately_to_source_grounded_failsafe");
 Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("provider_deadline_exceeded"),
     "flowhive_provider_deadline_is_retryable_at_orchestrator_boundary");
+foreach (var diagnostic in new[]
+{
+    "celar_ai_private_http_502",
+    "celar_ai_private_http_503",
+    "celar_ai_private_http_504",
+    "celar_ai_private_generation_timeout",
+    "celar_ai_private_transport_failure"
+})
+    Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic(diagnostic),
+        $"flowhive_celar_private_availability_is_retryable_{diagnostic}");
 Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("private_module025_phase_deadline_exceeded_phase_design"),
     "flowhive_phase_deadline_diagnostic_is_retryable_at_orchestrator_boundary");
-Assert(!ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("private_model_safety_refusal"),
-    "flowhive_safety_refusal_is_not_retryable_at_orchestrator_boundary");
+foreach (var diagnostic in new[]
+{
+    "celar_ai_private_http_401",
+    "celar_ai_private_http_422",
+    "celar_ai_private_model_not_configured",
+    "celar_ai_private_empty_response",
+    "celar_ai_output_budget_exhausted",
+    "private_model_safety_refusal"
+})
+    Assert(!ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic(diagnostic),
+        $"flowhive_celar_private_nonavailability_remains_terminal_{diagnostic}");
 var phaseCore = typeof(PulseAiPrivateRagService).GetMethod(
     "GenerateModule025PhasesCoreAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
 async Task<PulseAiPrivateModelResult> RunBoundedPhases(

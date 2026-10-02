@@ -787,6 +787,11 @@ internal static class ProjectPlanningAiOrchestrator
             or "private_model_http_503"
             or "private_model_http_504"
             or "private_model_transport_failure"
+            or "celar_ai_private_http_502"
+            or "celar_ai_private_http_503"
+            or "celar_ai_private_http_504"
+            or "celar_ai_private_generation_timeout"
+            or "celar_ai_private_transport_failure"
             || normalized.StartsWith("private_module025_generation_deadline_exceeded", StringComparison.Ordinal)
             || normalized.StartsWith("private_module025_phase_deadline_exceeded", StringComparison.Ordinal);
     }
