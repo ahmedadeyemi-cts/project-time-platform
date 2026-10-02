@@ -8,6 +8,17 @@ from replica_readiness import service_replicas_ready, read_service_replicas
 REPO='ahmedadeyemi-cts/project-time-platform'
 ORIGIN='https://phd-west-test.onenecklab.com'
 PREFIXES=('PROJECTPULSE_DOCUMENT_SERVICE_','PROJECTPULSE_LAYA_SERVICE_')
+DOCUMENT_SERVICE_PRINCIPAL='08100000-0000-0000-0000-000000000001'
+UPLOAD_STORAGE='phd-shared-files'
+UPLOAD_MOUNT='/mnt/projectpulse-shared'
+UPLOAD_ROOT=UPLOAD_MOUNT+'/uploads'
+RUNTIME_PREREQUISITE_ENV={
+    'PROJECTPULSE_PULSE_AI_PRIVATE_RUNTIME_WORKER_ENABLED':'true',
+    'PROJECTPULSE_PULSE_AI_AUTO_QUEUE_ELIGIBLE_DOCUMENTS':'true',
+    'PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID':DOCUMENT_SERVICE_PRINCIPAL,
+    'PROJECTPULSE_UPLOAD_ROOT':UPLOAD_ROOT,
+    'PROJECTPULSE_UPLOAD_ROOT_SHARED_PERSISTENT':'true',
+}
 VERSION='2025-01-01'
 class CutoverError(Exception):pass
 
@@ -60,6 +71,24 @@ def wait_app_operation_settled(name,*,read_code='service_state_read_failed',dead
     raise CutoverError(deadline_code)
 
 def env_map(app):return {v['name']:v for v in app['properties']['template']['containers'][0].get('env',[])}
+def configure_document_runtime_prerequisites(template):
+    check(isinstance(template,dict) and isinstance(template.get('containers'),list) and template['containers'],'api_template_invalid')
+    volumes=template.get('volumes',[]);check(isinstance(volumes,list),'api_volume_inventory_invalid')
+    storage=[v for v in volumes if v.get('storageName')==UPLOAD_STORAGE and v.get('storageType')=='AzureFile']
+    check(len(storage)==1,'shared_upload_storage_missing')
+    volume_name=storage[0].get('name','');check(bool(re.fullmatch(r'[a-z0-9-]{1,63}',volume_name)),'shared_upload_volume_invalid')
+    container=template['containers'][0]
+    mounts=container.get('volumeMounts',[]);check(isinstance(mounts,list),'api_volume_mount_inventory_invalid')
+    check(not any(m.get('mountPath')==UPLOAD_MOUNT and m.get('volumeName')!=volume_name for m in mounts),'shared_upload_mount_collision')
+    if not any(m.get('mountPath')==UPLOAD_MOUNT and m.get('volumeName')==volume_name for m in mounts):
+        mounts.append({'volumeName':volume_name,'mountPath':UPLOAD_MOUNT})
+    container['volumeMounts']=mounts
+    env=container.get('env',[]);managed=set(RUNTIME_PREREQUISITE_ENV)
+    env=[v for v in env if v.get('name') not in managed]
+    env.extend({'name':name,'value':value} for name,value in RUNTIME_PREREQUISITE_ENV.items())
+    container['env']=env
+    return template
+
 def source_matches(app):
     check(env_map(app).get('PROJECTPULSE_SOURCE_COMMIT',{}).get('value')==SHA,'installed_source_mismatch')
     check('@sha256:' in app['properties']['template']['containers'][0]['image'],'api_image_not_pinned')
@@ -303,7 +332,8 @@ def switch():
         rest_stage('api_secret_readback_failed','POST',resource+'/listSecrets'))
     check(readback['properties']['template']==current['properties']['template'],'api_changed_during_credential_update')
     del retrieved,preserved,merged
-    template=copy.deepcopy(before['properties']['template']);env=template['containers'][0].get('env',[])
+    template=configure_document_runtime_prerequisites(copy.deepcopy(before['properties']['template']))
+    env=template['containers'][0].get('env',[])
     env=[v for v in env if not v['name'].startswith(PREFIXES)]
     for kind,c in credentials.items():env.extend(configuration(kind,c['token'],c['secret'],'PR-1222-'+SHA))
     template['containers'][0]['env']=env;template['revisionSuffix']='psvc-'+RUN
@@ -328,9 +358,11 @@ def rollback():
     current=wait_app_operation_settled(API,read_code='rollback_state_read_failed',deadline_code='rollback_operation_settle_deadline')
     check(env_map(current).get('PROJECTPULSE_SOURCE_COMMIT',{}).get('value')==SHA,'rollback_source_changed')
     check(current['properties']['template']['containers'][0]['image']==before['properties']['template']['containers'][0]['image'],'rollback_image_changed')
-    old={v['name']:v for v in before['properties']['template']['containers'][0].get('env',[]) if v['name'].startswith(PREFIXES)}
+    managed=lambda name:name.startswith(PREFIXES) or name in RUNTIME_PREREQUISITE_ENV
+    old={v['name']:v for v in before['properties']['template']['containers'][0].get('env',[]) if managed(v['name'])}
     template=copy.deepcopy(current['properties']['template'])
-    template['containers'][0]['env']=[v for v in template['containers'][0].get('env',[]) if not v['name'].startswith(PREFIXES)]+list(old.values())
+    template['containers'][0]['env']=[v for v in template['containers'][0].get('env',[]) if not managed(v['name'])]+list(old.values())
+    template['containers'][0]['volumeMounts']=copy.deepcopy(before['properties']['template']['containers'][0].get('volumeMounts',[]))
     template['revisionSuffix']='psvcr-'+RUN
     rest_stage('rollback_route_update_failed','PATCH',ROOT+'/providers/Microsoft.App/containerApps/'+API,{'properties':{'template':template}})
     wait_app(API,expected_revision=API+'--psvcr-'+RUN);check(local_admin()==json.loads((PRIVATE/'preflight.json').read_text())['adminIdentity'],'rollback_admin_check_failed')

@@ -156,6 +156,23 @@ class CutoverLogic(unittest.TestCase):
         with patch.object(cutover,'get_app',return_value={'properties':{'provisioningState':'Failed'}}):
             with self.assertRaisesRegex(cutover.CutoverError,'service_provisioning_failed'):
                 cutover.wait_app_operation_settled(cutover.API)
+    def test_document_runtime_prerequisites_reuse_existing_shared_volume(self):
+        template={'containers':[{'name':'api','env':[{'name':'EXISTING_SETTING','value':'preserve'}],
+            'volumeMounts':[{'volumeName':'phd-shared-files-volume','mountPath':'/tmp/project-health-dashboard'}]}],
+            'volumes':[{'name':'phd-shared-files-volume','storageName':'phd-shared-files','storageType':'AzureFile'}]}
+        result=cutover.configure_document_runtime_prerequisites(copy.deepcopy(template))
+        mounts=result['containers'][0]['volumeMounts'];env={x['name']:x.get('value') for x in result['containers'][0]['env']}
+        self.assertIn({'volumeName':'phd-shared-files-volume','mountPath':cutover.UPLOAD_MOUNT},mounts)
+        self.assertIn({'volumeName':'phd-shared-files-volume','mountPath':'/tmp/project-health-dashboard'},mounts)
+        self.assertEqual(env['PROJECTPULSE_UPLOAD_ROOT'],cutover.UPLOAD_ROOT)
+        self.assertEqual(env['PROJECTPULSE_UPLOAD_ROOT_SHARED_PERSISTENT'],'true')
+        self.assertEqual(env['PROJECTPULSE_PULSE_AI_AUTO_QUEUE_ELIGIBLE_DOCUMENTS'],'true')
+        self.assertEqual(env['PROJECTPULSE_PULSE_AI_DOCUMENT_SERVICE_PRINCIPAL_USER_ID'],cutover.DOCUMENT_SERVICE_PRINCIPAL)
+        self.assertEqual(env['EXISTING_SETTING'],'preserve')
+    def test_document_runtime_prerequisites_fail_closed_without_reviewed_storage(self):
+        template={'containers':[{'name':'api','env':[]}],'volumes':[]}
+        with self.assertRaisesRegex(cutover.CutoverError,'shared_upload_storage_missing'):
+            cutover.configure_document_runtime_prerequisites(template)
 class SignatureStorage(unittest.TestCase):
     def setUp(self):
         import signature_storage

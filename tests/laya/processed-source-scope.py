@@ -13,6 +13,19 @@ def current_branch():
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
 # This integration uses its own exact PR inventory; Laya owners and schema are unchanged.
+if current_branch() == 'fix/pulse-document-runtime-prereqs-20261002':
+    subprocess.run([sys.executable, str(ROOT/'tests/pulse-runtime-prerequisites/scope.py')], cwd=ROOT, check=True)
+    for path in ['database/migrations/125_automatic_document_admission_laya.sql',
+                 'src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs',
+                 'src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs',
+                 'src/backend/ProjectTime.Api/Ai/PulseAiDocumentIndexAuthorization.cs']:
+        expected = subprocess.check_output(['git','-C',str(ROOT),'show','d81a53a68b5704b4db2838666b02e2a6dfc23618:'+path])
+        if (ROOT/path).read_bytes() != expected:
+            raise SystemExit('Document runtime prerequisite repair changed inherited Laya authority: '+path)
+    print('LAYA_DOCUMENT_RUNTIME_PREREQUISITES_SCOPE=PASS; laya_source_unchanged=true')
+    raise SystemExit(0)
 if current_branch() == 'fix/flowhive-protected-planner-diagnostic-20261001':
     subprocess.run([sys.executable, str(ROOT/'tests/pulse-activation-order/scope.py')], cwd=ROOT, check=True)
     for path in ['database/migrations/125_automatic_document_admission_laya.sql',

@@ -13,7 +13,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / 'tests/flowhive-psa-admission.test.mjs'
 TARGET = ROOT / 'tests/security-admission.generated.test.mjs'
-SOURCE_BLOB = 'ace311155bd5f79ad6e58b215ba801435780f500'
+SOURCE_BLOB = '02bb1e105ee8ee9082b1aa906cb71b1a3a25087f'
 # Pin the security implementation's artifact minimization; candidate/approval stay frozen.
 FIXTURE_REF = 'c107f17195db6aaed16daff596d123d7a31c8a67'
 BRANCHES = {'fix/flowhive-protected-planner-diagnostic-20261001', 'feature/pulse-private-services-activation-20260930', 'feature/pulse-services-cutover-laya-20260930', 'feature/pulse-documents-integration-20260930', 'codex/flowhive-save-schedule-approval-polish', 'fix/uat-provider-answer-contract-20260930', 'fix/security-audit-followup-20260929', 'fix/installed-acceptance-browser-evidence-20260929', 'codex/approval-routing-bulk-review', 'fix/security-team-findings-20260928', 'fix/security-complete-20260929', 'fix/security-uat-followup-20260929', 'fix/security-uat-acceptance-20260929'}

@@ -45,6 +45,9 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
+            python3 tests/pulse-runtime-prerequisites/scope.py
+            python3 tests/pulse-runtime-prerequisites/test_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-protected-planner-diagnostic-20261001' ]]; then
             python3 tests/pulse-activation-order/scope.py
             python3 tests/pulse-activation-order/test_scope.py

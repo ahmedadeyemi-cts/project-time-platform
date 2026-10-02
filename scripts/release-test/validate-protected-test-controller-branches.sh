@@ -25,6 +25,15 @@ if [[ "$HEAD_BRANCH" == 'codex/approval-routing-bulk-review' ]]; then
   node tests/validate-systemwide-image-build-controller.mjs
   return
 fi
+if [[ "$HEAD_BRANCH" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
+  python3 tests/pulse-runtime-prerequisites/scope.py
+  python3 tests/pulse-runtime-prerequisites/test_scope.py
+  python3 tests/pulse_services/test_release_phase.py
+  python3 tests/security-release/test_controller_registration.py
+  python3 tests/flowhive-installed-resolution.test.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'fix/flowhive-protected-planner-diagnostic-20261001' ]]; then
   python3 tests/pulse-activation-order/scope.py
   python3 tests/pulse-activation-order/test_scope.py
