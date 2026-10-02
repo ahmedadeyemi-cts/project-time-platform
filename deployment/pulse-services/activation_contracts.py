@@ -42,8 +42,9 @@ def validate_document_runtime(body):
     require(isinstance(body, dict), "document_runtime_shape_invalid")
     ready = body.get("readiness")
     require(isinstance(ready, dict), "document_runtime_shape_invalid")
-    require(body.get("status") == "private_document_runtime_ready"
-            and ready.get("status") == "private_document_runtime_ready",
+    allowed_status = {"private_document_runtime_ready", "private_document_runtime_partially_ready"}
+    require(body.get("status") == ready.get("status")
+            and body.get("status") in allowed_status,
             "document_runtime_not_ready")
     for field in ("clamAvConfigured", "malwareScannerEndpointPrivate", "ocrConfigured",
                   "ocrEndpointPrivate", "workerEnabled", "automaticDocumentQueueEnabled",

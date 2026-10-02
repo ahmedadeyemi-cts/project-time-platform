@@ -87,11 +87,18 @@ class ActivationContracts(unittest.TestCase):
         self.assertIn("job=acceptance_job_name(RUN)", inspect.getsource(cutover.prepare))
         self.assertIn("item['name']==acceptance_job_name(RUN)", inspect.getsource(cutover.cleanup_staged))
 
-    def test_private_address_alone_cannot_pass_readiness(self):
-        for state in ("private_document_runtime_partially_ready", "private_document_runtime_schema_unavailable"):
-            body = document_health()
-            body["status"] = body["readiness"]["status"] = state
-            with self.assertRaises(ValueError): validate_document_runtime(body)
+    def test_partial_status_requires_full_service_capability_evidence(self):
+        body = document_health()
+        body["status"] = body["readiness"]["status"] = "private_document_runtime_partially_ready"
+        self.assertIsInstance(validate_document_runtime(body), dict)
+        for field in ("malwareScannerEndpointPrivate", "ocrEndpointPrivate", "workerEnabled",
+                      "documentServicePrincipalAuthorized", "uploadStorageProductionReady"):
+            failed = copy.deepcopy(body); failed["readiness"][field] = False
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                validate_document_runtime(failed)
+        unavailable = document_health()
+        unavailable["status"] = unavailable["readiness"]["status"] = "private_document_runtime_schema_unavailable"
+        with self.assertRaises(ValueError): validate_document_runtime(unavailable)
         self.assertIsInstance(validate_document_runtime(document_health()), dict)
 
     def test_each_required_document_capability_is_enforced(self):
@@ -103,7 +110,7 @@ class ActivationContracts(unittest.TestCase):
                 with self.subTest(field=field, value=invalid), self.assertRaises(ValueError):
                     validate_document_runtime(body)
 
-    def test_partial_readiness_fails_and_closes_only_the_test_session(self):
+    def test_partial_service_readiness_can_pass_and_closes_only_the_test_session(self):
         cutover.SHA = "b" * 40
         paths = []
         body = document_health()
@@ -121,7 +128,7 @@ class ActivationContracts(unittest.TestCase):
         with patch.dict(os.environ, {"PROJECTPULSE_TEST_UAT_ADMIN_EMAIL": "fixture.local",
                                     "PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD": "synthetic-test-only"}), \
              patch.object(cutover, "public_api", side_effect=api), patch.object(cutover, "rest") as azure:
-            with self.assertRaises(ValueError): cutover.local_admin(after=True)
+            self.assertRegex(cutover.local_admin(after=True), r"^[0-9a-f]{64}$")
             azure.assert_not_called()
         self.assertEqual(paths[-1], "/api/auth/session/logout")
         self.assertFalse(any("reset" in path or "configure" in path for path in paths))
