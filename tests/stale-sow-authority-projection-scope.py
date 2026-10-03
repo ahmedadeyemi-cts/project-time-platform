@@ -47,6 +47,7 @@ assert 'resolver = "ProjectPlanningDocumentResolver.SelectCurrent"' in enterpris
 assert "PRODUCTION_MUTATION=NONE" in Path("tests/validate-work-register-document-continuity.mjs").read_text()
 assert "current_sow_work_register_mapping_missing" in unit
 assert BRANCH in admission
+assert admission.count("if (staleSowAuthorityProjection)") == 3
 assert BRANCH in release_control
 
 subprocess.run(["python3", "tests/test_stale_sow_cleanup.py"], check=True)

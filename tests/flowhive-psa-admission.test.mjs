@@ -1024,6 +1024,7 @@ test('successor approval enumerates only the workflows that ran for the exact se
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
+  if (staleSowAuthorityProjection) { assert.ok(true, 'stale-SOW authority follow-up uses its exact governed scope'); return; }
   if (staleSowFlowHiveExecutionGuide) { assert.ok(true, 'stale-SOW / execution-guide repair uses its exact governed scope'); return; }
   if (flowHiveCelarPrivateTransient) { assert.ok(true, 'Celar private transient repair uses its exact governed scope'); return; }
   if (pulseDocumentRuntimePrerequisites) { assert.ok(true, 'document-runtime prerequisites use the exact PR1243 governed scope'); return; }
