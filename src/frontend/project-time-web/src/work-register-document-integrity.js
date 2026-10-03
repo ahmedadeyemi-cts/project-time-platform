@@ -109,14 +109,14 @@ function hasDeleteControl(actionContainer) {
   return Boolean(actionContainer?.querySelector(`[${DELETE_BUTTON_ATTRIBUTE}="true"]`));
 }
 
-function appendDeleteControl({ actionContainer, archiveButton, projectId, id, label, documentType = '' }) {
-  if (!actionContainer || !archiveButton || hasDeleteControl(actionContainer)) return;
+function appendDeleteControl({ actionContainer, archiveButton = null, projectId, id, label, documentType = '' }) {
+  if (!actionContainer || hasDeleteControl(actionContainer)) return;
   if (!UUID_PATTERN.test(projectId) || !UUID_PATTERN.test(id)) return;
 
   const normalizedType = cleanText(documentType).toUpperCase();
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = `${archiveButton.className || 'secondary-action'} danger`;
+  button.className = `${archiveButton?.className || 'secondary-action'} danger`;
   button.textContent = normalizedType === 'SOW' || normalizedType === 'GSD'
     ? `Delete ${normalizedType}`
     : 'Delete';
@@ -171,8 +171,6 @@ function installDeleteControls() {
     if (!actionContainer || hasDeleteControl(actionContainer)) return;
     const archiveButton = [...actionContainer.querySelectorAll('button')]
       .find((button) => cleanText(button.textContent).toLowerCase() === 'archive');
-    if (!archiveButton) return;
-
     const canonicalDocument = canonicalDocumentForCard(card);
     if (!canonicalDocument || canonicalDocument.canDelete === false) return;
     const id = documentId(canonicalDocument);
@@ -199,8 +197,6 @@ function installDeleteControls() {
 
     const archiveButton = [...actionContainer.querySelectorAll('button')]
       .find((button) => cleanText(button.textContent).toLowerCase() === 'archive');
-    if (!archiveButton) return;
-
     appendDeleteControl({
       actionContainer,
       archiveButton,

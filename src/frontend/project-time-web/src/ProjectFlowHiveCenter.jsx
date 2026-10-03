@@ -335,6 +335,70 @@ function taskDetailSections(task) {
 }
 
 // Compatibility route /api/project-flowhive/ai/production-generate remains backend-only; the user-facing Planner uses project-scoped /ai-planner/runs.
+function taskExecutionGuideSections(task) {
+  const list = (...values) => values
+    .flatMap((value) => Array.isArray(value) ? value : [])
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  const tagged = (label, values) => list(values).map((value) => `${label}: ${value}`);
+  return [
+    {
+      title: '1. Before you start',
+      description: 'Confirm technical context, access, prerequisites, inputs and tooling before making changes.',
+      items: [
+        ...tagged('Product', task.products),
+        ...tagged('Platform', task.platforms),
+        ...tagged('Version', [...list(task.softwareVersions), ...list(task.firmwareVersions)]),
+        ...tagged('System', task.systems),
+        ...tagged('Interface', task.interfaces),
+        ...tagged('Integration', task.integrationPoints),
+        ...tagged('Licensing', task.licensingRequirements),
+        ...tagged('Prerequisite', task.prerequisites),
+        ...tagged('Input', task.inputs),
+        ...tagged('Access', task.accessRequirements),
+        ...tagged('Tool', task.tools)
+      ]
+    },
+    {
+      title: '2. Perform the work',
+      description: 'Follow these ordered engineering actions for this WBS task.',
+      items: list(task.detailedSteps),
+      ordered: true
+    },
+    {
+      title: '3. Verify the result',
+      description: 'Capture the expected output and prove the technical result.',
+      items: [
+        ...tagged('Validation', task.validationSteps),
+        ...tagged('Expected output', task.outputs)
+      ]
+    },
+    {
+      title: '4. Complete and accept',
+      description: 'Use these measurable conditions before marking the task complete.',
+      items: list(task.acceptanceCriteria)
+    },
+    {
+      title: '5. Rollback and exceptions',
+      description: 'Use the rollback path and review task-specific risks before proceeding.',
+      items: [
+        ...tagged('Rollback', task.rollbackSteps),
+        ...tagged('Risk', task.risks)
+      ]
+    },
+    {
+      title: '6. Ownership and open items',
+      description: 'Resolve responsibilities, assumptions and unanswered customer facts.',
+      items: [
+        ...tagged('Customer', task.customerResponsibilities),
+        ...tagged('US Signal', task.usSignalResponsibilities),
+        ...tagged('Assumption', task.assumptions),
+        ...tagged('Open question', task.openQuestions)
+      ]
+    }
+  ];
+}
+
 export default function ProjectFlowHiveCenter() {
   const [activeView, setActiveView] = useState('portfolio');
   const [capabilityResponse, setCapabilityResponse] = useState(null);
@@ -1615,6 +1679,25 @@ export default function ProjectFlowHiveCenter() {
                             <label>Lead / lag working days<input aria-label={`Lead or lag for ${task.name}`} type="number" min="-365" max="365" value={dependency?.lagWorkingDays || 0} disabled={!dependency?.predecessorWbs} onChange={(event) => updateDependencyForTask(index, 'lagWorkingDays', Number(event.target.value))} /></label><label>Move to phase<select value={task.parentWbsNumber} disabled={!enterprise?.access?.canManage} onChange={(event) => changeTaskPhase(task.wbsNumber, event.target.value)}>{enterprisePhases.map((phase) => <option key={phase.wbs} value={phase.wbs}>{phase.name}</option>)}</select></label><div className="flowhive-task-move-actions"><button type="button" disabled={!enterprise?.access?.canManage} onClick={() => moveTaskOffset(task.wbsNumber, -1)}>Move up</button><button type="button" disabled={!enterprise?.access?.canManage} onClick={() => moveTaskOffset(task.wbsNumber, 1)}>Move down</button><button type="button" className="danger-quiet" disabled={!enterprise?.access?.canManage} onClick={() => deleteTask(task.wbsNumber)}>Delete task</button></div>
                           </div>
                           <label className="flowhive-task-description">Task description<textarea value={task.description || ''} onChange={(event) => updateTask(index, 'description', event.target.value)} rows="3" /></label>
+                          <section className="flowhive-execution-guide" aria-label={`Engineer execution guide for ${task.name}`}>
+                            <header>
+                              <div><span>Engineer execution guide</span><h5>How to complete this task</h5></div>
+                              <small>Built from the SOW/GSD-grounded task procedure, prerequisites, validation, acceptance, responsibilities, risks and open questions.</small>
+                            </header>
+                            <div className="flowhive-execution-guide-grid">
+                              {taskExecutionGuideSections(task).map((section) => (
+                                <article key={section.title}>
+                                  <h6>{section.title}</h6>
+                                  <p>{section.description}</p>
+                                  {section.items.length ? (
+                                    section.ordered
+                                      ? <ol>{section.items.map((item, itemIndex) => <li key={`${section.title}-${itemIndex}`}>{item}</li>)}</ol>
+                                      : <ul>{section.items.map((item, itemIndex) => <li key={`${section.title}-${itemIndex}`}>{item}</li>)}</ul>
+                                  ) : <small className="flowhive-execution-guide-missing">Not specified yet. Confirm this before the task begins.</small>}
+                                </article>
+                              ))}
+                            </div>
+                          </section>
                           <div className="flowhive-task-detail-grid">{taskDetailSections(task).map(([label, field, values]) => <label key={field}>{label}<textarea value={(values || []).join('\n')} onChange={(event) => updateTask(index, field, event.target.value.split('\n').map((value) => value.trim()).filter(Boolean))} placeholder={`Add ${label.toLowerCase()}, one per line`} rows={field === 'detailedSteps' ? 6 : 4} /></label>)}</div>
                         </div></td></tr> : null}
                       </Fragment>

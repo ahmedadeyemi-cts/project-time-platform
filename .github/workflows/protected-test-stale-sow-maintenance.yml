@@ -1,0 +1,75 @@
+name: Protected Test stale SOW maintenance
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Dry-run reports stale SOWs; apply deletes only the verified stale set.'
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - apply
+      confirmation:
+        description: 'Apply only: type DELETE STALE TEST SOWS'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: projectpulse-protected-test-stale-sow-maintenance
+  cancel-in-progress: false
+jobs:
+  maintain:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    environment: test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out exact main source
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify protected-Test maintenance boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
+          [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]
+          [[ '${{ inputs.mode }}' == dry-run || '${{ inputs.mode }}' == apply ]]
+          if [[ '${{ inputs.mode }}' == apply ]]; then
+            [[ '${{ inputs.confirmation }}' == 'DELETE STALE TEST SOWS' ]]
+          fi
+      - name: Evaluate and maintain stale Test SOWs
+        shell: bash
+        env:
+          PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_STALE_SOW_MODE: ${{ inputs.mode }}
+          PROJECTPULSE_STALE_SOW_CONFIRMATION: ${{ inputs.confirmation }}
+          PROJECTPULSE_STALE_SOW_REPORT: ${{ runner.temp }}/stale-sow-cleanup-summary.json
+        run: python3 scripts/release-test/cleanup-stale-sows-protected-test.py
+
+      - name: Publish redacted maintenance summary
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f '${{ runner.temp }}/stale-sow-cleanup-summary.json'
+          jq '{environment,origin,mode,status,diagnostic,summary,projects}'             '${{ runner.temp }}/stale-sow-cleanup-summary.json'
+
+      - name: Upload protected-Test stale SOW evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: protected-test-stale-sow-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/stale-sow-cleanup-summary.json
+          if-no-files-found: error
+          retention-days: 30
