@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -135,6 +136,8 @@ async Task<(MicrosoftTeamsWorkflowProtocol.Outcome Result, FakeHttp Handler)> Ru
         Check(root.GetProperty("destinationType").GetString() == "individual", "workflow destination type");
         Check(root.GetProperty("recipients").GetArrayLength() == 1, "workflow recipients bounded");
         Check(root.GetProperty("subject").GetString() == "Pulse test", "workflow subject serialized");
+        Check(root.GetProperty("sourceModule").GetString() == "065", "workflow keeps raw source ID");
+        Check(root.GetProperty("sourceModuleLabel").GetString() == "Module 065 - Teams Integration", "workflow sends friendly source label");
         var response = Response(workflowStatus, workflowStatus >= 400 ? "{\"error\":{}}" : "{}");
         response.Headers.Add("x-ms-request-id", requestId);
         response.Headers.Add("x-ms-workflow-run-id", "workflow-run-1");
@@ -152,6 +155,48 @@ Check(workflowSuccess.Result.Diagnostic.Code == "teams_workflow_accepted", "work
 Check(workflowSuccess.Result.Diagnostic.RequestId == requestId, "workflow request ID retained");
 Check(workflowSuccess.Result.WorkflowRunId == "workflow-run-1", "workflow run ID retained");
 Check(workflowSuccess.Handler.Requests.Count == 2, "workflow one token and one send");
+
+// Display metadata is additive for every destination; it never becomes the routing identity.
+foreach (var (source, label) in new (string? Source, string Label)[]
+{
+    ("065", "Module 065 - Teams Integration"),
+    ("025", "Module 025 - SOW & GSD Workspace"),
+    (" 25 ", "Module 025 - SOW & GSD Workspace"),
+    ("999", "Module 999"),
+    ("Project FlowHive", "Project FlowHive"),
+    ("", "Pulse"),
+    (" \t\r\n ", "Pulse"),
+    (null, "Pulse"),
+    ("Ops\nReview", "OpsReview"),
+    (new string('x', 200), new string('x', 128)),
+    ("<b>Ops & Review</b>", "<b>Ops & Review</b>")
+})
+{
+    Check(MicrosoftTeamsWorkflowProtocol.FormatSourceModuleLabel(source) == label, "source label and fallback");
+    foreach (var destination in new[] { "individual", "group_chat", "channel" })
+    {
+        var envelope = workflowEnvelope with
+        {
+            SourceModule = source!, DestinationType = destination,
+            ConversationId = destination == "group_chat" ? "synthetic-chat" : null,
+            TeamId = destination == "channel" ? "synthetic-team" : null,
+            ChannelId = destination == "channel" ? "synthetic-channel" : null
+        };
+        using var content = JsonContent.Create(envelope);
+        using var json = JsonDocument.Parse(await content.ReadAsStringAsync());
+        var root = json.RootElement;
+        Check(root.GetProperty("sourceModule").GetString() == source, "raw originating source unchanged");
+        Check(root.GetProperty("sourceModuleLabel").GetString() == label, "shared camelCase label for all destinations");
+        Check(root.GetProperty("destinationType").GetString() == destination, "source label cannot change destination");
+        Check(root.GetProperty("conversationId").GetString() == envelope.ConversationId, "source label cannot change group chat");
+        Check(root.GetProperty("teamId").GetString() == envelope.TeamId && root.GetProperty("channelId").GetString() == envelope.ChannelId, "source label cannot change team or channel");
+        Check(root.GetProperty("recipients")[0].GetString() == "pilot@example.invalid" && root.GetProperty("recipients").GetArrayLength() == 1, "source label cannot expand recipients");
+        Check(root.GetProperty("eventId").GetString() == workflowEnvelope.EventId && root.GetProperty("idempotencyKey").GetString() == workflowEnvelope.IdempotencyKey, "source label preserves event identity");
+        Check(root.GetProperty("subject").GetString() == workflowEnvelope.Subject && root.GetProperty("message").GetString() == workflowEnvelope.Message, "source label preserves content");
+        Check(root.GetProperty("severity").GetString() == workflowEnvelope.Severity && root.GetProperty("notificationType").GetString() == workflowEnvelope.NotificationType, "source label preserves severity and event type");
+        Check(root.GetProperty("pulseUrl").GetString() == workflowEnvelope.PulseUrl, "source label preserves Pulse link");
+    }
+}
 
 var workflowDenied = await RunWorkflow(403);
 Check(workflowDenied.Result.Status == "failed" && workflowDenied.Result.Diagnostic.Code == "teams_workflow_not_authorized", "workflow authorization failure classified");
