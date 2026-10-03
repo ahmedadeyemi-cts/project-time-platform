@@ -4,6 +4,7 @@ Separate delta tests require every existing step body and native protection to
 match the immutable pre-qualification controller. No deployment step is dropped.
 """
 import copy
+import hashlib
 
 GATE = "(inputs.qualification_provider == '' || inputs.qualification_provider == 'none')"
 NAMES = {'Validate qualification-only selection', 'Compile the isolated one-phase runner',
@@ -61,7 +62,16 @@ def deployment_projection(doc):
         # so on, booleans, and timeout numbers remain strings while their
         # caller still rejects duplicate YAML keys.
         loader = yaml.BaseLoader if 'on' in doc and True not in doc else yaml.SafeLoader
-        assert doc==yaml.load(current,Loader=loader),'Controller fixture differs from exact current source'
+        current_doc = yaml.load(current, Loader=loader)
+        accepted_docs = [current_doc]
+        if hashlib.sha256(current).hexdigest() == module.STALE_SOW_MAINTENANCE_SHA256:
+            maintenance_parent = current
+            for block in (module.STALE_SOW_INPUTS, module.STALE_SOW_VALIDATION, module.STALE_SOW_EXECUTION):
+                assert maintenance_parent.count(block) == 1, 'Registered stale-SOW maintenance block changed'
+                maintenance_parent = maintenance_parent.replace(block, b'', 1)
+            assert hashlib.sha256(maintenance_parent).hexdigest() == module.PREREQUISITE_PATH_SHA256
+            accepted_docs.append(yaml.load(maintenance_parent, Loader=loader))
+        assert any(doc == candidate for candidate in accepted_docs), 'Controller fixture differs from exact current or registered parent source'
         doc=yaml.load(module.normalize(current),Loader=loader)
     trigger = doc.get('on', doc.get(True))
     dispatch = trigger.get('workflow_dispatch') if isinstance(trigger, dict) else None

@@ -28,6 +28,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
+          if [[ "$GITHUB_HEAD_REF" == 'fix/stale-sow-cleanup-flowhive-execution-guide-20261002' ]]; then
+            python3 tests/stale-sow-flowhive-execution-guide-scope.py
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
             python3 tests/pulse-runtime-prerequisites/scope.py
             python3 tests/pulse-runtime-prerequisites/test_scope.py

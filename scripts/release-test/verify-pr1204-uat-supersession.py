@@ -34,6 +34,8 @@ PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB = "7150435ed8ca175f683dd92bcb3ccaeca556c8
 PULSE_DOCUMENT_PREREQUISITES_DEPLOYMENT_BLOB = "595a955a7506cc80b284f7710382d77a11c49419"
 # Exact prerequisite-builder path repair; previous prerequisite controller remains valid history.
 PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB = "54e9000001dae139845a7f214ed33ff4ac4ce477"
+# Exact post-UAT stale-SOW maintenance controller; prior reviewed controllers remain valid history.
+STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = "a50b87bcfdeb19dd60e2c82d29edd98035dda6e7"
 ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -109,7 +111,7 @@ def verify_context(api: GitHub) -> str:
     git("merge-base", "--is-ancestor", OLD_SHA, current)
     require(git("rev-parse", f"{OLD_SHA}:{DEPLOYMENT}") == DEPLOYMENT_BLOB,
             "The pinned historical deployment controller changed")
-    require(git("rev-parse", f"{current}:{DEPLOYMENT}") in (DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB, PULSE_DOCUMENT_PREREQUISITES_DEPLOYMENT_BLOB, PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB),
+    require(git("rev-parse", f"{current}:{DEPLOYMENT}") in (DEPLOYMENT_BLOB, SECURITY_EVIDENCE_DEPLOYMENT_BLOB, PULSE_SERVICES_DEPLOYMENT_BLOB, PULSE_SERVICES_ORDERED_DEPLOYMENT_BLOB, PULSE_DOCUMENT_PREREQUISITES_DEPLOYMENT_BLOB, PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB),
             "The deployment controller is not an exact reviewed version")
     git("diff", "--exit-code", "HEAD", "--", DEPLOYMENT, SUPERVISOR, SELF)
     return current

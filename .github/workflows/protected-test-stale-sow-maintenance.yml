@@ -19,16 +19,17 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 concurrency:
-  group: projectpulse-deploy-test
+  group: protected-test-stale-sow-maintenance-dispatch
   queue: max
   cancel-in-progress: false
 jobs:
-  maintain:
+  dispatch:
     if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 250
     steps:
       - name: Check out exact main source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -37,7 +38,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Verify protected-Test maintenance boundary
+      - name: Verify maintenance dispatch boundary
         shell: bash
         env:
           DISPATCH_MODE: ${{ inputs.mode }}
@@ -51,28 +52,33 @@ jobs:
           if [[ "$DISPATCH_MODE" == apply ]]; then
             [[ "$DISPATCH_CONFIRMATION" == 'DELETE STALE TEST SOWS' ]]
           fi
-      - name: Evaluate and maintain stale Test SOWs
+      - name: Dispatch governed Protected Test controller
+        id: dispatch
         shell: bash
         env:
-          PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
-          PROJECTPULSE_STALE_SOW_MODE: ${{ inputs.mode }}
-          PROJECTPULSE_STALE_SOW_CONFIRMATION: ${{ inputs.confirmation }}
-          PROJECTPULSE_STALE_SOW_REPORT: ${{ runner.temp }}/stale-sow-cleanup-summary.json
-        run: python3 scripts/release-test/cleanup-stale-sows-protected-test.py
-
-      - name: Publish redacted maintenance summary
-        if: always()
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_MODE: ${{ inputs.mode }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -Eeuo pipefail
-          test -f '${{ runner.temp }}/stale-sow-cleanup-summary.json'
-          jq '{environment,origin,mode,status,diagnostic,summary,projects}'             '${{ runner.temp }}/stale-sow-cleanup-summary.json'
+          repo="$GITHUB_REPOSITORY"
+          before="$RUNNER_TEMP/stale-sow-before-runs.txt"
+          gh run list -R "$repo" --workflow projectpulse-deploy-test.yml --limit 100             --json databaseId --jq '.[].databaseId' | sort -n > "$before"
 
-      - name: Upload protected-Test stale SOW evidence
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: protected-test-stale-sow-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/stale-sow-cleanup-summary.json
-          if-no-files-found: error
-          retention-days: 30
+          gh workflow run projectpulse-deploy-test.yml -R "$repo" --ref main             -f qualification_provider=none             -f acceptance_scope=full             -f recover_private_runtime=false             -f release_sha="$GITHUB_SHA"             -f release_branch=main             -f stale_sow_cleanup_mode="$DISPATCH_MODE"             -f stale_sow_cleanup_confirmation="$DISPATCH_CONFIRMATION"
+
+          child=''
+          for attempt in $(seq 1 60); do
+            while IFS= read -r candidate; do
+              if [[ -n "$candidate" ]] && ! grep -Fxq "$candidate" "$before"; then
+                child="$candidate"
+                break
+              fi
+            done < <(gh run list -R "$repo" --workflow projectpulse-deploy-test.yml               --branch main --event workflow_dispatch --limit 50               --json databaseId,headSha               --jq ".[] | select(.headSha == \"$GITHUB_SHA\") | .databaseId")
+            [[ -n "$child" ]] && break
+            sleep 2
+          done
+          [[ -n "$child" ]]
+          echo "child_run_id=$child" >> "$GITHUB_OUTPUT"
+          echo "Governed Protected Test child run: $child" >> "$GITHUB_STEP_SUMMARY"
+          gh run watch "$child" -R "$repo" --exit-status --interval 10
