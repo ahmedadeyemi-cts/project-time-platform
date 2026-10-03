@@ -21,7 +21,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: projectpulse-protected-test-stale-sow-maintenance
+  group: projectpulse-deploy-test
+  queue: max
   cancel-in-progress: false
 jobs:
   maintain:
