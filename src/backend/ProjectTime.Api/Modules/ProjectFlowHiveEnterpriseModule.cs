@@ -95,6 +95,14 @@ internal static partial class ProjectFlowHiveEnterpriseModule
         return Results.Ok(new
         {
             projectId, projectStatus, isArchived = archived, stateChanged = false,
+            documentAuthority = new
+            {
+                contract = resolution.Contract,
+                currentSowDocumentId = resolution.StatementOfWork?.DocumentId,
+                currentSowWorkRegisterDocumentId = resolution.StatementOfWork?.WorkRegisterDocumentId,
+                currentSowCategory = resolution.StatementOfWork?.CanonicalCategory ?? string.Empty,
+                resolver = "ProjectPlanningDocumentResolver.SelectCurrent"
+            },
             preparation = ProjectPlanningDocumentPreparation.Describe(resolution,
                 ProjectTime.Api.Ai.PulseAiPrivateRuntimeOptions.FromEnvironment().WorkerEnabled, archived)
         });
