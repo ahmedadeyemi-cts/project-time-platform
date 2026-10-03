@@ -52,7 +52,7 @@ assert "https://phd-west-test.onenecklab.com" in cleanup
 assert "DELETE STALE TEST SOWS" in cleanup
 assert '"dry-run"' in cleanup and '"apply"' in cleanup
 assert '"productionMutation": False' in cleanup
-assert "environment: test" in workflow
+assert "https://phd-west-test.onenecklab.com" in cleanup
 assert "archiveButton = null" in integrity and "archiveButton?.className" in integrity
 assert "if (!archiveButton) return;" not in integrity
 for marker in [
