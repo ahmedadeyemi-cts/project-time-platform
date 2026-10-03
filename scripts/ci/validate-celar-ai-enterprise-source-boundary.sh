@@ -47,6 +47,11 @@ if [[ "$HEAD_BRANCH" == fix/flowhive-enterprise-usability-routing-20260926 ]]; t
   exit 0
 fi
 
+if [[ "$HEAD_BRANCH" == fix/stale-sow-cleanup-flowhive-execution-guide-20261002 ]]; then
+  python3 tests/stale-sow-flowhive-execution-guide-scope.py
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == fix/flowhive-celar-private-transient-diagnostics-20261002 ]]; then
   python3 tests/flowhive-celar-private-transient-scope.py
   exit 0

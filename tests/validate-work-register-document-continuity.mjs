@@ -64,8 +64,13 @@ for (const token of [
   '__projectPulse055cRequestHeaders',
   '__projectPulse055cCredentials',
   "deleteHeaders.set('Content-Type', 'application/json')",
-  'data-projectpulse-055c-shared-delete'
+  'data-projectpulse-055c-shared-delete',
+  'archiveButton = null',
+  'archiveButton?.className'
 ]) requireText(integritySource, token, 'Module 055C frontend continuity');
+if (integritySource.includes('if (!archiveButton) return;')) {
+  throw new Error('Delete controls must not depend on the Archive button being visible.');
+}
 
 for (const token of [
   'work-register-document-card',

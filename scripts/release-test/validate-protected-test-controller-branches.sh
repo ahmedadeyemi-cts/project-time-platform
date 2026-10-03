@@ -219,6 +219,9 @@ elif [[ "$HEAD_BRANCH" == fix/flowhive-sow-plan-depth-20260925 ]]; then
 elif [[ "$HEAD_BRANCH" == fix/flowhive-enterprise-usability-routing-20260926 ]]; then
   python3 tests/flowhive-enterprise-usability-routing-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/stale-sow-cleanup-flowhive-execution-guide-20261002 ]]; then
+  python3 tests/stale-sow-flowhive-execution-guide-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/flowhive-celar-private-transient-diagnostics-20261002 ]]; then
   python3 tests/flowhive-celar-private-transient-scope.py
   node tests/validate-systemwide-image-build-controller.mjs

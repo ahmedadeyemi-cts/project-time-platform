@@ -28,8 +28,24 @@ def plan(project, name='Stored project task'):
         common={'clientTaskId':f'00000000-0000-4000-8000-{i:012d}', 'canonicalTaskId':None,
             'durationWorkingDays':1,'percentComplete':0,'remainingEffortHours':2,'status':'not_started',
             'isMilestone':False,'constraintType':'ASAP','constraintDate':None,'phase':phase,
-            'description':'An explicitly synthetic test task.', 'detailedSteps':[], 'citationIds':[1],
-            'priority':'normal','comments':'','notes':''}
+            'description':'An explicitly synthetic test task.',
+            'detailedSteps':['Confirm the approved task prerequisites and current-state evidence.',
+                             'Perform the scoped technical activity in the approved sequence.',
+                             'Capture the resulting configuration and completion evidence.'],
+            'inputs':['Approved SOW scope and current-state evidence'],
+            'outputs':['Updated technical state and execution evidence'],
+            'prerequisites':['Required access and approvals are confirmed'],
+            'validationSteps':['Verify the resulting state against the approved task objective'],
+            'acceptanceCriteria':['Recorded evidence demonstrates the task objective was achieved'],
+            'accessRequirements':['Authorized administrative access'],
+            'tools':['Approved engineering toolset'],
+            'rollbackSteps':['Restore the documented prior state if the validation gate fails'],
+            'risks':['Stop and escalate when an unsupported dependency is discovered'],
+            'customerResponsibilities':['Provide required access and customer decisions'],
+            'usSignalResponsibilities':['Execute and document the approved technical work'],
+            'assumptions':['Synthetic test assumption'],
+            'openQuestions':['Synthetic open question'],
+            'citationIds':[1], 'priority':'normal','comments':'','notes':''}
         rows.append({**common,'wbsNumber':str(i),'parentWbsNumber':None,'isSummary':True,'name':phase,'durationWorkingDays':0,'remainingEffortHours':0})
         rows.append({**common,'wbsNumber':f'{i}.1','parentWbsNumber':str(i),'isSummary':False,'name':name+' '+phase})
     return {'projectId':project,'projectCode':'TEST-A' if project==A else 'TEST-B','projectName':'Project A' if project==A else 'Project B',
@@ -292,6 +308,12 @@ async def main(readback_mode=None):
                 print(f'PASSED: {readback_mode} recovers by reading the saved copy without another AI request',flush=True)
                 return
             await page.locator('input[value="Generated unique task Plan"]').wait_for()
+            await page.get_by_role('button',name='Task details',exact=True).first.click()
+            await page.get_by_role('heading',name='How to complete this task',exact=True).wait_for()
+            assert await page.get_by_text('1. Before you start',exact=True).count()==1
+            assert await page.get_by_text('2. Perform the work',exact=True).count()==1
+            assert await page.get_by_text('Confirm the approved task prerequisites and current-state evidence.',exact=True).count()==1
+            await page.get_by_role('button',name='Close details',exact=True).first.click()
             assert await page.get_by_label('Start date',exact=True).input_value()=='2026-09-10'
             assert await page.locator('.flowhive-work-row input[type=date]').first.input_value()=='2026-09-10'
             assert not await page.get_by_role('heading',name='Project milestones',exact=True).count()
