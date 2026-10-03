@@ -7462,7 +7462,6 @@ var deploymentManifest = /* @__PURE__ */ new Map([
   [".github/workflows/projectpulse-deploy-stabilized-role-permission-timesheet-test.yml", "test"],
   [".github/workflows/projectpulse-deploy-superadmin-sso-expense-module006-test.yml", "test"],
   [".github/workflows/projectpulse-deploy-test.yml", "test"],
-  [".github/workflows/protected-test-stale-sow-maintenance.yml", "test"],
   [".github/workflows/projectpulse-deploy-uat-sso-group3-label-repair-test.yml", "test"],
   [".github/workflows/projectpulse-deploy-view-as-drawer-test.yml", "test"],
   [".github/workflows/projectpulse-rollback.yml", "dynamic"],
