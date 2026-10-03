@@ -51,4 +51,8 @@ ambiguous = {"preparation": {"documents": [
 current, reason = module.current_sow_work_register_id(ambiguous, enterprise)
 assert current == ""
 assert reason == "current_planning_sow_not_unique"
+
+workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/protected-test-stale-sow-maintenance.yml").read_text()
+assert "environment: test" in workflow
+assert "PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}" in workflow
 print("STALE_SOW_CLEANUP_UNIT=PASS")
