@@ -17,6 +17,7 @@ EXPECTED = sorted({
     "src/frontend/project-time-web/src/project-flowhive-center.css",
     "src/frontend/project-time-web/src/work-register-document-integrity.js",
     "tests/flowhive-psa-react-browser.py",
+    "tests/flowhive-psa-admission.test.mjs",
     "tests/stale-sow-flowhive-execution-guide-scope.py",
     "tests/test_stale_sow_cleanup.py",
     "tests/validate-work-register-document-continuity.mjs",
