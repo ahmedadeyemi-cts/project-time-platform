@@ -4,6 +4,7 @@ import subprocess
 
 BRANCH = "fix/stale-sow-cleanup-flowhive-execution-guide-20261002"
 EXPECTED = sorted({
+    ".github/workflows/pr1139-uat-recovery-ci.yml",
     ".github/workflows/projectpulse-deploy-test.yml",
     ".github/workflows/protected-test-stale-sow-maintenance.yml",
     "scripts/release-test/recover-pr1139-uat-orphan.py",
