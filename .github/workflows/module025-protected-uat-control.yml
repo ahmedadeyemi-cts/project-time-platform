@@ -1,25 +1,6 @@
 name: Control Module 025 Protected UAT
 
 on:
-  workflow_dispatch:
-    inputs:
-      stale_sow_cleanup_mode:
-        description: 'Protected Test stale-SOW maintenance mode'
-        required: true
-        default: dry-run
-        type: choice
-        options:
-          - dry-run
-          - apply
-      stale_sow_cleanup_confirmation:
-        description: 'Apply only: type DELETE STALE TEST SOWS'
-        required: false
-        default: ''
-        type: string
-      stale_sow_request_id:
-        description: 'Active Protected Test stale-SOW maintenance parent run ID'
-        required: true
-        type: string
   issue_comment:
     types: [created]
   push:
@@ -42,8 +23,6 @@ on:
 run-name: >-
   ${{ github.event_name == 'push'
       && format('Auto deploy and verify Module 025 {0}', github.sha)
-      || github.event_name == 'workflow_dispatch'
-      && format('Protected Test stale SOW {0} {1}', inputs.stale_sow_request_id, github.sha)
       || format('Deploy and verify Module 025 from PR #{0}', github.event.issue.number) }}
 
 permissions:
@@ -61,7 +40,6 @@ jobs:
   deploy_and_verify:
     if: >-
       github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
        github.actor == 'ahmedadeyemi-cts' &&
@@ -71,9 +49,6 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REQUEST_COMMENT: ${{ github.event.comment.body }}
-      STALE_SOW_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.stale_sow_cleanup_mode || 'none' }}
-      STALE_SOW_CONFIRMATION: ${{ github.event_name == 'workflow_dispatch' && inputs.stale_sow_cleanup_confirmation || '' }}
-      STALE_SOW_REQUEST_ID: ${{ github.event_name == 'workflow_dispatch' && inputs.stale_sow_request_id || '' }}
       DEPLOY_WORKFLOW_ID: '315562561'
       DEPLOY_WORKFLOW_PATH: .github/workflows/projectpulse-deploy-test.yml
       REPAIRED_MODULE025_SHA: f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b
@@ -109,41 +84,12 @@ jobs:
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
-          if [[ "$GITHUB_EVENT_NAME" == 'push' || "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
             requested_sha="$GITHUB_SHA"
           else
             [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]] \
               || fail 'The Module 025 deployment command is not exact.'
             requested_sha="${BASH_REMATCH[1]}"
-          fi
-
-          if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
-            [[ "$STALE_SOW_REQUEST_ID" =~ ^[1-9][0-9]{0,19}$ ]] \
-              || fail 'The stale-SOW maintenance parent run ID is invalid.'
-            parent_run="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${STALE_SOW_REQUEST_ID}")"
-            jq -e \
-              --argjson id "$STALE_SOW_REQUEST_ID" \
-              --arg sha "$requested_sha" \
-              --arg owner 'ahmedadeyemi-cts' '
-                .id == $id
-                and .path == ".github/workflows/protected-test-stale-sow-maintenance.yml"
-                and .event == "workflow_dispatch"
-                and .head_branch == "main"
-                and .head_sha == $sha
-                and .run_attempt == 1
-                and (.status == "queued" or .status == "in_progress")
-                and .actor.login == $owner
-              ' <<<"$parent_run" >/dev/null \
-              || fail 'The stale-SOW maintenance parent run is not the exact active owner-authorized request.'
-            case "$STALE_SOW_MODE" in
-              dry-run|apply) ;;
-              *) fail 'Unsupported stale-SOW maintenance mode.' ;;
-            esac
-            if [[ "$STALE_SOW_MODE" == apply ]]; then
-              [[ "$STALE_SOW_CONFIRMATION" == 'DELETE STALE TEST SOWS' ]] \
-                || fail 'The stale-SOW apply confirmation is not exact.'
-            fi
-            echo "MODULE025_PROTECTED_UAT_STALE_SOW_REQUEST=$STALE_SOW_MODE parent=$STALE_SOW_REQUEST_ID"
           fi
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           [[ "$requested_sha" == "$actual_main" && "$GITHUB_SHA" == "$actual_main" ]] \
@@ -386,12 +332,8 @@ jobs:
         shell: bash
         env:
           RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
-          STALE_SOW_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.stale_sow_cleanup_mode || 'none' }}
-          STALE_SOW_CONFIRMATION: ${{ github.event_name == 'workflow_dispatch' && inputs.stale_sow_cleanup_confirmation || '' }}
         run: |
           set -Eeuo pipefail
-          stale_sow_mode="${STALE_SOW_MODE:-none}"
-          stale_sow_confirmation="${STALE_SOW_CONFIRMATION:-}"
           fail() { echo "ERROR: $*" >&2; exit 1; }
           disable_deploy_workflow() {
             local state
@@ -421,17 +363,13 @@ jobs:
             --arg ref 'main' \
             --arg release_sha "$RELEASE_SHA" \
             --arg release_branch 'main' \
-            --arg stale_sow_cleanup_mode "$stale_sow_mode" \
-            --arg stale_sow_cleanup_confirmation "$stale_sow_confirmation" \
             '{ref:$ref,inputs:{
               release_sha:$release_sha,
               release_branch:$release_branch,
               acceptance_scope:"full",
               qualification_provider:"none",
               recover_private_runtime:"false",
-              admission_controller_sha:"",
-              stale_sow_cleanup_mode:$stale_sow_cleanup_mode,
-              stale_sow_cleanup_confirmation:$stale_sow_cleanup_confirmation
+              admission_controller_sha:""
             }}' \
             > "$RUNNER_TEMP/module025-protected-uat-dispatch.json"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/dispatches" \
