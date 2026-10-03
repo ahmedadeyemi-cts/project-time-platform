@@ -6,7 +6,10 @@ BRANCH = "fix/stale-sow-cleanup-flowhive-execution-guide-20261002"
 EXPECTED = sorted({
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/module-management-owner-drawer-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
     ".github/workflows/protected-test-stale-sow-maintenance.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
     "scripts/release-test/cleanup-stale-sows-protected-test.py",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
@@ -35,6 +38,9 @@ for file_name in [
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
     ".github/workflows/module-management-owner-drawer-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
 ]:
     assert BRANCH in Path(file_name).read_text(), f"{BRANCH} is not registered in {file_name}"
 
