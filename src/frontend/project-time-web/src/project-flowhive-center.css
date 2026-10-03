@@ -1303,7 +1303,7 @@
 
 .flowhive-execution-guide h5 {
   margin: 0.15rem 0 0;
-  color: var(--flowhive-navy);
+  color: var(--flowhive-ink);
   font-size: 1rem;
 }
 .flowhive-execution-guide > header small {
@@ -1328,7 +1328,7 @@
 
 .flowhive-execution-guide-grid h6 {
   margin: 0;
-  color: var(--flowhive-navy);
+  color: var(--flowhive-ink);
   font-size: 0.82rem;
 }
 
