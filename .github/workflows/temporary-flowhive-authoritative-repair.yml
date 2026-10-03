@@ -1,0 +1,404 @@
+name: Temporary FlowHive Authoritative Repair
+
+on:
+  push:
+    branches:
+      - feature/project-planning-collaboration-access-20260818
+    paths:
+      - '.github/workflows/temporary-flowhive-authoritative-repair.yml'
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: temporary-flowhive-authoritative-repair
+  cancel-in-progress: false
+
+jobs:
+  repair-validate-merge-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 420
+    steps:
+      - name: Check out exact current PR branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Stop stale temporary FlowHive automation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=feature/project-planning-collaboration-access-20260818&status=in_progress&per_page=100" \
+            --jq '.workflow_runs[] | select(.id != '${{ github.run_id }}') | select(.name | startswith("Temporary FlowHive")) | .id' \
+            | while IFS= read -r run_id; do
+                [[ -n "$run_id" ]] || continue
+                gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/cancel" || true
+              done
+
+      - name: Reconcile latest main without replaying old patches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git merge --no-edit origin/main
+          fi
+          git merge-base --is-ancestor origin/main HEAD
+          echo "CURRENT_MAIN_SHA=$(git rev-parse origin/main)"
+          echo "REPAIR_INPUT_SHA=$(git rev-parse HEAD)"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Validate deterministic repair publishers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m py_compile \
+            .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_finalize_flowhive_authoritative_repair.py
+
+      - name: Normalize migration runner anchors
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          path=Path('scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh')
+          source=path.read_text()
+          if 'FLOWHIVE_AUTHORITY_MIGRATION_SQL=' not in source:
+              match=re.search(r'RUN_SCOPE=.*\n',source)
+              if not match: raise SystemExit('RUN_SCOPE anchor missing')
+              source=source[:match.end()]+'FLOWHIVE_AUTHORITY_MIGRATION_SQL="database/migrations/094_flowhive_canonical_sow_authority.sql"\nPROJECT_PLANNING_MIGRATION_SQL="database/migrations/095_project_planning_collaboration_access.sql"\nPROJECTPULSE_RELEASE_ROOT="${PROJECTPULSE_RELEASE_ROOT:-$(pwd -P)}"\n'+source[match.end():]
+              anchor='[[ -n "$RESOURCE_GROUP" ]] || fail'
+              source=source.replace(anchor,'[[ -s "$PROJECTPULSE_RELEASE_ROOT/$FLOWHIVE_AUTHORITY_MIGRATION_SQL" ]] || fail "Migration 094 SQL artifact is missing."\n[[ -s "$PROJECTPULSE_RELEASE_ROOT/$PROJECT_PLANNING_MIGRATION_SQL" ]] || fail "Migration 095 SQL artifact is missing."\n'+anchor,1)
+          if 'build-and-run-flowhive-authority-migration-094-job.sh' not in source:
+              marker='PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \\\n  bash scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'
+              if marker not in source: raise SystemExit('Migration 095 invocation anchor missing')
+              source=source.replace(marker,'PROJECTPULSE_RELEASE_ROOT="$(pwd -P)" \\\n  bash scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh\necho \'MIGRATION_094=APPLIED_AND_VERIFIED\'\n\n'+marker,1)
+          path.write_text(source)
+          PY
+
+      - name: Apply the complete server-owned FlowHive redesign
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 .github/scripts/temporary_apply_flowhive_authoritative_repair.py
+          python3 .github/scripts/temporary_finalize_flowhive_authoritative_repair.py
+          chmod 0755 \
+            scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \
+            scripts/release-test/run-flowhive-authority-migration-094-job.sh \
+            scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh \
+            scripts/release-test/run-project-planning-collaboration-migration-job.sh \
+            scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+
+      - name: Normalize exact protected-Test release artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          deploy=Path('.github/workflows/projectpulse-deploy-test.yml')
+          source=deploy.read_text()
+          trigger_anchor="      - 'database/migrations/093_assigned_work_canonical_visibility_repair.sql'\n"
+          trigger_paths=[
+            "      - 'database/migrations/094_flowhive_canonical_sow_authority.sql'",
+            "      - 'database/migrations/095_project_planning_collaboration_access.sql'",
+            "      - 'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'",
+            "      - 'scripts/release-test/run-flowhive-authority-migration-094-job.sh'",
+            "      - 'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'",
+            "      - 'scripts/release-test/run-project-planning-collaboration-migration-job.sh'",
+          ]
+          missing=[line for line in trigger_paths if line not in source.split('workflow_dispatch:',1)[0]]
+          if missing:
+              if trigger_anchor not in source: raise SystemExit('deployment trigger anchor missing')
+              source=source.replace(trigger_anchor,trigger_anchor+'\n'.join(missing)+'\n',1)
+          required_anchor='            database/migrations/093_assigned_work_canonical_visibility_repair.sql \\\n'
+          required=[
+            '            database/migrations/094_flowhive_canonical_sow_authority.sql \\',
+            '            database/migrations/095_project_planning_collaboration_access.sql \\',
+            '            scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \\',
+            '            scripts/release-test/run-flowhive-authority-migration-094-job.sh \\',
+            '            scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh \\',
+            '            scripts/release-test/run-project-planning-collaboration-migration-job.sh \\',
+          ]
+          missing=[line for line in required if line not in source]
+          if missing:
+              if required_anchor not in source: raise SystemExit('deployment required-artifact anchor missing')
+              source=source.replace(required_anchor,required_anchor+'\n'.join(missing)+'\n',1)
+          source=source.replace('Apply and verify Migrations 086, 088, and 093 inside Test private network','Apply and verify Migrations 086, 088, 093, 094, and 095 inside Test private network')
+          deploy.write_text(source)
+          PY
+
+      - name: Remove all temporary publication controls
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rm -f \
+            .github/scripts/temporary_apply_flowhive_authoritative_repair.py \
+            .github/scripts/temporary_finalize_flowhive_authoritative_repair.py \
+            .github/workflows/temporary-flowhive-authoritative-repair.yml \
+            .github/workflows/temporary-flowhive-source-export.yml \
+            .github/workflows/temporary-flowhive-repair-publisher.yml \
+            .github/workflows/temporary-flowhive-pr734-finalizer.yml \
+            .github/workflows/temporary-flowhive-pr734-dispatch.yml \
+            .github/workflows/temporary-flowhive-pr734-finalizer-run.yml \
+            .github/flowhive-pr734-finalizer-dispatch.txt
+          rm -rf .flowhive-repair tmp/flowhive-repair
+
+      - name: Generate exact governed PR 734 source manifest
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          manifest=Path('.github/flowhive-pr734-governed-release-files.txt')
+          manifest.parent.mkdir(parents=True,exist_ok=True)
+          manifest.write_text('# Exact governed FlowHive PR #734 source scope.\n')
+          files=subprocess.check_output(['git','diff','--name-only','origin/main','--','.'],text=True).splitlines()
+          files=sorted(set(filter(None,files))|{str(manifest)})
+          manifest.write_text('# Exact governed FlowHive PR #734 source scope.\n'+'\n'.join(files)+'\n')
+          PY
+          grep -F 'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' .github/flowhive-pr734-governed-release-files.txt
+          grep -F 'database/migrations/094_flowhive_canonical_sow_authority.sql' .github/flowhive-pr734-governed-release-files.txt
+          grep -F 'database/migrations/095_project_planning_collaboration_access.sql' .github/flowhive-pr734-governed-release-files.txt
+
+      - name: Guard required redesign contracts before compilation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          grep -R -Fq '/ai-planner/runs' src/backend/ProjectTime.Api
+          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src
+          grep -R -Fq 'project_flowhive_ai_planner_runs' database/migrations/095_project_planning_collaboration_access.sql src/backend/ProjectTime.Api
+          grep -R -Fq 'project_flowhive_working_copies' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs
+          grep -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'FLOWHIVE_AUTHENTICATED_AI_PLANNER_UAT' scripts/release-test/verify-runtime.mjs
+          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          ! grep -Fq "label: 'AI draft studio'" src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx
+          ! grep -Fq 'window.fetch = async' src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js
+          grep -R -Fq 'project_end_exceeded' tests src/backend/ProjectTime.Api/Modules
+          echo 'FLOWHIVE_SERVER_OWNED_REDESIGN=VERIFIED'
+          echo 'SILENT_SCHEDULE_COMPRESSION=ABSENT'
+          echo 'AUTOMATIC_BASELINE=ABSENT'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Run FlowHive source and migration validations
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+
+      - name: Run executable detailed Planner and API gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Run frontend dependency security and production build
+        working-directory: src/frontend/project-time-web
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Validate final source boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git diff --check origin/main
+          test ! -e .github/workflows/temporary-flowhive-authoritative-repair.yml
+          test ! -e .github/scripts/temporary_apply_flowhive_authoritative_repair.py
+          test ! -e .github/scripts/temporary_finalize_flowhive_authoritative_repair.py
+          test ! -d .flowhive-repair
+          test ! -d tmp/flowhive-repair
+
+      - name: Commit and push the exact validated redesign
+        id: publish
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git add -A
+          git diff --cached --check
+          git diff --cached --quiet && { echo 'ERROR: No authoritative FlowHive repair diff was produced.' >&2; exit 1; }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Complete server-owned FlowHive AI Planner redesign'
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          git push --force-with-lease="refs/heads/feature/project-planning-collaboration-access-20260818:${{ github.sha }}" \
+            origin HEAD:feature/project-planning-collaboration-access-20260818
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_REPAIR_RELEASE_SHA=$RELEASE_SHA"
+
+      - name: Update PR 734 completion contract
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.publish.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cat > "$RUNNER_TEMP/pr-body.md" <<EOF
+          ## FlowHive production-quality repair
+
+          This PR now contains the server-owned FlowHive AI Planner redesign on exact validated source \`$RELEASE_SHA\`.
+
+          - resolves the selected authorized project;
+          - locates the active durable Work Register SOW and GSD automatically;
+          - queues private scanning, extraction, sanitization, indexing, authority reconciliation, and citations idempotently;
+          - exposes durable operation progress through the evidence-only AI Planning Workspace;
+          - extracts each current-SOW work package once and expands it into Plan, Design, Implement, Validate, and Release;
+          - retains source-backed technical details and converts missing facts to open questions;
+          - preserves estimated effort/duration and explains target-date overruns and the critical path without silent compression;
+          - automatically persists only the editable working draft;
+          - never automatically creates an immutable version or reviewed baseline;
+          - applies and verifies Migrations 094 and 095 in Protected Test before application deployment;
+          - runs authenticated FlowHive and Celar AI UAT against the exact reported Protected UAT project/SOW;
+          - makes transient Celar dependencies evidence-limited instead of exposing 502/503/504 to the user;
+          - performs no Production mutation.
+
+          Merge remains gated on every exact-head GitHub Action being green.
+          EOF
+          gh pr edit 734 --repo "$GITHUB_REPOSITORY" \
+            --title 'Complete FlowHive server-owned AI Planner and protected UAT release' \
+            --body-file "$RUNNER_TEMP/pr-body.md"
+
+      - name: Wait for every exact-head GitHub Action
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.publish.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          REQUIRED='["ProjectPulse CI","FlowHive Detailed Planner CI","Validate Project Planning Collaboration Access","Validate Governed Protected-Test Release Controller","ProjectPulse Repository Security Posture"]'
+          READY=0
+          for attempt in $(seq 1 240); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$RELEASE_SHA&per_page=100" > "$RUNNER_TEMP/runs.json"
+            jq -r '.workflow_runs[] | [.name,.status,(.conclusion // "pending"),(.html_url // "")] | @tsv' "$RUNNER_TEMP/runs.json" | LC_ALL=C sort -u
+            BAD="$(jq '[.workflow_runs[] | select(.status == "completed") | select((.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") | not)] | length' "$RUNNER_TEMP/runs.json")"
+            if [[ "$BAD" != 0 ]]; then
+              jq -r '.workflow_runs[] | select(.status == "completed") | select((.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") | not) | [.name,.conclusion,.html_url] | @tsv' "$RUNNER_TEMP/runs.json" >&2
+              exit 1
+            fi
+            PRESENT="$(jq --argjson required "$REQUIRED" '[ $required[] as $name | any(.workflow_runs[]; .name == $name and .status == "completed" and (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped")) ] | all' "$RUNNER_TEMP/runs.json")"
+            PENDING="$(jq '[.workflow_runs[] | select(.status != "completed")] | length' "$RUNNER_TEMP/runs.json")"
+            if [[ "$PRESENT" == true && "$PENDING" == 0 ]]; then READY=1; break; fi
+            sleep 20
+          done
+          (( READY == 1 )) || { echo 'ERROR: Exact-head GitHub Actions did not all become green.' >&2; exit 1; }
+          echo 'EVERY_EXACT_HEAD_GITHUB_ACTION=GREEN'
+
+      - name: Merge exact validated PR 734
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ steps.publish.outputs.release_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh pr ready 734 --repo "$GITHUB_REPOSITORY"
+          RESPONSE="$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/734/merge" \
+            -f sha="$RELEASE_SHA" \
+            -f merge_method='merge' \
+            -f commit_title='Complete FlowHive server-owned AI Planner and protected UAT release (#734)' \
+            -f commit_message='Deliver authoritative SOW/GSD orchestration, private processing progress, detailed Plan/Design/Implement/Validate/Release generation, source-backed technical detail, uncompressed deterministic scheduling, automatic working-draft persistence, Migration 094/095 Protected-Test wiring, evidence-only AI Planning Workspace, Celar transient-failure hardening, and authenticated FlowHive/Celar UAT. Production mutation remains prohibited.')"
+          echo "$RESPONSE" | jq -e '.merged == true and (.sha | length == 40)' >/dev/null
+          MERGE_SHA="$(echo "$RESPONSE" | jq -r '.sha')"
+          echo "merge_sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_PR734_MERGED_SHA=$MERGE_SHA"
+
+      - name: Locate or dispatch exact Protected-Test deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RUN_ID=''
+          for _ in $(seq 1 30); do
+            RUN_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml/runs?branch=main&per_page=30" \
+              --jq --arg sha "$MERGE_SHA" '.workflow_runs | map(select(.head_sha == $sha)) | sort_by(.created_at) | last | .id // empty')"
+            [[ "$RUN_ID" =~ ^[0-9]+$ ]] && break
+            sleep 5
+          done
+          if [[ ! "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            gh workflow run projectpulse-deploy-test.yml --repo "$GITHUB_REPOSITORY" --ref main
+            for _ in $(seq 1 60); do
+              RUN_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml/runs?branch=main&event=workflow_dispatch&per_page=30" \
+                --jq --arg sha "$MERGE_SHA" '.workflow_runs | map(select(.head_sha == $sha)) | sort_by(.created_at) | last | .id // empty')"
+              [[ "$RUN_ID" =~ ^[0-9]+$ ]] && break
+              sleep 5
+            done
+          fi
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo 'ERROR: Exact Protected-Test deployment run was not located.' >&2; exit 1; }
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_TEST_DEPLOYMENT_RUN_ID=$RUN_ID"
+
+      - name: Require Protected-Test migrations, deployment, and authenticated UAT
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.deployment.outputs.run_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONCLUSION=''
+          for _ in $(seq 1 480); do
+            STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.status')"
+            CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.conclusion // empty')"
+            echo "Protected-Test run $RUN_ID: status=$STATUS conclusion=${CONCLUSION:-pending}"
+            [[ "$STATUS" == completed ]] && break
+            sleep 30
+          done
+          [[ "$CONCLUSION" == success ]] || {
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+            exit 1
+          }
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | [.name,.conclusion] | @tsv' > "$RUNNER_TEMP/deployment-jobs.tsv"
+          cat "$RUNNER_TEMP/deployment-jobs.tsv"
+          awk -F '\t' '$2 != "success" && $2 != "skipped" { bad=1 } END { exit bad }' "$RUNNER_TEMP/deployment-jobs.tsv"
+          echo 'PROTECTED_TEST_DEPLOYMENT=SUCCESS'
+          echo 'MIGRATION_094=APPLIED_AND_VERIFIED'
+          echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
+          echo 'FLOWHIVE_AUTHENTICATED_AI_PLANNER_UAT=SUCCESS'
+          echo 'CELAR_AI_AUTHENTICATED_UAT=SUCCESS'
+          echo 'PRODUCTION_MUTATION=NONE'

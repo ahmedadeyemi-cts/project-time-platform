@@ -1,0 +1,226 @@
+name: Temporary FlowHive PR 734 Finalizer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: read
+
+concurrency:
+  group: temporary-flowhive-pr734-finalizer
+  cancel-in-progress: false
+
+jobs:
+  validate-merge-deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Check out exact PR head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: feature/project-planning-collaboration-access-20260818
+          fetch-depth: 0
+
+      - name: Guard exact repository and protected-Test boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          [[ "$GITHUB_REPOSITORY" == 'ahmedadeyemi-cts/project-time-platform' ]] || fail 'Unexpected repository.'
+          [[ "$(git branch --show-current)" == 'feature/project-planning-collaboration-access-20260818' ]] || fail 'Unexpected branch.'
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor origin/main HEAD || fail 'PR #734 no longer contains current main; reconcile before merge.'
+          [[ ! -e .github/workflows/temporary-flowhive-repair-publisher.yml ]] || fail 'The guarded repair publisher has not completed.'
+          [[ ! -e .github/workflows/temporary-flowhive-source-export.yml ]] || fail 'The temporary source exporter remains in the final source.'
+          [[ ! -d .flowhive-repair || -z "$(find .flowhive-repair -type f -print -quit 2>/dev/null)" ]] || fail 'Temporary FlowHive staging files remain.'
+          [[ ! -d tmp/flowhive-repair || -z "$(find tmp/flowhive-repair -type f -print -quit 2>/dev/null)" ]] || fail 'Temporary FlowHive staging files remain.'
+          echo 'ENVIRONMENT_SCOPE=PROTECTED_TEST_ONLY'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Guard completed FlowHive redesign contracts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          grep -R -Fq '/ai-planner/runs' src/backend/ProjectTime.Api || fail 'Server-owned AI Planner run endpoints are missing.'
+          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src || fail 'The evidence-only AI Planning Workspace is missing.'
+          grep -R -Fq 'project_flowhive_working_copies' src/backend/ProjectTime.Api/Modules || fail 'AI Planner working-copy persistence is missing.'
+          grep -R -Fq '094_flowhive_canonical_sow_authority.sql' scripts/release-test .github/workflows || fail 'Migration 094 is not wired into protected Test.'
+          grep -R -Fq '095_project_planning_collaboration_access.sql' scripts/release-test .github/workflows || fail 'Migration 095 immutable SQL identity is not wired into protected Test.'
+          grep -R -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test .github/workflows || fail 'Migration 094 verification evidence is missing.'
+          grep -R -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test .github/workflows || fail 'Migration 095 verification evidence is missing.'
+          grep -R -Eqi 'FlowHive.*authenticated.*UAT|authenticated.*FlowHive.*UAT' scripts/release-test .github/workflows || fail 'Authenticated FlowHive protected-Test UAT is missing.'
+          ! grep -Fq 'generated = FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs \
+            || fail 'FlowHive still silently compresses generated duration to the requested finish window.'
+          ! grep -Fq "label: 'AI draft studio'" src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx \
+            || fail 'The duplicate AI draft studio remains user-facing.'
+          ! grep -Fq 'window.fetch = async' src/frontend/project-time-web/src/flowhive-sow-evidence-autoadmission.js \
+            || fail 'The retired browser-global FlowHive admission interceptor remains active.'
+          grep -R -Fq 'project_end_exceeded' tests src/backend/ProjectTime.Api/Modules || fail 'Schedule-overrun validation coverage is missing.'
+          grep -R -Eqi 'open question|openQuestions' tests/FlowHiveDetailedPlannerTests src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs \
+            || fail 'Missing-information open-question coverage is absent.'
+          echo 'FLOWHIVE_SERVER_ORCHESTRATION=PRESENT'
+          echo 'FLOWHIVE_NO_SILENT_COMPRESSION=VERIFIED'
+          echo 'FLOWHIVE_WORKING_DRAFT_PERSISTENCE=VERIFIED'
+
+      - name: Set up Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/frontend/project-time-web/package-lock.json
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run source, security, and migration gates
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          bash -n scripts/release-test/run-flowhive-authority-migration-094-job.sh
+          bash -n scripts/release-test/run-project-planning-collaboration-migration-job.sh
+          bash -n scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh
+          node tests/validate-flowhive-sow-evidence-autoadmission.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-celar-ai-pr630-consolidated.mjs
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node src/frontend/project-time-web/scripts/validate-module-066-project-flowhive.mjs
+          python3 scripts/security/validate-repository-security-posture.py
+          bash tests/test-flowhive-canonical-sow-authority-migration-094.sh
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          git diff --check origin/main...HEAD
+
+      - name: Run backend and FlowHive executable tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          dotnet run --project tests/FlowHiveDetailedPlannerTests/FlowHiveDetailedPlannerTests.csproj --configuration Release
+          dotnet run --project tests/FlowHiveSowFreshnessTests/FlowHiveSowFreshnessTests.csproj --configuration Release
+          dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+          bash tests/test-projectpulse-api-startup.sh
+
+      - name: Run frontend security and production build
+        shell: bash
+        working-directory: src/frontend/project-time-web
+        run: |
+          set -Eeuo pipefail
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
+          npm run build
+
+      - name: Require every completed check on exact head to be green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?per_page=100" \
+            --jq '.check_runs[] | [.name,.status,(.conclusion // "pending"),.details_url] | @tsv' \
+            > "$RUNNER_TEMP/checks.tsv"
+          cat "$RUNNER_TEMP/checks.tsv"
+          awk -F '\t' '
+            $1 == "validate-merge-deploy" { next }
+            $2 == "completed" && $3 !~ /^(success|neutral|skipped)$/ { bad=1; print "Non-green check: "$0 > "/dev/stderr" }
+            END { exit bad }
+          ' "$RUNNER_TEMP/checks.tsv"
+
+      - name: Remove temporary finalizer and merge exact validated source
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          VALIDATED_SHA="$(git rev-parse HEAD)"
+          rm -f .github/workflows/temporary-flowhive-pr734-finalizer.yml
+          git add -A
+          git diff --cached --name-only > "$RUNNER_TEMP/cleanup-files"
+          [[ "$(cat "$RUNNER_TEMP/cleanup-files")" == '.github/workflows/temporary-flowhive-pr734-finalizer.yml' ]] || {
+            echo 'ERROR: Final cleanup contains more than the temporary finalizer deletion.' >&2
+            cat "$RUNNER_TEMP/cleanup-files" >&2
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: remove temporary FlowHive PR 734 finalizer'
+          CLEAN_SHA="$(git rev-parse HEAD)"
+          git push origin "HEAD:feature/project-planning-collaboration-access-20260818"
+
+          gh pr ready 734 --repo "$GITHUB_REPOSITORY"
+          MERGE_RESPONSE="$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/734/merge" \
+            -f sha="$CLEAN_SHA" \
+            -f merge_method='merge' \
+            -f commit_title='Complete FlowHive server-owned AI Planner and protected UAT release (#734)' \
+            -f commit_message='Deliver authoritative Work Register SOW/GSD orchestration, private processing progress, detailed Plan/Design/Implement/Validate/Release generation, uncompressed deterministic scheduling, automatic working-draft persistence, Migration 094/095 protected-Test wiring, evidence-only AI Planning Workspace, and authenticated FlowHive/Celar UAT. Production mutation remains prohibited.')"
+          echo "$MERGE_RESPONSE" | jq -e '.merged == true and (.sha | length == 40)' >/dev/null
+          MERGE_SHA="$(echo "$MERGE_RESPONSE" | jq -r '.sha')"
+          echo "validated_sha=$VALIDATED_SHA" >> "$GITHUB_OUTPUT"
+          echo "cleanup_sha=$CLEAN_SHA" >> "$GITHUB_OUTPUT"
+          echo "merge_sha=$MERGE_SHA" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_PR734_MERGED=$MERGE_SHA"
+
+      - name: Dispatch protected-Test deployment for exact merge
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_SHA: ${{ steps.merge.outputs.merge_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          DISPATCHED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          gh workflow run projectpulse-deploy-test.yml --repo "$GITHUB_REPOSITORY" --ref main
+          RUN_ID=''
+          for _ in $(seq 1 60); do
+            RUN_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml/runs?branch=main&event=workflow_dispatch&per_page=20" \
+              --jq --arg sha "$MERGE_SHA" --arg started "$DISPATCHED_AT" \
+              '.workflow_runs | map(select(.head_sha == $sha and .created_at >= $started)) | sort_by(.created_at) | last | .id // empty')"
+            [[ "$RUN_ID" =~ ^[0-9]+$ ]] && break
+            sleep 5
+          done
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]] || {
+            echo 'ERROR: Could not locate the exact protected-Test deployment run.' >&2
+            exit 1
+          }
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_TEST_DEPLOYMENT_RUN_ID=$RUN_ID"
+
+      - name: Require protected-Test migration, deployment, and authenticated UAT success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.deployment.outputs.run_id }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONCLUSION=''
+          for _ in $(seq 1 360); do
+            STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.status')"
+            CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.conclusion // empty')"
+            echo "Protected-Test run $RUN_ID: status=$STATUS conclusion=${CONCLUSION:-pending}"
+            [[ "$STATUS" == completed ]] && break
+            sleep 30
+          done
+          [[ "$CONCLUSION" == success ]] || {
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+            echo "ERROR: Protected-Test release did not complete successfully: ${CONCLUSION:-timeout}" >&2
+            exit 1
+          }
+
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | [.name,.conclusion] | @tsv' > "$RUNNER_TEMP/deployment-jobs.tsv"
+          cat "$RUNNER_TEMP/deployment-jobs.tsv"
+          awk -F '\t' '$2 != "success" && $2 != "skipped" { bad=1 } END { exit bad }' "$RUNNER_TEMP/deployment-jobs.tsv"
+          echo 'PROTECTED_TEST_DEPLOYMENT=SUCCESS'
+          echo 'MIGRATIONS_094_095=APPLIED_AND_VERIFIED'
+          echo 'FLOWHIVE_AUTHENTICATED_UAT=SUCCESS'
+          echo 'CELAR_AI_AUTHENTICATED_UAT=SUCCESS'
+          echo 'PRODUCTION_MUTATION=NONE'

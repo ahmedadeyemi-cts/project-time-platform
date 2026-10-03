@@ -1,0 +1,37 @@
+name: Temporary FlowHive Repair Timeout Normalizer
+
+on:
+  push:
+    branches:
+      - feature/project-planning-collaboration-access-20260818
+    paths:
+      - '.github/workflows/temporary-flowhive-repair-timeout-normalizer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: feature/project-planning-collaboration-access-20260818
+          fetch-depth: 0
+
+      - name: Normalize and re-trigger authoritative repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -f .github/workflows/temporary-flowhive-authoritative-repair.yml
+          sed -i 's/timeout-minutes: 420/timeout-minutes: 360/' .github/workflows/temporary-flowhive-authoritative-repair.yml
+          grep -Fq 'timeout-minutes: 360' .github/workflows/temporary-flowhive-authoritative-repair.yml
+          rm -f .github/workflows/temporary-flowhive-repair-timeout-normalizer.yml
+          git add -A
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore: normalize FlowHive authoritative repair timeout'
+          git push origin HEAD:feature/project-planning-collaboration-access-20260818
