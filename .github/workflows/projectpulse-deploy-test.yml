@@ -34,6 +34,20 @@ on:
         required: true
         default: release/flowhive-sow-successor-20260908
         type: string
+      stale_sow_cleanup_mode:
+        description: 'Optional post-UAT stale SOW maintenance in Protected Test'
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - dry-run
+          - apply
+      stale_sow_cleanup_confirmation:
+        description: 'Apply only: type DELETE STALE TEST SOWS'
+        required: false
+        default: ''
+        type: string
       admission_controller_sha:
         description: Controller SHA read by the trusted PSA admission workflow
         required: false
@@ -96,6 +110,26 @@ jobs:
           path: release
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Validate stale SOW maintenance request
+        shell: bash
+        env:
+          STALE_SOW_MODE: ${{ inputs.stale_sow_cleanup_mode || 'none' }}
+          STALE_SOW_CONFIRMATION: ${{ inputs.stale_sow_cleanup_confirmation }}
+        run: |
+          set -Eeuo pipefail
+          case "$STALE_SOW_MODE" in
+            none|dry-run|apply) ;;
+            *) echo 'Unsupported stale SOW maintenance mode.' >&2; exit 1 ;;
+          esac
+          if [[ "$STALE_SOW_MODE" != none ]]; then
+            [[ "${{ inputs.qualification_provider || 'none' }}" == none ]]
+            [[ "$TARGET_RELEASE_BRANCH" == main ]]
+            [[ "$ACCEPTANCE_SCOPE" == full ]]
+          fi
+          if [[ "$STALE_SOW_MODE" == apply ]]; then
+            [[ "$STALE_SOW_CONFIRMATION" == 'DELETE STALE TEST SOWS' ]]
+          fi
 
       - name: Validate qualification-only selection
         working-directory: release
@@ -2172,6 +2206,30 @@ jobs:
           PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
           PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
         run: python3 deployment/pulse-services/release_phase.py finalize
+
+      - name: Evaluate or clean stale Work Register SOWs
+        id: stale_sow_maintenance
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && (inputs.stale_sow_cleanup_mode || 'none') != 'none' && steps.pulse_private_services_final.outcome == 'success' }}
+        shell: bash
+        working-directory: release
+        env:
+          PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_STALE_SOW_MODE: ${{ inputs.stale_sow_cleanup_mode }}
+          PROJECTPULSE_STALE_SOW_CONFIRMATION: ${{ inputs.stale_sow_cleanup_confirmation }}
+          PROJECTPULSE_STALE_SOW_REPORT: ${{ runner.temp }}/stale-sow-cleanup-summary.json
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/cleanup-stale-sows-protected-test.py
+          jq '{environment,origin,mode,summary,projects}' "$PROJECTPULSE_STALE_SOW_REPORT"
+
+      - name: Upload stale SOW maintenance evidence
+        if: ${{ always() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && (inputs.stale_sow_cleanup_mode || 'none') != 'none' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: protected-test-stale-sow-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/stale-sow-cleanup-summary.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Publish private Pulse service activation receipt
         if: ${{ always() && steps.pulse_service_images.outcome == 'success' }}

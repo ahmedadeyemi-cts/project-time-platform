@@ -51,4 +51,16 @@ ambiguous = {"preparation": {"documents": [
 current, reason = module.current_sow_work_register_id(ambiguous, enterprise)
 assert current == ""
 assert reason == "current_planning_sow_not_unique"
+root = Path(__file__).resolve().parents[1]
+dispatch = (root / ".github/workflows/protected-test-stale-sow-maintenance.yml").read_text()
+deploy = (root / ".github/workflows/projectpulse-deploy-test.yml").read_text()
+assert "actions: write" in dispatch
+assert "environment: test" not in dispatch
+assert "PROJECTPULSE_M087_PASSWORD" not in dispatch
+assert "projectpulse-deploy-test.yml" in dispatch
+assert "gh run watch" in dispatch
+assert "stale_sow_cleanup_mode" in deploy
+assert "stale_sow_cleanup_confirmation" in deploy
+assert "PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}" in deploy
+assert "cleanup-stale-sows-protected-test.py" in deploy
 print("STALE_SOW_CLEANUP_UNIT=PASS")

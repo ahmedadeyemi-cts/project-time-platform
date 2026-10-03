@@ -4,24 +4,12 @@ import subprocess
 
 BRANCH = "fix/stale-sow-cleanup-flowhive-execution-guide-20261002"
 EXPECTED = sorted({
-    ".github/workflows/flowhive-psa-release-control-ci.yml",
-    ".github/workflows/module-management-owner-drawer-ci.yml",
-    ".github/workflows/pr1140-uat-recovery-ci.yml",
-    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/projectpulse-deploy-test.yml",
     ".github/workflows/protected-test-stale-sow-maintenance.yml",
-    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
-    "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
-    "scripts/release-test/cleanup-stale-sows-protected-test.py",
-    "scripts/release-test/validate-protected-test-controller-branches.sh",
-    "src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx",
-    "src/frontend/project-time-web/src/project-flowhive-center.css",
-    "src/frontend/project-time-web/src/work-register-document-integrity.js",
-    "tests/flowhive-psa-react-browser.py",
-    "tests/flowhive-psa-admission.test.mjs",
     "tests/stale-sow-flowhive-execution-guide-scope.py",
     "tests/test_stale_sow_cleanup.py",
-    "tests/validate-work-register-document-continuity.mjs",
 })
+
 
 def git(*args):
     return subprocess.check_output(["git", *args], text=True).strip()
@@ -46,14 +34,20 @@ for file_name in [
     assert BRANCH in Path(file_name).read_text(), f"{BRANCH} is not registered in {file_name}"
 
 cleanup = Path("scripts/release-test/cleanup-stale-sows-protected-test.py").read_text()
-workflow = Path(".github/workflows/protected-test-stale-sow-maintenance.yml").read_text()
+dispatch = Path(".github/workflows/protected-test-stale-sow-maintenance.yml").read_text()
+deploy = Path(".github/workflows/projectpulse-deploy-test.yml").read_text()
 integrity = Path("src/frontend/project-time-web/src/work-register-document-integrity.js").read_text()
 flowhive = Path("src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx").read_text()
 assert "https://phd-west-test.onenecklab.com" in cleanup
 assert "DELETE STALE TEST SOWS" in cleanup
 assert '"dry-run"' in cleanup and '"apply"' in cleanup
 assert '"productionMutation": False' in cleanup
-assert "https://phd-west-test.onenecklab.com" in cleanup
+assert "actions: write" in dispatch and "environment: test" not in dispatch
+assert "PROJECTPULSE_M087_PASSWORD" not in dispatch
+assert "projectpulse-deploy-test.yml" in dispatch and "gh run watch" in dispatch
+assert "stale_sow_cleanup_mode" in deploy and "stale_sow_cleanup_confirmation" in deploy
+assert "PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}" in deploy
+assert "cleanup-stale-sows-protected-test.py" in deploy
 assert "archiveButton = null" in integrity and "archiveButton?.className" in integrity
 assert "if (!archiveButton) return;" not in integrity
 for marker in [
