@@ -84,12 +84,21 @@ jobs:
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
+          stale_sow_mode='none'
+          stale_sow_confirmation=''
           if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
             requested_sha="$GITHUB_SHA"
-          else
-            [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]] \
-              || fail 'The Module 025 deployment command is not exact.'
+          elif [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]]; then
             requested_sha="${BASH_REMATCH[1]}"
+          elif [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})\ STALE\ SOW\ DRY-RUN$ ]]; then
+            requested_sha="${BASH_REMATCH[1]}"
+            stale_sow_mode='dry-run'
+          elif [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})\ STALE\ SOW\ APPLY\ DELETE\ STALE\ TEST\ SOWS$ ]]; then
+            requested_sha="${BASH_REMATCH[1]}"
+            stale_sow_mode='apply'
+            stale_sow_confirmation='DELETE STALE TEST SOWS'
+          else
+            fail 'The Module 025 deployment command is not exact.'
           fi
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           [[ "$requested_sha" == "$actual_main" && "$GITHUB_SHA" == "$actual_main" ]] \
@@ -324,7 +333,10 @@ jobs:
           esac
 
           echo "release_sha=$requested_sha" >> "$GITHUB_OUTPUT"
+          echo "stale_sow_mode=$stale_sow_mode" >> "$GITHUB_OUTPUT"
+          echo "stale_sow_confirmation=$stale_sow_confirmation" >> "$GITHUB_OUTPUT"
           echo "MODULE025_PROTECTED_UAT_RELEASE_AUTHORIZED=$requested_sha"
+          echo "MODULE025_STALE_SOW_MAINTENANCE_AUTHORIZED=$stale_sow_mode"
           echo 'PRODUCTION_MUTATION=NONE'
 
       - name: Dispatch exact governed Protected-Test deployment and reseal admissions
@@ -332,6 +344,8 @@ jobs:
         shell: bash
         env:
           RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
+          STALE_SOW_MAINTENANCE_MODE: ${{ steps.authorize.outputs.stale_sow_mode }}
+          STALE_SOW_MAINTENANCE_CONFIRMATION: ${{ steps.authorize.outputs.stale_sow_confirmation }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -363,13 +377,17 @@ jobs:
             --arg ref 'main' \
             --arg release_sha "$RELEASE_SHA" \
             --arg release_branch 'main' \
+            --arg stale_sow_mode "$STALE_SOW_MAINTENANCE_MODE" \
+            --arg stale_sow_confirmation "$STALE_SOW_MAINTENANCE_CONFIRMATION" \
             '{ref:$ref,inputs:{
               release_sha:$release_sha,
               release_branch:$release_branch,
               acceptance_scope:"full",
               qualification_provider:"none",
               recover_private_runtime:"false",
-              admission_controller_sha:""
+              admission_controller_sha:"",
+              stale_sow_maintenance_mode:$stale_sow_mode,
+              stale_sow_maintenance_confirmation:$stale_sow_confirmation
             }}' \
             > "$RUNNER_TEMP/module025-protected-uat-dispatch.json"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/dispatches" \

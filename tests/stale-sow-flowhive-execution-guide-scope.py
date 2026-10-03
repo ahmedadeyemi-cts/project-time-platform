@@ -8,7 +8,6 @@ EXPECTED = sorted({
     ".github/workflows/module-management-owner-drawer-ci.yml",
     ".github/workflows/pr1140-uat-recovery-ci.yml",
     ".github/workflows/pr1151-uat-supersession-ci.yml",
-    ".github/workflows/protected-test-stale-sow-maintenance.yml",
     ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
     "scripts/release-test/cleanup-stale-sows-protected-test.py",
@@ -46,13 +45,19 @@ for file_name in [
     assert BRANCH in Path(file_name).read_text(), f"{BRANCH} is not registered in {file_name}"
 
 cleanup = Path("scripts/release-test/cleanup-stale-sows-protected-test.py").read_text()
-workflow = Path(".github/workflows/protected-test-stale-sow-maintenance.yml").read_text()
 integrity = Path("src/frontend/project-time-web/src/work-register-document-integrity.js").read_text()
 flowhive = Path("src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx").read_text()
 assert "https://phd-west-test.onenecklab.com" in cleanup
 assert "DELETE STALE TEST SOWS" in cleanup
 assert '"dry-run"' in cleanup and '"apply"' in cleanup
 assert '"productionMutation": False' in cleanup
+controller = Path(".github/workflows/projectpulse-deploy-test.yml").read_text()
+supervisor = Path(".github/workflows/module025-protected-uat-control.yml").read_text()
+assert "stale_sow_maintenance_mode" in controller
+assert "Evaluate and maintain stale Protected-Test SOWs" in controller
+assert "PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}" in controller
+assert "STALE SOW DRY-RUN" in supervisor
+assert "STALE SOW APPLY DELETE STALE TEST SOWS" in supervisor
 assert "https://phd-west-test.onenecklab.com" in cleanup
 assert "archiveButton = null" in integrity and "archiveButton?.className" in integrity
 assert "if (!archiveButton) return;" not in integrity
