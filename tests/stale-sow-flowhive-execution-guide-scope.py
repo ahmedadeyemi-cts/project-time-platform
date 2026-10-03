@@ -14,6 +14,7 @@ EXPECTED = sorted({
     "scripts/release-test/verify-pr1151-uat-supersession.py",
     "scripts/release-test/verify-pr1204-uat-supersession.py",
     "tests/laya/processed-source-scope.py",
+    "tests/module025_qualification_workflow.py",
     "tests/pulse-activation-release/controller.py",
     "tests/security-release/test_controller_registration.py",
     "tests/stale-sow-controller-registration.json",
