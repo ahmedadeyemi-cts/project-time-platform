@@ -27,9 +27,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   dispatch:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && github.actor == 'ahmedadeyemi-cts'
     runs-on: ubuntu-24.04
-    timeout-minutes: 250
+    timeout-minutes: 280
     steps:
       - name: Check out exact main source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -109,8 +109,10 @@ jobs:
             set +e
             disable_controller
             final_state="$(gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID" | jq -r '.state' 2>/dev/null)"
-            [[ "$final_state" == disabled_manually ]] \
-              || echo "ERROR: Protected Test deployment controller did not reseal; state=$final_state" >&2
+            if [[ "$final_state" != disabled_manually ]]; then
+              echo "ERROR: Protected Test deployment controller did not reseal; state=$final_state" >&2
+              exit_code=1
+            fi
             exit "$exit_code"
           }
           trap reseal_on_exit EXIT

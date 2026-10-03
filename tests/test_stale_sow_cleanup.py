@@ -73,6 +73,8 @@ assert "module025-protected-uat-control" in dispatch
 assert "/enable" in dispatch and "/disable" in dispatch
 assert "Protected Test deployment controller must begin sealed" in dispatch
 assert "Protected Test deployment controller did not reseal after child startup" in dispatch
+assert "github.actor == 'ahmedadeyemi-cts'" in dispatch
+assert "exit_code=1" in dispatch
 assert "gh run watch" not in dispatch
 assert "HTTP (502|503|504)" in dispatch
 assert "stale_sow_cleanup_mode" in dispatch
