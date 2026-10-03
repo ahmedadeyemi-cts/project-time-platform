@@ -22,14 +22,14 @@ permissions:
   actions: write
 
 concurrency:
-  group: protected-test-stale-sow-maintenance-dispatch
+  group: module025-protected-uat-control
   queue: max
   cancel-in-progress: false
 jobs:
   dispatch:
-    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'workflow_dispatch' && github.actor == 'ahmedadeyemi-cts'
     runs-on: ubuntu-24.04
-    timeout-minutes: 250
+    timeout-minutes: 280
     steps:
       - name: Check out exact main source
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
@@ -52,33 +52,178 @@ jobs:
           if [[ "$DISPATCH_MODE" == apply ]]; then
             [[ "$DISPATCH_CONFIRMATION" == 'DELETE STALE TEST SOWS' ]]
           fi
-      - name: Dispatch governed Protected Test controller
+      - name: Wait for exact merged-main build and security checks
+        timeout-minutes: 25
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          python3 tests/test-protected-uat-main-ci.py
+          python3 tests/test-pr1151-uat-supersession.py
+          python3 scripts/release-test/wait-protected-uat-main-ci.py
+
+      - name: Admit, dispatch, and reseal governed Protected Test controller
         id: dispatch
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           DISPATCH_MODE: ${{ inputs.mode }}
           DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
+          DEPLOY_WORKFLOW_ID: '315562561'
         run: |
           set -Eeuo pipefail
           repo="$GITHUB_REPOSITORY"
-          before="$RUNNER_TEMP/stale-sow-before-runs.txt"
-          gh run list -R "$repo" --workflow projectpulse-deploy-test.yml --limit 100             --json databaseId --jq '.[].databaseId' | sort -n > "$before"
+          fail() { echo "ERROR: $*" >&2; exit 1; }
 
-          gh workflow run projectpulse-deploy-test.yml -R "$repo" --ref main             -f qualification_provider=none             -f acceptance_scope=full             -f recover_private_runtime=false             -f release_sha="$GITHUB_SHA"             -f release_branch=main             -f stale_sow_cleanup_mode="$DISPATCH_MODE"             -f stale_sow_cleanup_confirmation="$DISPATCH_CONFIRMATION"
+          gh_get() {
+            local path="$1" output="$RUNNER_TEMP/gh-read.json" error="$RUNNER_TEMP/gh-read.err"
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if gh api "$path" >"$output" 2>"$error"; then
+                cat "$output"
+                return 0
+              fi
+              if grep -Eq 'HTTP (502|503|504)' "$error"; then
+                sleep $((attempt * 2))
+                continue
+              fi
+              cat "$error" >&2
+              return 1
+            done
+            cat "$error" >&2
+            return 1
+          }
+
+          disable_controller() {
+            local state
+            state="$(gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID" | jq -r '.state')" || return 1
+            if [[ "$state" == active ]]; then
+              gh api --method PUT "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID/disable" >/dev/null
+            fi
+          }
+
+          reseal_on_exit() {
+            local exit_code=$?
+            trap - EXIT
+            set +e
+            disable_controller
+            final_state="$(gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID" | jq -r '.state' 2>/dev/null)"
+            if [[ "$final_state" != disabled_manually ]]; then
+              echo "ERROR: Protected Test deployment controller did not reseal; state=$final_state" >&2
+              exit_code=1
+            fi
+            exit "$exit_code"
+          }
+          trap reseal_on_exit EXIT
+
+          workflow_state="$(gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID" | jq -r '.state')"
+          [[ "$workflow_state" == disabled_manually ]] \
+            || fail "Protected Test deployment controller must begin sealed; state=$workflow_state"
+
+          before="$RUNNER_TEMP/stale-sow-before-runs.txt"
+          gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID/runs?event=workflow_dispatch&per_page=100" \
+            | jq -r '.workflow_runs[].id' | LC_ALL=C sort -n > "$before"
+
+          dispatch_started_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          gh api --method PUT "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID/enable" >/dev/null
+          [[ "$(gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID" | jq -r '.state')" == active ]] \
+            || fail 'Protected Test deployment controller did not enable for bounded stale-SOW dispatch.'
+
+          jq -n \
+            --arg ref 'main' \
+            --arg release_sha "$GITHUB_SHA" \
+            --arg release_branch 'main' \
+            --arg stale_sow_cleanup_mode "$DISPATCH_MODE" \
+            --arg stale_sow_cleanup_confirmation "$DISPATCH_CONFIRMATION" \
+            '{ref:$ref,inputs:{
+              qualification_provider:"none",
+              acceptance_scope:"full",
+              recover_private_runtime:"false",
+              release_sha:$release_sha,
+              release_branch:$release_branch,
+              stale_sow_cleanup_mode:$stale_sow_cleanup_mode,
+              stale_sow_cleanup_confirmation:$stale_sow_cleanup_confirmation
+            }}' > "$RUNNER_TEMP/stale-sow-protected-test-dispatch.json"
+
+          gh api --method POST "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID/dispatches" \
+            --input "$RUNNER_TEMP/stale-sow-protected-test-dispatch.json" >/dev/null
 
           child=''
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 90); do
+            runs_json="$(gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID/runs?event=workflow_dispatch&per_page=100")"
             while IFS= read -r candidate; do
               if [[ -n "$candidate" ]] && ! grep -Fxq "$candidate" "$before"; then
                 child="$candidate"
                 break
               fi
-            done < <(gh run list -R "$repo" --workflow projectpulse-deploy-test.yml               --branch main --event workflow_dispatch --limit 50               --json databaseId,headSha               --jq ".[] | select(.headSha == \"$GITHUB_SHA\") | .databaseId")
-            [[ -n "$child" ]] && break
+            done < <(jq -r \
+              --arg sha "$GITHUB_SHA" \
+              --arg created "$dispatch_started_at" '
+                [.workflow_runs[]
+                  | select(.event == "workflow_dispatch"
+                    and .head_branch == "main"
+                    and .head_sha == $sha
+                    and .created_at >= $created)]
+                | sort_by(.created_at, .id)
+                | reverse
+                | .[].id
+              ' <<<"$runs_json")
+            [[ "$child" =~ ^[0-9]+$ ]] && break
             sleep 2
           done
-          [[ -n "$child" ]]
+          [[ "$child" =~ ^[0-9]+$ ]] || fail 'Protected Test child run was not observed after dispatch.'
+
+          child_json="$(gh_get "repos/$repo/actions/runs/$child")"
+          jq -e \
+            --argjson id "$child" \
+            --argjson workflow "$DEPLOY_WORKFLOW_ID" \
+            --arg sha "$GITHUB_SHA" '
+              .id == $id
+              and .workflow_id == $workflow
+              and .event == "workflow_dispatch"
+              and .head_branch == "main"
+              and .head_sha == $sha
+            ' <<<"$child_json" >/dev/null \
+            || fail 'Protected Test child run identity did not match the bounded stale-SOW dispatch.'
+
+          attached=false
+          for attempt in $(seq 1 120); do
+            jobs_json="$(gh_get "repos/$repo/actions/runs/$child/jobs?filter=all&per_page=1")"
+            if [[ "$(jq -r '.total_count' <<<"$jobs_json")" -gt 0 ]]; then
+              attached=true
+              break
+            fi
+            child_status="$(gh_get "repos/$repo/actions/runs/$child" | jq -r '.status')"
+            [[ "$child_status" != completed ]] || break
+            sleep 5
+          done
+          [[ "$attached" == true ]] || fail 'Protected Test child run never attached an executable job.'
+
+          disable_controller
+          [[ "$(gh_get "repos/$repo/actions/workflows/$DEPLOY_WORKFLOW_ID" | jq -r '.state')" == disabled_manually ]] \
+            || fail 'Protected Test deployment controller did not reseal after child startup.'
+
           echo "child_run_id=$child" >> "$GITHUB_OUTPUT"
           echo "Governed Protected Test child run: $child" >> "$GITHUB_STEP_SUMMARY"
-          gh run watch "$child" -R "$repo" --exit-status --interval 10
+
+          conclusion=''
+          deadline_epoch=$(( $(date +%s) + 240 * 60 ))
+          while (( $(date +%s) < deadline_epoch )); do
+            child_json="$(gh_get "repos/$repo/actions/runs/$child")"
+            jq -e \
+              --argjson id "$child" \
+              --arg sha "$GITHUB_SHA" '
+                .id == $id
+                and .event == "workflow_dispatch"
+                and .head_branch == "main"
+                and .head_sha == $sha
+              ' <<<"$child_json" >/dev/null
+            child_status="$(jq -r '.status' <<<"$child_json")"
+            if [[ "$child_status" == completed ]]; then
+              conclusion="$(jq -r '.conclusion // empty' <<<"$child_json")"
+              break
+            fi
+            sleep 15
+          done
+          [[ "$conclusion" == success ]] || fail "Protected Test child did not complete successfully; conclusion=$conclusion"
