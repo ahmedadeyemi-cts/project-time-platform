@@ -7,10 +7,32 @@ ROOT = Path(__file__).resolve().parents[2]
 CURRENT_FLOWHIVE_REPAIR = 'fix/flowhive-enterprise-usability-routing-20260926'
 CURRENT_FLOWHIVE_FRONTEND_MARKER = 'fix/flowhive-frontend-convergence-marker-20260926'
 CURRENT_FLOWHIVE_UAT_IDEMPOTENT = 'fix/flowhive-protected-uat-idempotent-20260927'
+CURRENT_STALE_SOW_EXECUTION_GUIDE = 'fix/stale-sow-cleanup-flowhive-execution-guide-20261002'
 
 def current_branch():
     return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
+
+if current_branch() == CURRENT_STALE_SOW_EXECUTION_GUIDE:
+    base = subprocess.check_output(['git','-C',str(ROOT),'merge-base','origin/main','HEAD'], text=True).strip()
+    inherited = [
+        'database/migrations/125_automatic_document_admission_laya.sql',
+        'src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs',
+        'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+        'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs',
+        'src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs',
+        'src/backend/ProjectTime.Api/Ai/PulseAiDocumentIndexAuthorization.cs',
+    ]
+    for path in inherited:
+        current = (ROOT/path).read_bytes()
+        accepted = subprocess.check_output(['git','-C',str(ROOT),'show',f'{base}:{path}'])
+        if current != accepted:
+            raise SystemExit('Stale-SOW / FlowHive execution-guide repair changed inherited Laya source: '+path)
+    subprocess.run([sys.executable, str(ROOT/'tests/stale-sow-flowhive-execution-guide-scope.py')],
+                   cwd=ROOT, check=True)
+    subprocess.run(['git','-C',str(ROOT),'diff','--check',base,'HEAD'], check=True)
+    print('LAYA_AUTOMATIC_ADMISSION_SCOPE=PASS; inherited Laya source unchanged for stale-SOW / FlowHive execution-guide repair')
+    raise SystemExit(0)
 
 # This integration uses its own exact PR inventory; Laya owners and schema are unchanged.
 if current_branch() == 'fix/pulse-document-runtime-prereqs-20261002':

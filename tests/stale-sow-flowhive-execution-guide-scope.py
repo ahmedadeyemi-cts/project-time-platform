@@ -6,6 +6,16 @@ BRANCH = "fix/stale-sow-cleanup-flowhive-execution-guide-20261002"
 EXPECTED = sorted({
     ".github/workflows/projectpulse-deploy-test.yml",
     ".github/workflows/protected-test-stale-sow-maintenance.yml",
+    "scripts/release-test/recover-pr1139-uat-orphan.py",
+    "scripts/release-test/recover-pr1140-migration-retry-orphan.py",
+    "scripts/release-test/recover-pr1140-uat-orphan.py",
+    "scripts/release-test/verify-module025-quarantine-controller.py",
+    "scripts/release-test/verify-pr1151-uat-supersession.py",
+    "scripts/release-test/verify-pr1204-uat-supersession.py",
+    "tests/laya/processed-source-scope.py",
+    "tests/pulse-activation-release/controller.py",
+    "tests/security-release/test_controller_registration.py",
+    "tests/stale-sow-controller-registration.json",
     "tests/stale-sow-flowhive-execution-guide-scope.py",
     "tests/test_stale_sow_cleanup.py",
 })
