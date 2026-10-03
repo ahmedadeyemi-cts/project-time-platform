@@ -40,14 +40,17 @@ jobs:
 
       - name: Verify protected-Test maintenance boundary
         shell: bash
+        env:
+          DISPATCH_MODE: ${{ inputs.mode }}
+          DISPATCH_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           set -Eeuo pipefail
           git fetch --no-tags origin main
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" ]]
           [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]
-          [[ '${{ inputs.mode }}' == dry-run || '${{ inputs.mode }}' == apply ]]
-          if [[ '${{ inputs.mode }}' == apply ]]; then
-            [[ '${{ inputs.confirmation }}' == 'DELETE STALE TEST SOWS' ]]
+          [[ "$DISPATCH_MODE" == dry-run || "$DISPATCH_MODE" == apply ]]
+          if [[ "$DISPATCH_MODE" == apply ]]; then
+            [[ "$DISPATCH_CONFIRMATION" == 'DELETE STALE TEST SOWS' ]]
           fi
       - name: Evaluate and maintain stale Test SOWs
         shell: bash
