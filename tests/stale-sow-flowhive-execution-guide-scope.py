@@ -12,6 +12,7 @@ EXPECTED = sorted({
     ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "scripts/ci/validate-celar-ai-enterprise-source-boundary.sh",
     "scripts/release-test/cleanup-stale-sows-protected-test.py",
+    "scripts/validate-deployment-concurrency-governance.mjs",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
     "src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx",
     "src/frontend/project-time-web/src/project-flowhive-center.css",
