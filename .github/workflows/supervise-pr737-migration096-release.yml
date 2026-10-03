@@ -1,0 +1,243 @@
+name: Supervise corrected PR 737 Protected UAT release
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - .github/workflows/supervise-pr737-migration096-release.yml
+
+permissions:
+  actions: read
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: supervise-pr737-migration096-release
+  cancel-in-progress: false
+
+jobs:
+  supervise:
+    name: Verify repair, deploy exact SHA, and merge only after UAT
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      API_ROOT: https://api.github.com/repos/${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: '737'
+      ORIGINAL_HEAD: d8441ae42f5acfa5efc89996e49e2cf041246820
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      OBSERVER_BRANCH: ops/pr737-protected-uat-observer-20260823
+      EVIDENCE_DIR: /tmp/pr737-corrected-release
+
+    steps:
+      - name: Wait for the fail-closed Migration 096 repair
+        id: candidate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+          install -d -m 0700 "$EVIDENCE_DIR"
+
+          repair_run_id=''
+          repair_conclusion=''
+          candidate_sha=''
+          for _ in $(seq 1 180); do
+            repair_runs="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$API_ROOT/actions/workflows/repair-pr737-migration096.yml/runs?branch=$OBSERVER_BRANCH&event=push&per_page=10")"
+            repair_run_id="$(jq -r '[.workflow_runs[]] | sort_by(.created_at) | last | .id // empty' <<<"$repair_runs")"
+            repair_status="$(jq -r '[.workflow_runs[]] | sort_by(.created_at) | last | .status // empty' <<<"$repair_runs")"
+            repair_conclusion="$(jq -r '[.workflow_runs[]] | sort_by(.created_at) | last | .conclusion // empty' <<<"$repair_runs")"
+            if [[ "$repair_status" == completed ]]; then break; fi
+            sleep 10
+          done
+          [[ -n "$repair_run_id" ]] || fail 'Migration 096 repair run was not found.'
+          if [[ "$repair_conclusion" != success ]]; then
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$API_ROOT/actions/runs/$repair_run_id/artifacts" > "$EVIDENCE_DIR/repair-artifacts.json" || true
+            fail "Migration 096 repair run $repair_run_id failed."
+          fi
+
+          for _ in $(seq 1 90); do
+            pr="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$API_ROOT/pulls/$PR_NUMBER")"
+            candidate_sha="$(jq -r '.head.sha' <<<"$pr")"
+            if [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ && "$candidate_sha" != "$ORIGINAL_HEAD" ]]; then break; fi
+            sleep 5
+          done
+          [[ "$candidate_sha" =~ ^[0-9a-f]{40}$ && "$candidate_sha" != "$ORIGINAL_HEAD" ]] \
+            || fail 'The repair did not publish a new permanent PR candidate.'
+          jq -e --arg branch "$TARGET_BRANCH" '.state == "open" and .draft == false and .head.ref == $branch' <<<"$pr" >/dev/null \
+            || fail 'PR #737 is no longer the expected open release candidate.'
+          echo "candidate_sha=$candidate_sha" >> "$GITHUB_OUTPUT"
+          echo "repair_run_id=$repair_run_id" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$pr" > "$EVIDENCE_DIR/pr-after-repair.json"
+          echo "MIGRATION_096_REPAIR_SHA=$candidate_sha"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Wait for governed exact-SHA validation and deployment
+        id: deployment
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          dispatcher_run=''
+          for _ in $(seq 1 540); do
+            runs="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$API_ROOT/actions/runs?head_sha=$CANDIDATE_SHA&event=pull_request&per_page=100")"
+            dispatcher_state="$(jq -r '
+              [.workflow_runs[] | select(.name == "Dispatch Approved Protected UAT Candidate")]
+              | sort_by(.created_at) | last
+              | if . == null then "missing:" else "\(.status):\(.conclusion // ""):\(.id)" end
+            ' <<<"$runs")"
+            IFS=':' read -r dispatch_status dispatch_conclusion dispatcher_run <<<"$dispatcher_state"
+            if [[ "$dispatch_status" == completed ]]; then
+              [[ "$dispatch_conclusion" == success ]] || fail "Protected UAT dispatcher failed: $dispatcher_state"
+              break
+            fi
+            sleep 10
+          done
+          [[ "$dispatcher_run" =~ ^[0-9]+$ ]] || fail 'The exact-SHA Protected UAT dispatcher did not complete.'
+
+          deployment_run=''
+          for _ in $(seq 1 120); do
+            deployments="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$API_ROOT/actions/workflows/projectpulse-deploy-test.yml/runs?event=workflow_dispatch&per_page=50")"
+            deployment_run="$(jq -r --arg sha "$CANDIDATE_SHA" '
+              [.workflow_runs[] | select(.head_sha == $sha and .head_branch == "fix/shared-project-document-planning-20260819")]
+              | sort_by(.created_at) | last | .id // empty
+            ' <<<"$deployments")"
+            [[ -n "$deployment_run" ]] && break
+            sleep 5
+          done
+          [[ "$deployment_run" =~ ^[0-9]+$ ]] || fail 'The exact corrected SHA was not dispatched to Protected Test.'
+
+          conclusion=''
+          for _ in $(seq 1 720); do
+            run="$(curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$API_ROOT/actions/runs/$deployment_run")"
+            status="$(jq -r '.status' <<<"$run")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$run")"
+            if [[ "$status" == completed ]]; then break; fi
+            sleep 10
+          done
+          printf '%s\n' "$run" > "$EVIDENCE_DIR/deployment-run.json"
+          echo "deployment_run=$deployment_run" >> "$GITHUB_OUTPUT"
+          echo "dispatcher_run=$dispatcher_run" >> "$GITHUB_OUTPUT"
+          [[ "$conclusion" == success ]] || fail "Protected Test deployment run $deployment_run failed with conclusion $conclusion."
+          echo "PROTECTED_UAT_DEPLOYMENT_RUN=$deployment_run"
+          echo "PROTECTED_UAT_DEPLOYMENT_SHA=$CANDIDATE_SHA"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Verify deployment evidence and merge PR 737
+        shell: bash
+        env:
+          CANDIDATE_SHA: ${{ steps.candidate.outputs.candidate_sha }}
+          DEPLOYMENT_RUN: ${{ steps.deployment.outputs.deployment_run }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          artifacts="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API_ROOT/actions/runs/$DEPLOYMENT_RUN/artifacts")"
+          artifact_url="$(jq -r '
+            [.artifacts[] | select(.name | startswith("systemwide-enterprise-reliability-test-evidence-"))]
+            | sort_by(.created_at) | last | .archive_download_url // empty
+          ' <<<"$artifacts")"
+          [[ "$artifact_url" == https://api.github.com/* ]] || fail 'Protected Test evidence artifact was not published.'
+          curl --fail-with-body --silent --show-error --location \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$artifact_url" --output "$EVIDENCE_DIR/deployment-evidence.zip"
+          unzip -q "$EVIDENCE_DIR/deployment-evidence.zip" -d "$EVIDENCE_DIR/deployment-evidence"
+
+          uat="$(find "$EVIDENCE_DIR/deployment-evidence" -type f -name uat-summary.json -print -quit)"
+          migrations="$(find "$EVIDENCE_DIR/deployment-evidence" -type f -name migrations.json -print -quit)"
+          [[ -s "$uat" && -s "$migrations" ]] || fail 'Required deployment evidence files are missing.'
+          jq -e --arg sha "$CANDIDATE_SHA" '
+            .status == "passed" and
+            .sourceCommit == $sha and
+            .migration086 == "applied_and_verified" and
+            .migration088 == "applied_and_verified" and
+            .migration093 == "applied_and_verified" and
+            .migration094 == "applied_and_verified" and
+            .migration095 == "applied_and_verified" and
+            .migration096 == "applied_and_verified" and
+            .flowHiveAiPlanner == true and
+            .projectForgeAiPlanner == true and
+            .planDesignImplementValidateRelease == true and
+            .productionMutation == false
+          ' "$uat" >/dev/null || fail 'Authenticated FlowHive/Forge UAT evidence did not satisfy the release contract.'
+          jq -e '
+            .status == "applied_and_verified" and
+            (.migrations | index("096_project_planning_document_authority") != null) and
+            .productionMutation == false
+          ' "$migrations" >/dev/null || fail 'Migration evidence did not verify Migration 096.'
+
+          pr="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API_ROOT/pulls/$PR_NUMBER")"
+          jq -e --arg sha "$CANDIDATE_SHA" '.state == "open" and .head.sha == $sha and .mergeable != false' <<<"$pr" >/dev/null \
+            || fail 'PR #737 changed or is no longer mergeable after Protected UAT.'
+
+          merge_payload="$(jq -nc --arg sha "$CANDIDATE_SHA" '{sha:$sha,merge_method:"merge",commit_title:"FlowHive V2 document-grounded planning (#737)"}')"
+          merge_status="$(curl --silent --show-error \
+            --output "$EVIDENCE_DIR/merge-response.json" --write-out '%{http_code}' \
+            --request PUT \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            -H 'Content-Type: application/json' \
+            --data "$merge_payload" "$API_ROOT/pulls/$PR_NUMBER/merge")"
+          [[ "$merge_status" == 200 ]] || {
+            cat "$EVIDENCE_DIR/merge-response.json" >&2 || true
+            fail "PR #737 merge failed with HTTP $merge_status."
+          }
+          jq -e '.merged == true' "$EVIDENCE_DIR/merge-response.json" >/dev/null || fail 'GitHub did not confirm the merge.'
+
+          comment="$(jq -nc --arg sha "$CANDIDATE_SHA" --arg run "$DEPLOYMENT_RUN" '{body:("## FlowHive V2 Protected UAT passed and PR merged\n\n- Exact candidate SHA: `"+$sha+"`\n- Protected Test deployment run: `"+$run+"`\n- Migrations 086, 088, 093, 094, 095, and 096: applied and verified\n- Authenticated FlowHive and Project Forge UAT: passed\n- Exact runtime/source identity: verified\n- Production mutation: `NONE`")}')"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            -H 'Content-Type: application/json' \
+            --data "$comment" "$API_ROOT/issues/$PR_NUMBER/comments" >/dev/null
+          echo 'PR_737_MERGED_AFTER_PROTECTED_UAT=TRUE'
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Upload supervisor evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pr737-corrected-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: /tmp/pr737-corrected-release
+          if-no-files-found: warn
+          retention-days: 14

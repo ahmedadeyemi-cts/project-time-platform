@@ -1,0 +1,263 @@
+name: PR 737 conclusive Protected UAT monitor
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - .github/workflows/pr737-conclusive-protected-uat-monitor.yml
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: pr737-conclusive-protected-uat-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      API_ROOT: https://api.github.com/repos/${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      PR_NUMBER: '737'
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      PRIOR_HEAD: 2ec3bcb67069a51b2139d5b0060b0772afdc06d1
+      OUTPUT_DIR: docs/architecture/pr737-live-state
+
+    steps:
+      - name: Check out observer branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ops/pr737-protected-uat-observer-20260823
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Monitor exact repaired candidate and Protected Test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          install -d -m 0755 "$OUTPUT_DIR"
+          work="$RUNNER_TEMP/pr737-conclusive-monitor"
+          install -d -m 0700 "$work"
+
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          head_sha=''
+          repair_deadline=$((SECONDS + 2400))
+          while (( SECONDS < repair_deadline )); do
+            pr_json="$(api_get "$API_ROOT/pulls/$PR_NUMBER")"
+            head_sha="$(jq -r '.head.sha' <<<"$pr_json")"
+            state="$(jq -r '.state' <<<"$pr_json")"
+            branch="$(jq -r '.head.ref' <<<"$pr_json")"
+            [[ "$state" == open && "$branch" == "$TARGET_BRANCH" ]] || {
+              echo "PR #737 is no longer the expected open candidate." >&2
+              break
+            }
+            if [[ "$head_sha" != "$PRIOR_HEAD" ]]; then
+              break
+            fi
+            echo "Waiting for permanent migration repair publication; current head=$head_sha"
+            sleep 20
+          done
+
+          if [[ -z "$head_sha" || "$head_sha" == "$PRIOR_HEAD" ]]; then
+            decision='repair_not_published'
+            deployment_id=''
+            deployment_status='not_started'
+            deployment_conclusion=''
+            error_excerpt='Permanent repair did not publish a new candidate within the guarded window.'
+          else
+            required=(
+              'ProjectPulse Repository Security Posture'
+              'Validate Governed Protected-Test Release Controller'
+              'ProjectPulse CI'
+              'Validate UAT Functional Completion'
+              'FlowHive Detailed Planner CI'
+              'Validate Shared FlowHive and Project Forge Document Planning'
+              'Validate Module 033 Project Forge'
+              'Validate Module 030 Analytics Center'
+              'Validate Module 030 Analytics Enterprise Experience'
+              'Validate Celar AI Enterprise Platform Interface'
+              'Validate Pulse AI Private Document Pipeline'
+              'Validate Project Planning Collaboration Access'
+              'System-wide Enterprise Reliability CI'
+            )
+
+            ci_green=0
+            ci_failure=''
+            ci_deadline=$((SECONDS + 6000))
+            while (( SECONDS < ci_deadline )); do
+              runs="$(api_get "$API_ROOT/actions/runs?head_sha=$head_sha&event=pull_request&per_page=100")"
+              ci_green=1
+              pending=()
+              for workflow in "${required[@]}"; do
+                result="$(jq -r --arg name "$workflow" '
+                  [.workflow_runs[] | select(.name == $name)]
+                  | sort_by(.created_at) | last
+                  | if . == null then "missing:"
+                    else "\(.status):\(.conclusion // ""):success_url=\(.html_url)" end
+                ' <<<"$runs")"
+                case "$result" in
+                  completed:success:*) ;;
+                  completed:*) ci_failure="$workflow=$result"; ci_green=0; break 2 ;;
+                  *) ci_green=0; pending+=("$workflow=$result") ;;
+                esac
+              done
+              (( ci_green )) && break
+              echo "Waiting for exact-head release gates: ${pending[*]}"
+              sleep 30
+            done
+
+            if [[ -n "$ci_failure" ]]; then
+              decision='ci_failed'
+              deployment_id=''
+              deployment_status='not_started'
+              deployment_conclusion=''
+              error_excerpt="$ci_failure"
+            elif (( ci_green != 1 )); then
+              decision='ci_timeout'
+              deployment_id=''
+              deployment_status='not_started'
+              deployment_conclusion=''
+              error_excerpt='Required exact-head checks did not converge within the guarded window.'
+            else
+              deployment_id=''
+              deployment_deadline=$((SECONDS + 7200))
+              while (( SECONDS < deployment_deadline )); do
+                deployments="$(api_get "$API_ROOT/actions/workflows/projectpulse-deploy-test.yml/runs?event=workflow_dispatch&per_page=100")"
+                deployment_id="$(jq -r --arg sha "$head_sha" --arg branch "$TARGET_BRANCH" '
+                  [.workflow_runs[]
+                    | select(.head_sha == $sha and .head_branch == $branch)]
+                  | sort_by(.created_at) | last | .id // empty
+                ' <<<"$deployments")"
+                [[ -n "$deployment_id" ]] && break
+                echo "Waiting for exact-head Protected Test dispatch for $head_sha"
+                sleep 20
+              done
+
+              if [[ -z "$deployment_id" ]]; then
+                decision='deployment_not_dispatched'
+                deployment_status='not_started'
+                deployment_conclusion=''
+                error_excerpt='No exact-head Protected Test deployment was found.'
+              else
+                deployment_status=''
+                deployment_conclusion=''
+                while (( SECONDS < deployment_deadline )); do
+                  deployment="$(api_get "$API_ROOT/actions/runs/$deployment_id")"
+                  deployment_status="$(jq -r '.status' <<<"$deployment")"
+                  deployment_conclusion="$(jq -r '.conclusion // ""' <<<"$deployment")"
+                  [[ "$deployment_status" == completed ]] && break
+                  echo "Protected Test deployment $deployment_id is $deployment_status"
+                  sleep 30
+                done
+
+                api_get "$API_ROOT/actions/runs/$deployment_id/logs" > "$work/deployment-logs.zip"
+                unzip -q "$work/deployment-logs.zip" -d "$work/deployment-logs"
+                grep -RihE \
+                  'MIGRATION_09[456]=|FLOWHIVE_AI_PLANNER_UAT=|PROJECT_FORGE_AI_PLANNER_UAT=|CELAR_AI_STABILITY_UAT=|PROTECTED_TEST_FRONTEND_CONVERGED|PROTECTED_TEST_RELEASE|RUNTIME.*SHA|PRODUCTION_MUTATION|productionMutation' \
+                  "$work/deployment-logs" | tail -n 300 > "$work/markers.txt" || true
+                grep -RinE -C 10 \
+                  'does not exist|undefined column|u\.is_active|ERROR:|psql:|migration.*fail|containerapp job.*failed|Dockerfile.*(missing|not found)|Process completed with exit code' \
+                  "$work/deployment-logs" | tail -n 500 > "$work/errors.txt" || true
+
+                if [[ "$deployment_status" == completed && "$deployment_conclusion" == success ]]; then
+                  decision='ready_for_protected_uat_validation'
+                  error_excerpt=''
+                else
+                  decision='deployment_failed'
+                  error_excerpt="$(sed -n '1,180p' "$work/errors.txt")"
+                fi
+              fi
+            fi
+          fi
+
+          markers=''
+          [[ ! -f "$work/markers.txt" ]] || markers="$(sed -n '1,240p' "$work/markers.txt")"
+          jq -n \
+            --arg decision "$decision" \
+            --arg headSha "$head_sha" \
+            --arg branch "$TARGET_BRANCH" \
+            --arg deploymentRunId "$deployment_id" \
+            --arg deploymentStatus "$deployment_status" \
+            --arg deploymentConclusion "$deployment_conclusion" \
+            --arg errorExcerpt "$error_excerpt" \
+            --arg markers "$markers" \
+            '{
+              decision:$decision,
+              prNumber:737,
+              headSha:$headSha,
+              branch:$branch,
+              deploymentRunId:$deploymentRunId,
+              deploymentStatus:$deploymentStatus,
+              deploymentConclusion:$deploymentConclusion,
+              markers:$markers,
+              errorExcerpt:$errorExcerpt,
+              productionMutation:false
+            }' > "$OUTPUT_DIR/conclusive-status.json"
+
+          {
+            echo '# PR #737 conclusive Protected UAT status'
+            echo
+            echo "- Decision: **$decision**"
+            echo "- Candidate SHA: \`$head_sha\`"
+            echo "- Deployment run: \`${deployment_id:-not-started}\`"
+            echo "- Deployment: \`${deployment_status:-unknown}\` / \`${deployment_conclusion:-unknown}\`"
+            echo '- Production mutation: **NONE**'
+            echo
+            echo '## Release markers'
+            echo
+            echo '```text'
+            printf '%s\n' "$markers"
+            echo '```'
+            echo
+            echo '## Remaining error evidence'
+            echo
+            echo '```text'
+            printf '%s\n' "$error_excerpt"
+            echo '```'
+          } > "$OUTPUT_DIR/conclusive-status.md"
+
+          body="$(jq -r '
+            if .decision == "ready_for_protected_uat_validation" then
+              "## FlowHive V2 is ready for Protected-UAT testing\n\nCandidate: `" + .headSha + "`\nDeployment run: `" + .deploymentRunId + "`\nDeployment conclusion: `" + .deploymentConclusion + "`\n\nMigrations, runtime deployment, and authenticated UAT completed in the governed Test workflow. Production mutation: `NONE`."
+            else
+              "## PR #737 Protected-UAT release status: " + .decision + "\n\nCandidate: `" + .headSha + "`\nDeployment run: `" + (.deploymentRunId // "") + "`\n\nThe exact remaining evidence is preserved on the observer branch. Production mutation: `NONE`."
+            end
+          ' "$OUTPUT_DIR/conclusive-status.json")"
+          jq -nc --arg body "$body" '{body:$body}' > "$work/comment.json"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            -H 'Content-Type: application/json' \
+            --data @"$work/comment.json" \
+            "$API_ROOT/issues/$PR_NUMBER/comments" >/dev/null
+
+      - name: Publish conclusive observer state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            docs/architecture/pr737-live-state/conclusive-status.json \
+            docs/architecture/pr737-live-state/conclusive-status.md
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Record conclusive PR 737 Protected UAT status'
+          git push origin HEAD:ops/pr737-protected-uat-observer-20260823

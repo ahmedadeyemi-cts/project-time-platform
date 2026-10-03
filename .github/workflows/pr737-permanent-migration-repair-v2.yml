@@ -1,0 +1,189 @@
+name: PR 737 resilient permanent migration repair
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - .github/workflows/pr737-permanent-migration-repair-v2.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: pr737-resilient-permanent-migration-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      API_ROOT: https://api.github.com/repos/${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Resolve exact current PR 737 head
+        id: target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pr="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API_ROOT/pulls/737")"
+          jq -e --arg branch "$TARGET_BRANCH" '
+            .state == "open" and .draft == false and .head.ref == $branch and
+            .head.repo.full_name == .base.repo.full_name
+          ' <<<"$pr" >/dev/null
+          sha="$(jq -r '.head.sha' <<<"$pr")"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "PR737_SOURCE_HEAD=$sha"
+
+      - name: Check out exact current candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Apply schema-compatible permanent migration source
+        id: patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          migration = Path('database/migrations/095_project_planning_collaboration_access.sql')
+          test = Path('tests/test-project-planning-collaboration-migration-095.sh')
+          source = migration.read_text(encoding='utf-8')
+
+          helper_name = 'projectpulse095_user_record_is_active'
+          helper = r'''
+-- app_users account-state columns differ across supported installations.  Use
+-- the complete row as JSON so an optional physical status column never becomes
+-- a compile-time dependency.  Canonical app_users membership remains active
+-- when the installation has no account-state field; authentication/session
+-- revocation remains enforced by the existing identity runtime.
+CREATE OR REPLACE FUNCTION projectpulse095_user_record_is_active(user_record JSONB)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+AS $projectpulse095_user_record_is_active_body$
+SELECT CASE
+    WHEN user_record IS NULL THEN FALSE
+    WHEN user_record ? 'is_active' THEN
+        LOWER(COALESCE(user_record->>'is_active','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'account_enabled' THEN
+        LOWER(COALESCE(user_record->>'account_enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'is_enabled' THEN
+        LOWER(COALESCE(user_record->>'is_enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'enabled' THEN
+        LOWER(COALESCE(user_record->>'enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'status' THEN
+        LOWER(TRIM(COALESCE(user_record->>'status',''))) IN ('active','enabled','current')
+    WHEN user_record ? 'disabled_at' OR user_record ? 'deleted_at' THEN
+        NULLIF(TRIM(COALESCE(user_record->>'disabled_at','')), '') IS NULL
+        AND NULLIF(TRIM(COALESCE(user_record->>'deleted_at','')), '') IS NULL
+    ELSE TRUE
+END;
+$projectpulse095_user_record_is_active_body$;
+'''.strip()
+
+          changed = False
+          if helper_name not in source:
+              position = source.find('BEGIN;')
+              if position < 0:
+                  raise SystemExit('Migration 095 has no BEGIN boundary.')
+              position += len('BEGIN;')
+              source = source[:position] + '\n\n' + helper + source[position:]
+              changed = True
+
+          repaired, replacements = re.subn(
+              r'\bu\.is_active\b',
+              'projectpulse095_user_record_is_active(to_jsonb(u))',
+              source,
+          )
+          if replacements:
+              source = repaired
+              changed = True
+          if re.search(r'\bu\.is_active\b', source):
+              raise SystemExit('Migration 095 still contains a direct u.is_active dependency.')
+
+          if changed:
+              migration.write_text(source, encoding='utf-8')
+
+          test_source = test.read_text(encoding='utf-8')
+          gate_marker = 'ASSERTION_PASSED migration_095_optional_user_status_schema=true'
+          if gate_marker not in test_source:
+              gate = r'''
+
+# Migration 095 must compile when canonical app_users has no is_active column.
+if grep -Fq 'u.is_active' "$ROOT/database/migrations/095_project_planning_collaboration_access.sql"; then
+  echo 'ASSERTION_FAILED migration_095_direct_optional_user_status_reference=true' >&2
+  exit 1
+fi
+grep -Fq 'projectpulse095_user_record_is_active(to_jsonb(u))' \
+  "$ROOT/database/migrations/095_project_planning_collaboration_access.sql" \
+  || { echo 'ASSERTION_FAILED migration_095_schema_compatibility_helper_missing=true' >&2; exit 1; }
+echo 'ASSERTION_PASSED migration_095_optional_user_status_schema=true'
+'''
+              test.write_text(test_source.rstrip() + gate + '\n', encoding='utf-8')
+              changed = True
+
+          print(f'MIGRATION_095_OPTIONAL_STATUS_REPLACEMENTS={replacements}')
+          print(f'MIGRATION_095_PERMANENT_PATCH_CHANGED={str(changed).lower()}')
+          Path('/tmp/pr737-patch-state').write_text('changed' if changed else 'unchanged')
+          PY
+          git diff --check
+          echo "state=$(cat /tmp/pr737-patch-state)" >> "$GITHUB_OUTPUT"
+
+      - name: Run exact database and planning regressions
+        if: steps.patch.outputs.state == 'changed'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-shared-project-document-planning.mjs
+          git diff --check
+
+      - name: Publish permanent repair to PR 737
+        if: steps.patch.outputs.state == 'changed'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ steps.target.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          [[ "$remote_head" == "$EXPECTED_HEAD" ]] || {
+            echo "ERROR: PR #737 moved while the repair was validating: $remote_head" >&2
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            database/migrations/095_project_planning_collaboration_access.sql \
+            tests/test-project-planning-collaboration-migration-095.sh
+          git diff --cached --check
+          git commit -m 'Support Test app_users schema in planning migration'
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$EXPECTED_HEAD" \
+            origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "PR737_REPAIRED_HEAD=$(git rev-parse HEAD)"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Confirm repair already present
+        if: steps.patch.outputs.state == 'unchanged'
+        shell: bash
+        run: |
+          echo 'PR737_MIGRATION_COMPATIBILITY_REPAIR=ALREADY_PRESENT'
+          echo 'PRODUCTION_MUTATION=NONE'

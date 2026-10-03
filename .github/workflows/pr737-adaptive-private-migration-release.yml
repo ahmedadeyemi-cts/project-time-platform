@@ -1,0 +1,339 @@
+name: PR 737 adaptive permanent private migration release
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - .github/workflows/pr737-adaptive-private-migration-release.yml
+
+permissions:
+  actions: read
+  contents: write
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: pr737-adaptive-private-migration-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      API_ROOT: https://api.github.com/repos/${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      PR_NUMBER: '737'
+
+    steps:
+      - name: Check out target branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: fix/shared-project-document-planning-20260819
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Repair, validate, and follow Protected Test
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          api_get() {
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "$1"
+          }
+
+          post_comment() {
+            local body="$1" payload
+            payload="$(jq -nc --arg body "$body" '{body:$body}')"
+            curl --fail-with-body --silent --show-error \
+              --request POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              -H 'Content-Type: application/json' \
+              --data "$payload" \
+              "$API_ROOT/issues/$PR_NUMBER/comments" >/dev/null
+          }
+
+          required_workflows=(
+            'ProjectPulse Repository Security Posture'
+            'Validate Governed Protected-Test Release Controller'
+            'ProjectPulse CI'
+            'Validate UAT Functional Completion'
+            'FlowHive Detailed Planner CI'
+            'Validate Shared FlowHive and Project Forge Document Planning'
+            'Validate Module 033 Project Forge'
+            'Validate Module 030 Analytics Center'
+            'Validate Module 030 Analytics Enterprise Experience'
+            'Validate Celar AI Enterprise Platform Interface'
+            'Validate Pulse AI Private Document Pipeline'
+            'Validate Project Planning Collaboration Access'
+            'System-wide Enterprise Reliability CI'
+          )
+
+          ensure_permanent_repairs() {
+            python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          changed = []
+          migration = Path('database/migrations/095_project_planning_collaboration_access.sql')
+          text = migration.read_text(encoding='utf-8')
+          before = text
+          helper_name = 'projectpulse095_user_record_is_active'
+          helper = r'''
+-- Account-state columns on app_users are optional across supported database
+-- generations.  Convert the row to JSON so optional fields can be honored
+-- without binding migration 095 to a column that is absent in Protected Test.
+CREATE OR REPLACE FUNCTION projectpulse095_user_record_is_active(user_record JSONB)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+AS $projectpulse095_user_record_is_active_body$
+SELECT CASE
+    WHEN user_record IS NULL THEN FALSE
+    WHEN user_record ? 'is_active' THEN LOWER(COALESCE(user_record->>'is_active','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'account_enabled' THEN LOWER(COALESCE(user_record->>'account_enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'is_enabled' THEN LOWER(COALESCE(user_record->>'is_enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'enabled' THEN LOWER(COALESCE(user_record->>'enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'status' THEN LOWER(TRIM(COALESCE(user_record->>'status',''))) IN ('active','enabled','current')
+    WHEN user_record ? 'disabled_at' OR user_record ? 'deleted_at' THEN
+        NULLIF(TRIM(COALESCE(user_record->>'disabled_at','')), '') IS NULL
+        AND NULLIF(TRIM(COALESCE(user_record->>'deleted_at','')), '') IS NULL
+    ELSE TRUE
+END;
+$projectpulse095_user_record_is_active_body$;
+'''.strip()
+          if helper_name not in text:
+              begin = text.find('BEGIN;')
+              if begin < 0:
+                  raise SystemExit('Migration 095 BEGIN boundary missing.')
+              begin += len('BEGIN;')
+              text = text[:begin] + '\n\n' + helper + text[begin:]
+
+          aliases = set(re.findall(r'(?i)(?:FROM|JOIN)\s+app_users\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*)', text))
+          aliases.add('u')
+          replacements = 0
+          for alias in sorted(aliases, key=len, reverse=True):
+              pattern = rf'\b{re.escape(alias)}\.is_active\b'
+              text, count = re.subn(
+                  pattern,
+                  f'projectpulse095_user_record_is_active(to_jsonb({alias}))',
+                  text,
+              )
+              replacements += count
+          for alias in aliases:
+              if re.search(rf'\b{re.escape(alias)}\.is_active\b', text):
+                  raise SystemExit(f'Direct optional app_users status reference remains for alias {alias}.')
+          if text != before:
+              migration.write_text(text, encoding='utf-8')
+              changed.append(str(migration))
+
+          test = Path('tests/test-project-planning-collaboration-migration-095.sh')
+          test_text = test.read_text(encoding='utf-8')
+          if 'migration_095_optional_user_status_schema=true' not in test_text:
+              test_text = test_text.rstrip() + r'''
+
+if grep -Eq '(^|[^A-Za-z0-9_])u[.]is_active([^A-Za-z0-9_]|$)' "$ROOT/database/migrations/095_project_planning_collaboration_access.sql"; then
+  echo 'ASSERTION_FAILED migration_095_direct_optional_user_status_reference=true' >&2
+  exit 1
+fi
+grep -Fq 'projectpulse095_user_record_is_active(to_jsonb(' \
+  "$ROOT/database/migrations/095_project_planning_collaboration_access.sql" \
+  || { echo 'ASSERTION_FAILED migration_095_schema_compatibility_helper_missing=true' >&2; exit 1; }
+echo 'ASSERTION_PASSED migration_095_optional_user_status_schema=true'
+''' + '\n'
+              test.write_text(test_text, encoding='utf-8')
+              changed.append(str(test))
+
+          scripts = [
+              Path('scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'),
+              Path('scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'),
+              Path('scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'),
+          ]
+          for script in scripts:
+              source = script.read_text(encoding='utf-8')
+              original = source
+              old_variants = [
+                  '''  if az acr build \\
+      --registry "$ACR_NAME" \\
+      --image "$IMAGE" \\
+      --file "$DOCKERFILE" \\
+      --timeout 1800 \\
+      "$CONTEXT"; then''',
+                  '''  if az acr build \\
+      --registry "$ACR_NAME" \\
+      --image "$IMAGE" \\
+      --file Dockerfile \\
+      --timeout 1800 \\
+      "$CONTEXT"; then''',
+              ]
+              replacement = '''  if (\n      cd "$CONTEXT"\n      az acr build \\
+        --registry "$ACR_NAME" \\
+        --image "$IMAGE" \\
+        --file Dockerfile \\
+        --timeout 1800 \\
+        .\n    ); then'''
+              if 'cd "$CONTEXT"\n      az acr build' not in source:
+                  found = [variant for variant in old_variants if variant in source]
+                  if len(found) == 1:
+                      source = source.replace(found[0], replacement, 1)
+              if source != original:
+                  script.write_text(source, encoding='utf-8')
+                  changed.append(str(script))
+
+          Path('/tmp/pr737-adaptive-changed').write_text('\n'.join(dict.fromkeys(changed)))
+          print(f'PR737_ADAPTIVE_REPAIRS={len(dict.fromkeys(changed))}')
+          print(f'PR737_APP_USER_STATUS_REPLACEMENTS={replacements}')
+          PY
+          }
+
+          run_focused_tests() {
+            bash tests/test-project-planning-collaboration-migration-095.sh
+            bash tests/test-project-planning-document-authority-migration-096.sh
+            node tests/validate-project-planning-collaboration.mjs
+            node tests/validate-project-planning-collaboration-access.mjs
+            node tests/validate-shared-project-document-planning.mjs
+            for script in \
+              scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \
+              scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh \
+              scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh; do
+              bash -n "$script"
+            done
+            git diff --check
+          }
+
+          publish_repairs() {
+            local expected_head="$1"
+            [[ -s /tmp/pr737-adaptive-changed ]] || return 1
+            mapfile -t files < /tmp/pr737-adaptive-changed
+            [[ ${#files[@]} -gt 0 ]] || return 1
+            remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+            [[ "$remote_head" == "$expected_head" ]] || return 2
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -- "${files[@]}"
+            git diff --cached --check
+            git commit -m 'Harden protected Test planning migration execution'
+            git push --force-with-lease="refs/heads/$TARGET_BRANCH:$expected_head" \
+              origin "HEAD:refs/heads/$TARGET_BRANCH"
+          }
+
+          wait_ci() {
+            local sha="$1" deadline=$((SECONDS + 6000)) all_green state workflow runs
+            while (( SECONDS < deadline )); do
+              runs="$(api_get "$API_ROOT/actions/runs?head_sha=$sha&event=pull_request&per_page=100")"
+              all_green=1
+              for workflow in "${required_workflows[@]}"; do
+                state="$(jq -r --arg name "$workflow" '
+                  [.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last |
+                  if . == null then "missing:" else "\(.status):\(.conclusion // "")" end
+                ' <<<"$runs")"
+                case "$state" in
+                  completed:success) ;;
+                  completed:*) echo "ERROR: $workflow=$state" >&2; return 1 ;;
+                  *) all_green=0 ;;
+                esac
+              done
+              (( all_green )) && return 0
+              sleep 30
+            done
+            return 1
+          }
+
+          wait_deployment() {
+            local sha="$1" deadline=$((SECONDS + 7800)) runs run_id status conclusion
+            while (( SECONDS < deadline )); do
+              runs="$(api_get "$API_ROOT/actions/workflows/projectpulse-deploy-test.yml/runs?event=workflow_dispatch&per_page=100")"
+              run_id="$(jq -r --arg sha "$sha" --arg branch "$TARGET_BRANCH" '
+                [.workflow_runs[] | select(.head_sha == $sha and .head_branch == $branch)] |
+                sort_by(.created_at) | last | .id // empty
+              ' <<<"$runs")"
+              if [[ -n "$run_id" ]]; then
+                while (( SECONDS < deadline )); do
+                  run="$(api_get "$API_ROOT/actions/runs/$run_id")"
+                  status="$(jq -r '.status' <<<"$run")"
+                  conclusion="$(jq -r '.conclusion // ""' <<<"$run")"
+                  if [[ "$status" == completed ]]; then
+                    printf '%s|%s\n' "$run_id" "$conclusion"
+                    return 0
+                  fi
+                  sleep 30
+                done
+              fi
+              sleep 20
+            done
+            return 1
+          }
+
+          for cycle in 1 2 3; do
+            pr="$(api_get "$API_ROOT/pulls/$PR_NUMBER")"
+            head="$(jq -r '.head.sha' <<<"$pr")"
+            [[ "$head" =~ ^[0-9a-f]{40}$ ]]
+            git fetch origin "$TARGET_BRANCH"
+            git checkout --detach "$head"
+            rm -f /tmp/pr737-adaptive-changed
+            ensure_permanent_repairs
+            if [[ -s /tmp/pr737-adaptive-changed ]]; then
+              run_focused_tests
+              if publish_repairs "$head"; then
+                head="$(git rev-parse HEAD)"
+                echo "Published permanent cycle $cycle candidate $head"
+              else
+                echo 'Candidate moved while publishing; retrying from remote.'
+                sleep 20
+                continue
+              fi
+            fi
+
+            wait_ci "$head" || {
+              post_comment "PR #737 adaptive release stopped because an exact-head CI gate failed for \`$head\`. Production mutation: \`NONE\`."
+              exit 1
+            }
+
+            deployment_result="$(wait_deployment "$head")" || {
+              post_comment "PR #737 adaptive release could not locate or complete the exact-head Test deployment for \`$head\`. Production mutation: \`NONE\`."
+              exit 1
+            }
+            run_id="${deployment_result%%|*}"
+            conclusion="${deployment_result#*|}"
+            if [[ "$conclusion" == success ]]; then
+              post_comment "## FlowHive V2 is ready for Protected-UAT testing\n\nCandidate: \`$head\`\nDeployment run: \`$run_id\`\nAll governed Test deployment steps completed successfully. Production mutation: \`NONE\`."
+              echo "PR737_PROTECTED_UAT_READY_SHA=$head"
+              echo "PR737_PROTECTED_UAT_DEPLOYMENT_RUN=$run_id"
+              echo 'PRODUCTION_MUTATION=NONE'
+              exit 0
+            fi
+
+            logs="$RUNNER_TEMP/pr737-deployment-$run_id.zip"
+            logdir="$RUNNER_TEMP/pr737-deployment-$run_id"
+            api_get "$API_ROOT/actions/runs/$run_id/logs" > "$logs"
+            rm -rf "$logdir"
+            mkdir -p "$logdir"
+            unzip -q "$logs" -d "$logdir"
+            grep -RinE -C 12 \
+              'does not exist|undefined column|u\.is_active|ERROR:|psql:|migration.*fail|containerapp job.*failed|Dockerfile.*(missing|not found)' \
+              "$logdir" | tail -n 600 > "$RUNNER_TEMP/pr737-last-errors.txt" || true
+            sed -n '1,260p' "$RUNNER_TEMP/pr737-last-errors.txt"
+
+            git fetch origin "$TARGET_BRANCH"
+            next_head="$(git rev-parse "origin/$TARGET_BRANCH")"
+            git checkout --detach "$next_head"
+            rm -f /tmp/pr737-adaptive-changed
+            ensure_permanent_repairs
+            if [[ ! -s /tmp/pr737-adaptive-changed ]]; then
+              excerpt="$(sed -n '1,120p' "$RUNNER_TEMP/pr737-last-errors.txt")"
+              post_comment "PR #737 Protected Test deployment \`$run_id\` failed after all bounded permanent migration repairs were present. Exact excerpt:\n\n\`\`\`text\n$excerpt\n\`\`\`\n\nProduction mutation: \`NONE\`."
+              exit 1
+            fi
+          done
+
+          post_comment 'PR #737 exhausted the bounded adaptive migration cycles without a successful Protected Test deployment. Production mutation: `NONE`.'
+          exit 1
