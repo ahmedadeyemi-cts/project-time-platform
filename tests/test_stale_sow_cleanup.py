@@ -35,25 +35,36 @@ missing, reason = module.classify_stale(
 assert missing == []
 assert reason == "current_sow_not_present_in_work_register"
 
-readiness = {"preparation": {"documents": [
-    {"documentId": PLAN, "category": "SOW"},
-    {"documentId": GSD, "category": "GSD"},
-]}}
-enterprise = {"sowEvidence": evidence}
-current, reason = module.current_sow_work_register_id(readiness, enterprise)
+readiness = {"documentAuthority": {
+    "currentSowDocumentId": PLAN,
+    "currentSowWorkRegisterDocumentId": CURRENT,
+    "currentSowCategory": "sow",
+    "resolver": "ProjectPlanningDocumentResolver.SelectCurrent",
+}}
+current, reason = module.current_sow_work_register_id(readiness)
 assert reason == ""
 assert current == CURRENT.lower()
 
-ambiguous = {"preparation": {"documents": [
-    {"documentId": PLAN, "category": "SOW"},
-    {"documentId": "88888888-8888-4888-8888-888888888888", "category": "SOW"},
-]}}
-current, reason = module.current_sow_work_register_id(ambiguous, enterprise)
+missing_authority = {"documentAuthority": {
+    "currentSowDocumentId": "",
+    "currentSowWorkRegisterDocumentId": "",
+}}
+current, reason = module.current_sow_work_register_id(missing_authority)
 assert current == ""
-assert reason == "current_planning_sow_not_unique"
+assert reason == "current_planning_sow_missing"
+
+missing_mapping = {"documentAuthority": {
+    "currentSowDocumentId": PLAN,
+    "currentSowWorkRegisterDocumentId": "",
+}}
+current, reason = module.current_sow_work_register_id(missing_mapping)
+assert current == ""
+assert reason == "current_sow_work_register_mapping_missing"
+
 root = Path(__file__).resolve().parents[1]
 dispatch = (root / ".github/workflows/protected-test-stale-sow-maintenance.yml").read_text()
 deploy = (root / ".github/workflows/projectpulse-deploy-test.yml").read_text()
+enterprise_module = (root / "src/backend/ProjectTime.Api/Modules/ProjectFlowHiveEnterpriseModule.cs").read_text()
 assert "actions: write" in dispatch
 assert "environment: test" not in dispatch
 assert "PROJECTPULSE_M087_PASSWORD" not in dispatch
@@ -63,4 +74,6 @@ assert "stale_sow_cleanup_mode" in deploy
 assert "stale_sow_cleanup_confirmation" in deploy
 assert "PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}" in deploy
 assert "cleanup-stale-sows-protected-test.py" in deploy
+assert "currentSowDocumentId = resolution.StatementOfWork?.DocumentId" in enterprise_module
+assert "currentSowWorkRegisterDocumentId = resolution.StatementOfWork?.WorkRegisterDocumentId" in enterprise_module
 print("STALE_SOW_CLEANUP_UNIT=PASS")

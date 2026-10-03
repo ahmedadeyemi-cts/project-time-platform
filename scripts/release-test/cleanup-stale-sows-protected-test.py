@@ -75,24 +75,15 @@ class Client:
         finally:
             self.token = ""
 
-def current_sow_work_register_id(readiness: dict, enterprise: dict) -> tuple[str, str]:
-    prep = readiness.get("preparation") or {}
-    selected = [
-        row for row in (prep.get("documents") or [])
-        if isinstance(row, dict) and is_sow_type(row.get("category"))
-    ]
-    if len(selected) != 1 or not is_uuid(selected[0].get("documentId")):
-        return "", "current_planning_sow_not_unique"
-    planning_id = text(selected[0]["documentId"]).lower()
-    matches = [
-        row for row in (enterprise.get("sowEvidence") or [])
-        if isinstance(row, dict)
-        and text(row.get("documentId")).lower() == planning_id
-        and is_sow_type(row.get("category"))
-    ]
-    if len(matches) != 1 or not is_uuid(matches[0].get("workRegisterDocumentId")):
+def current_sow_work_register_id(readiness: dict) -> tuple[str, str]:
+    authority = readiness.get("documentAuthority") or {}
+    planning_id = text(authority.get("currentSowDocumentId")).lower()
+    work_register_id = text(authority.get("currentSowWorkRegisterDocumentId")).lower()
+    if not is_uuid(planning_id):
+        return "", "current_planning_sow_missing"
+    if not is_uuid(work_register_id):
         return "", "current_sow_work_register_mapping_missing"
-    return text(matches[0]["workRegisterDocumentId"]).lower(), ""
+    return work_register_id, ""
 
 def classify_stale(current_id: str, documents: list[dict],
                    evidence: list[dict]) -> tuple[list[dict], str]:
@@ -175,7 +166,7 @@ def run() -> dict:
                     client, f"/api/project-flowhive/projects/{project_id}/enterprise", "066")
                 canonical = require_ok(
                     client, f"/api/work-register/projects/{project_id}/documents", "055C")
-                current_id, reason = current_sow_work_register_id(readiness, enterprise)
+                current_id, reason = current_sow_work_register_id(readiness)
                 if reason:
                     item.update(status="skipped", diagnostic=reason)
                     report["projects"].append(item)
