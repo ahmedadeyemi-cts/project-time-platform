@@ -39,6 +39,20 @@ on:
         required: false
         default: ''
         type: string
+      stale_sow_maintenance_mode:
+        description: 'none disables maintenance; dry-run reports stale SOWs; apply deletes only the verified stale set'
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - dry-run
+          - apply
+      stale_sow_maintenance_confirmation:
+        description: 'Apply only: exact confirmation DELETE STALE TEST SOWS'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   id-token: write
@@ -123,6 +137,8 @@ jobs:
         env:
           EXPECTED_CONTROLLER_SHA: ${{ inputs.admission_controller_sha }}
           RELEASE_BRANCH_INPUT: ${{ inputs.release_branch }}
+          STALE_SOW_MAINTENANCE_MODE: ${{ inputs.stale_sow_maintenance_mode || 'none' }}
+          STALE_SOW_MAINTENANCE_CONFIRMATION: ${{ inputs.stale_sow_maintenance_confirmation }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -137,6 +153,22 @@ jobs:
               [[ "$RELEASE_BRANCH_INPUT" == main ]] || fail 'Scoped Module 025 deployment requires exact merged main.'
               ;;
             *) fail 'Unsupported deployment acceptance scope.' ;;
+          esac
+          case "$STALE_SOW_MAINTENANCE_MODE" in
+            none) ;;
+            dry-run)
+              [[ "$RELEASE_BRANCH_INPUT" == main && "$ACCEPTANCE_SCOPE" == full ]] \
+                || fail 'Stale-SOW dry-run requires exact merged main and full acceptance.'
+              [[ -z "$STALE_SOW_MAINTENANCE_CONFIRMATION" ]] \
+                || fail 'Stale-SOW dry-run does not accept an apply confirmation.'
+              ;;
+            apply)
+              [[ "$RELEASE_BRANCH_INPUT" == main && "$ACCEPTANCE_SCOPE" == full ]] \
+                || fail 'Stale-SOW apply requires exact merged main and full acceptance.'
+              [[ "$STALE_SOW_MAINTENANCE_CONFIRMATION" == 'DELETE STALE TEST SOWS' ]] \
+                || fail 'Stale-SOW apply confirmation is not exact.'
+              ;;
+            *) fail 'Unsupported stale-SOW maintenance mode.' ;;
           esac
           if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
             [[ '${{ inputs.recover_private_runtime }}' != true && '${{ inputs.qualification_provider }}' != claude && '${{ inputs.qualification_provider }}' != openai ]] \
@@ -2155,6 +2187,22 @@ jobs:
             '{status:"passed",sourceCommit:$source,sourceRunId:$run,normalAuthorizedSolutionArchitect:true,fixtureEnabled:false,authenticatedClicks:true,retainedHashesVerified:true,unauthorizedDownloadsRejected:true,reloadVerified:true}' \
             > "$EVIDENCE_DIR/module025-normal-sa-browser.json"
           echo 'MODULE025_RETAINED_VERSION_BROWSER_LIFECYCLE=PASS authorization=normal-solution-architect authenticatedClicks=true hashes=verified unauthorized=checked reload=verified'
+
+      - name: Evaluate and maintain stale Protected-Test SOWs
+        id: stale_sow_maintenance
+        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && (inputs.stale_sow_maintenance_mode == 'dry-run' || inputs.stale_sow_maintenance_mode == 'apply') && steps.module025_normal_sa_browser.outcome == 'success' }}
+        shell: bash
+        working-directory: release
+        env:
+          PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_STALE_SOW_MODE: ${{ inputs.stale_sow_maintenance_mode }}
+          PROJECTPULSE_STALE_SOW_CONFIRMATION: ${{ inputs.stale_sow_maintenance_confirmation }}
+          PROJECTPULSE_STALE_SOW_REPORT: ${{ env.EVIDENCE_DIR }}/stale-sow-cleanup-summary.json
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/release-test/cleanup-stale-sows-protected-test.py
+          jq '{environment,origin,mode,summary,projects}' "$PROJECTPULSE_STALE_SOW_REPORT"
+          echo "STALE_SOW_PROTECTED_TEST_MAINTENANCE=PASS mode=$PROJECTPULSE_STALE_SOW_MODE"
 
       - name: Finalize private Pulse activation after full application acceptance
         id: pulse_private_services_final

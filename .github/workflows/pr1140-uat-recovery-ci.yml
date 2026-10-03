@@ -48,6 +48,9 @@ jobs:
           elif [[ "$GITHUB_HEAD_REF" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
             python3 tests/pulse-runtime-prerequisites/scope.py
             python3 tests/pulse-runtime-prerequisites/test_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/protected-test-stale-sow-supervisor-20261002' ]]; then
+            python3 tests/stale-sow-supervisor-scope.py
+            python3 tests/test-stale-sow-supervisor-contract.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/stale-sow-cleanup-flowhive-execution-guide-20261002' ]]; then
             python3 tests/stale-sow-flowhive-execution-guide-scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-celar-private-transient-diagnostics-20261002' ]]; then
