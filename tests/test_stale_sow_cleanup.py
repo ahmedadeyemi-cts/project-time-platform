@@ -68,8 +68,16 @@ enterprise_module = (root / "src/backend/ProjectTime.Api/Modules/ProjectFlowHive
 assert "actions: write" in dispatch
 assert "environment: test" not in dispatch
 assert "PROJECTPULSE_M087_PASSWORD" not in dispatch
-assert "projectpulse-deploy-test.yml" in dispatch
-assert "gh run watch" in dispatch
+assert "module025-protected-uat-control.yml" in dispatch
+assert "gh run watch" not in dispatch
+assert "stale_sow_request_id" in dispatch
+supervisor = (root / ".github/workflows/module025-protected-uat-control.yml").read_text()
+assert "stale_sow_cleanup_mode" in supervisor
+assert "stale_sow_cleanup_confirmation" in supervisor
+assert "stale_sow_request_id" in supervisor
+assert 'and .path == ".github/workflows/protected-test-stale-sow-maintenance.yml"' in supervisor
+assert "stale_sow_cleanup_mode:$stale_sow_cleanup_mode" in supervisor
+assert "stale_sow_cleanup_confirmation:$stale_sow_cleanup_confirmation" in supervisor
 assert "stale_sow_cleanup_mode" in deploy
 assert "stale_sow_cleanup_confirmation" in deploy
 assert "PROJECTPULSE_M087_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}" in deploy

@@ -52,7 +52,7 @@ jobs:
           if [[ "$DISPATCH_MODE" == apply ]]; then
             [[ "$DISPATCH_CONFIRMATION" == 'DELETE STALE TEST SOWS' ]]
           fi
-      - name: Dispatch governed Protected Test controller
+      - name: Dispatch governed Protected Test supervisor
         id: dispatch
         shell: bash
         env:
@@ -62,23 +62,56 @@ jobs:
         run: |
           set -Eeuo pipefail
           repo="$GITHUB_REPOSITORY"
-          before="$RUNNER_TEMP/stale-sow-before-runs.txt"
-          gh run list -R "$repo" --workflow projectpulse-deploy-test.yml --limit 100             --json databaseId --jq '.[].databaseId' | sort -n > "$before"
+          supervisor_workflow='module025-protected-uat-control.yml'
+          expected_title="Protected Test stale SOW $GITHUB_RUN_ID $GITHUB_SHA"
+          before="$RUNNER_TEMP/stale-sow-before-supervisor-runs.txt"
+          gh run list -R "$repo" --workflow "$supervisor_workflow" --limit 100 \
+            --json databaseId --jq '.[].databaseId' | sort -n > "$before"
 
-          gh workflow run projectpulse-deploy-test.yml -R "$repo" --ref main             -f qualification_provider=none             -f acceptance_scope=full             -f recover_private_runtime=false             -f release_sha="$GITHUB_SHA"             -f release_branch=main             -f stale_sow_cleanup_mode="$DISPATCH_MODE"             -f stale_sow_cleanup_confirmation="$DISPATCH_CONFIRMATION"
+          gh workflow run "$supervisor_workflow" -R "$repo" --ref main \
+            -f stale_sow_cleanup_mode="$DISPATCH_MODE" \
+            -f stale_sow_cleanup_confirmation="$DISPATCH_CONFIRMATION" \
+            -f stale_sow_request_id="$GITHUB_RUN_ID"
 
-          child=''
-          for attempt in $(seq 1 60); do
-            while IFS= read -r candidate; do
-              if [[ -n "$candidate" ]] && ! grep -Fxq "$candidate" "$before"; then
-                child="$candidate"
+          supervisor_run=''
+          for attempt in $(seq 1 90); do
+            while IFS=$'\t' read -r candidate title; do
+              if [[ -n "$candidate" && "$title" == "$expected_title" ]] \
+                 && ! grep -Fxq "$candidate" "$before"; then
+                supervisor_run="$candidate"
                 break
               fi
-            done < <(gh run list -R "$repo" --workflow projectpulse-deploy-test.yml               --branch main --event workflow_dispatch --limit 50               --json databaseId,headSha               --jq ".[] | select(.headSha == \"$GITHUB_SHA\") | .databaseId")
-            [[ -n "$child" ]] && break
+            done < <(gh run list -R "$repo" --workflow "$supervisor_workflow" \
+              --branch main --event workflow_dispatch --limit 50 \
+              --json databaseId,headSha,displayTitle \
+              --jq ".[] | select(.headSha == \"$GITHUB_SHA\") | [.databaseId,.displayTitle] | @tsv")
+            [[ -n "$supervisor_run" ]] && break
             sleep 2
           done
-          [[ -n "$child" ]]
-          echo "child_run_id=$child" >> "$GITHUB_OUTPUT"
-          echo "Governed Protected Test child run: $child" >> "$GITHUB_STEP_SUMMARY"
-          gh run watch "$child" -R "$repo" --exit-status --interval 10
+          [[ "$supervisor_run" =~ ^[0-9]+$ ]]
+          echo "supervisor_run_id=$supervisor_run" >> "$GITHUB_OUTPUT"
+          echo "Governed Protected Test supervisor run: $supervisor_run" >> "$GITHUB_STEP_SUMMARY"
+
+          conclusion=''
+          deadline_epoch=$(( $(date +%s) + 240 * 60 ))
+          while (( $(date +%s) < deadline_epoch )); do
+            run_json="$(gh api "repos/${repo}/actions/runs/${supervisor_run}")"
+            jq -e \
+              --argjson id "$supervisor_run" \
+              --arg sha "$GITHUB_SHA" \
+              --arg title "$expected_title" '
+                .id == $id
+                and .path == ".github/workflows/module025-protected-uat-control.yml"
+                and .event == "workflow_dispatch"
+                and .head_branch == "main"
+                and .head_sha == $sha
+                and .display_title == $title
+              ' <<<"$run_json" >/dev/null
+            run_status="$(jq -r '.status' <<<"$run_json")"
+            if [[ "$run_status" == completed ]]; then
+              conclusion="$(jq -r '.conclusion // empty' <<<"$run_json")"
+              break
+            fi
+            sleep 15
+          done
+          [[ "$conclusion" == success ]]
