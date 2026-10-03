@@ -14,6 +14,7 @@ EXPECTED = sorted({
     "scripts/release-test/cleanup-stale-sows-protected-test.py",
     "scripts/validate-deployment-concurrency-governance.mjs",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/security/validate-repository-security-posture.py",
     "src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx",
     "src/frontend/project-time-web/src/project-flowhive-center.css",
     "src/frontend/project-time-web/src/work-register-document-integrity.js",
