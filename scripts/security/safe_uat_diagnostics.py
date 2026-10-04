@@ -34,6 +34,7 @@ ARTIFACTS = (
     ('flowhive_portfolio', 'flowhive-portfolio.json'),
     ('flowhive_workspace', 'flowhive-enterprise.json'),
     ('flowhive_plan', 'flowhive-ai-planner.json'),
+    ('flowhive_planner_reconciliation', 'flowhive-planner-reconciliation.json'),
     ('flowhive_working_copy', 'flowhive-enterprise-after.json'),
     ('forge_plan', 'project-forge-ai-draft.json'),
     ('forge_workspace', 'project-forge-review-workspace.json'),
@@ -64,6 +65,54 @@ HTTP_STAGES = {
 }
 HTTP_CODES = frozenset(('000', '200', '201', '202', '204', '400', '401', '403',
                        '404', '408', '409', '422', '423', '429', '500', '502', '503', '504'))
+PLANNER_STATUSES = frozenset(('queued','processing','generating','completed',
+    'completed_with_schedule_overrun','needs_attention','failed'))
+PLANNER_PHASES = frozenset(('queued','private_document_processing','authority_index_and_citations',
+    'source_evidence_ready','ai_route_retry','safety_refusal','evidence_review','persist_working_draft',
+    'resolve_authoritative_sow','deadline_exceeded','working_draft_ready','candidate_review_required',
+    'phase_semantics_invalid','authority_changed','working_copy_changed','project_archived','cancelled'))
+PLANNER_DIAGNOSTICS = frozenset(('pm_login_email_missing','pm_login_secret_missing','pm_login_failed',
+    'pm_login_contract_failed','pm_session_missing','flowhive_portfolio_read_failed','pm_portfolio_scope_invalid',
+    'pm_portfolio_actor_mismatch','pm_project_not_in_authorized_portfolio','flowhive_workspace_read_failed',
+    'flowhive_project_identity_mismatch','flowhive_actor_mismatch','assigned_pm_authority_missing',
+    'working_copy_identity_missing','prior_planner_status_read_failed','prior_planner_identity_mismatch',
+    'prior_planner_status_pair_invalid','prior_planner_run_nonterminal','latest_planner_read_failed',
+    'latest_planner_payload_invalid','another_planner_operation_active','planner_read_failed'))
+
+def _count_bucket(value, *, one_label='one', many_label='multiple'):
+    if type(value) is not int or value < 0:
+        return 'unrecognized'
+    if value == 0:
+        return 'zero'
+    if value == 1:
+        return one_label
+    return many_label
+
+def planner_reconciliation_predicates(obj):
+    working = _dict(obj.get('workingCopy'))
+    prior = _dict(obj.get('priorPlanner'))
+    latest = _dict(obj.get('latestPlanner'))
+    status = prior.get('status')
+    phase = prior.get('phase')
+    diagnostic = obj.get('diagnosticCode')
+    latest_http = latest.get('httpStatus')
+    return {
+        'reconciliation_status': 'passed' if obj.get('status') == 'passed' else 'blocked',
+        'assigned_pm_verified': obj.get('assignedPmVerified') is True,
+        'working_copy_present': isinstance(working.get('rowVersion'), str) and len(working.get('rowVersion')) == 36,
+        'working_copy_task_bucket': _count_bucket(working.get('taskCount'), many_label='multiple'),
+        'sow_evidence_present': working.get('sowEvidencePresent') is True,
+        'approved_sow_scope_ready': working.get('approvedSowScopeReady') is True,
+        'ready_sow_bucket': _count_bucket(working.get('readySowCount'), many_label='multiple'),
+        'prior_planner_status': status if isinstance(status, str) and status in PLANNER_STATUSES else 'unrecognized',
+        'prior_planner_phase': phase if isinstance(phase, str) and phase in PLANNER_PHASES else 'unrecognized',
+        'prior_planner_terminal': prior.get('terminal') is True,
+        'prior_candidate_available': prior.get('candidateAvailable') is True,
+        'prior_working_draft_persisted': prior.get('workingDraftPersisted') is True,
+        'latest_planner_http_status': str(latest_http) if type(latest_http) is int and latest_http in (200,409) else 'unrecognized',
+        'latest_planner_terminal': latest.get('terminal') is True if 'terminal' in latest else None,
+        'diagnostic_code': diagnostic if isinstance(diagnostic, str) and diagnostic in PLANNER_DIAGNOSTICS else 'none',
+    }
 
 
 def _unique(pairs):
@@ -275,6 +324,8 @@ def project(source: Path):
             elif stage == 'model_routing':
                 predicates[stage] = model_predicates(obj)
                 provider_evidence = _provider_evidence(obj)
+            elif stage == 'flowhive_planner_reconciliation':
+                predicates[stage] = planner_reconciliation_predicates(obj)
         http_state, http_data = _read(directory_fd, 'uat-http-diagnostics.ndjson')
         http = _http_projection(http_data) if http_state == 'recorded' else {'state': http_state, 'observations': []}
     finally:

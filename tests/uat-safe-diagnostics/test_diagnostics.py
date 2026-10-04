@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-BASE = 'ab9f39d3d1ccf33f7bffec779300a8bc900db629'
+BASE = '163c949ad5f5be7e3b17cdf073f5923b92894892'
 def load(name, path):
     spec = importlib.util.spec_from_file_location(name, ROOT / path)
     module = importlib.util.module_from_spec(spec)
@@ -106,6 +106,53 @@ class DiagnosticTests(unittest.TestCase):
         self.assertNotIn(secret, data); self.assertNotIn('raw-response', data)
         self.assertNotIn('financial-secret', data)
         self.assertNotIn('sha256', data)
+
+    def test_planner_reconciliation_projects_only_finite_safe_state(self):
+        secret = 'SENTINEL_customer_document_text'
+        self.write('flowhive-planner-reconciliation.json', {
+            'status':'passed', 'projectId':secret, 'assignedPmVerified':True,
+            'workingCopy':{'rowVersion':'11111111-1111-1111-1111-111111111111',
+                'workingRevision':42,'taskCount':27,'milestoneCount':3,
+                'sowEvidencePresent':True,'approvedSowScopeReady':True,'readySowCount':1,
+                'private':secret},
+            'priorPlanner':{'httpStatus':200,'runId':secret,'terminal':True,'status':'completed',
+                'phase':'candidate_review_required','candidateAvailable':True,'workingDraftPersisted':False,
+                'private':secret},
+            'latestPlanner':{'httpStatus':200,'runIdPresent':True,'terminal':True,'private':secret},
+            'private':secret})
+        projected=self.project()['recordedPredicates']['flowhive_planner_reconciliation']
+        self.assertEqual(projected['reconciliation_status'],'passed')
+        self.assertTrue(projected['assigned_pm_verified'])
+        self.assertEqual(projected['working_copy_task_bucket'],'multiple')
+        self.assertEqual(projected['ready_sow_bucket'],'one')
+        self.assertEqual(projected['prior_planner_status'],'completed')
+        self.assertEqual(projected['prior_planner_phase'],'candidate_review_required')
+        self.assertTrue(projected['prior_planner_terminal'])
+        self.assertTrue(projected['prior_candidate_available'])
+        self.assertFalse(projected['prior_working_draft_persisted'])
+        self.assertEqual(projected['latest_planner_http_status'],'200')
+        self.assertTrue(projected['latest_planner_terminal'])
+        self.assertNotIn(secret,json.dumps(projected))
+        self.assertNotIn('rowVersion',json.dumps(projected))
+        self.assertNotIn('runId',json.dumps(projected))
+        self.assertNotIn('workingRevision',json.dumps(projected))
+
+    def test_planner_reconciliation_unknown_values_do_not_escape(self):
+        secret='SENTINEL_private_diagnostic'
+        self.write('flowhive-planner-reconciliation.json', {
+            'status':'blocked','diagnosticCode':secret,
+            'workingCopy':{'taskCount':-1,'readySowCount':'2'},
+            'priorPlanner':{'status':secret,'phase':secret,'terminal':False},
+            'latestPlanner':{'httpStatus':418}})
+        projected=self.project()['recordedPredicates']['flowhive_planner_reconciliation']
+        self.assertEqual(projected['reconciliation_status'],'blocked')
+        self.assertEqual(projected['working_copy_task_bucket'],'unrecognized')
+        self.assertEqual(projected['ready_sow_bucket'],'unrecognized')
+        self.assertEqual(projected['prior_planner_status'],'unrecognized')
+        self.assertEqual(projected['prior_planner_phase'],'unrecognized')
+        self.assertEqual(projected['latest_planner_http_status'],'unrecognized')
+        self.assertEqual(projected['diagnostic_code'],'none')
+        self.assertNotIn(secret,json.dumps(projected))
 
     def test_unknown_reason_is_not_disclosed(self):
         obj = model(); obj['result']['targetDecisions'][0]['reasonCode'] = 'SENTINEL_arbitrary_error'
