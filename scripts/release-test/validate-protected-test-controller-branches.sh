@@ -225,6 +225,9 @@ elif [[ "$HEAD_BRANCH" == fix/stale-sow-cleanup-flowhive-execution-guide-2026100
 elif [[ "$HEAD_BRANCH" == fix/flowhive-celar-private-transient-diagnostics-20261002 ]]; then
   python3 tests/flowhive-celar-private-transient-scope.py
   node tests/validate-systemwide-image-build-controller.mjs
+elif [[ "$HEAD_BRANCH" == fix/flowhive-private-circuit-retry-20261003 ]]; then
+  python3 tests/flowhive-private-circuit-retry-scope.py
+  node tests/validate-systemwide-image-build-controller.mjs
 elif [[ "$HEAD_BRANCH" == fix/flowhive-source-grounded-failsafe-20260926 ]]; then
   python3 tests/flowhive-whole-wbs-failsafe-scope.py
   node tests/validate-systemwide-image-build-controller.mjs

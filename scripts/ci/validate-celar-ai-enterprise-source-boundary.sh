@@ -57,6 +57,11 @@ if [[ "$HEAD_BRANCH" == fix/flowhive-celar-private-transient-diagnostics-2026100
   exit 0
 fi
 
+if [[ "$HEAD_BRANCH" == fix/flowhive-private-circuit-retry-20261003 ]]; then
+  python3 tests/flowhive-private-circuit-retry-scope.py
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == fix/flowhive-source-grounded-failsafe-20260926 ]]; then
   python3 tests/flowhive-whole-wbs-failsafe-scope.py
   exit 0

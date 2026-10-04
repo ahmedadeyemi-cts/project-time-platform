@@ -141,18 +141,29 @@ internal static class ProjectPlanningAiOrchestrator
         // this fell through to the evidence gate, which converted a transient
         // Celar AI deadline into terminal needs_attention before retry policy
         // could run.
-        var retryableProviderDiagnostics = (composition.TargetDecisions ?? [])
-            .Where(decision => decision.Outcome is "failed" or "unavailable")
+        var retryableProviderDecisions = (composition.TargetDecisions ?? [])
+            .Where(IsRetryablePrivateProviderDecision)
+            .ToArray();
+        var retryableProviderDiagnostics = retryableProviderDecisions
             .Select(decision => decision.ReasonCode)
-            .Where(IsRetryableProviderDiagnostic)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
         if (retryableProviderDiagnostics.Length > 0 && !sourceGroundedFailSafeReady)
         {
+            var health = context.RequestServices.GetService<ProjectPulseAiHealthRegistry>();
+            var retryDelay = RetryDelayForPrivateProviderDecisions(
+                retryableProviderDecisions,
+                DateTimeOffset.UtcNow,
+                provider =>
+                {
+                    if (health is null) return null;
+                    try { return health.Snapshot(provider).CircuitOpenUntil; }
+                    catch (ArgumentOutOfRangeException) { return null; }
+                });
             return new ProjectPlanningGenerationResult(
                 false,
                 "project_planning_ai_temporarily_unavailable",
-                "The private AI provider exceeded a bounded attempt deadline. No planning draft was changed; the durable worker may use its remaining retry budget.",
+                "The private AI provider is temporarily unavailable, circuit-open, or exceeded a bounded attempt deadline. No planning draft was changed; the durable worker may use its remaining retry budget.",
                 composition,
                 null,
                 null,
@@ -163,7 +174,8 @@ internal static class ProjectPlanningAiOrchestrator
                     .ToArray(),
                 composition.Warnings.Concat(documents.Warnings)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray());
+                    .ToArray(),
+                RetryDelay: retryDelay);
         }
 
         if (sequential is not null
@@ -777,11 +789,42 @@ internal static class ProjectPlanningAiOrchestrator
         return clean.Length <= maximum ? clean : clean[..maximum];
     }
 
+    internal static TimeSpan RetryDelayForPrivateProviderDecisions(
+        IReadOnlyList<ProjectPulseAiTargetDecision> decisions,
+        DateTimeOffset now,
+        Func<string, DateTimeOffset?> circuitOpenUntil)
+    {
+        var delay = ProjectFlowHiveExecutionPolicy.RetryDelay;
+        foreach (var decision in decisions.Where(item =>
+                     IsRetryablePrivateProviderDecision(item)
+                     && string.Equals(item.ReasonCode, "provider_circuit_open", StringComparison.OrdinalIgnoreCase)))
+        {
+            var openUntil = circuitOpenUntil(decision.Target);
+            if (!openUntil.HasValue)
+                return ProjectFlowHiveExecutionPolicy.OverallBudget;
+            var circuitDelay = openUntil.Value > now
+                ? openUntil.Value - now + ProjectFlowHiveExecutionPolicy.CircuitReopenGuard
+                : ProjectFlowHiveExecutionPolicy.RetryDelay;
+            if (circuitDelay > delay) delay = circuitDelay;
+        }
+        return delay;
+    }
+
+    internal static bool IsRetryablePrivateProviderDecision(ProjectPulseAiTargetDecision decision)
+    {
+        if (decision.Target is not (CelarAiCapabilityTargets.DeepSeek or CelarAiCapabilityTargets.CelarAi))
+            return false;
+        if (decision.Outcome is not ("failed" or "unavailable" or "skipped"))
+            return false;
+        return IsRetryableProviderDiagnostic(decision.ReasonCode);
+    }
+
     internal static bool IsRetryableProviderDiagnostic(string? diagnostic)
     {
         var normalized = (diagnostic ?? string.Empty).Trim().ToLowerInvariant();
         return normalized is
-            "provider_deadline_exceeded"
+            "provider_circuit_open"
+            or "provider_deadline_exceeded"
             or "private_model_timeout"
             or "private_model_http_502"
             or "private_model_http_503"
@@ -818,7 +861,7 @@ internal sealed record ProjectPlanningGenerationResult(
     ProjectFlowHivePlanValidationResult? Validation,
     ProjectFlowHiveScheduleResult? Schedule,
     IReadOnlyList<string> MissingEvidence,
-    IReadOnlyList<string> Warnings, object? Progress = null)
+    IReadOnlyList<string> Warnings, object? Progress = null, TimeSpan? RetryDelay = null)
 {
     internal static ProjectPlanningGenerationResult NotReady(
         IReadOnlyList<string> blockers,

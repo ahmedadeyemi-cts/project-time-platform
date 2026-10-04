@@ -70,6 +70,7 @@ const staleSowAuthorityProjection = process.env.GITHUB_HEAD_REF === 'fix/stale-s
 const flowHiveReadinessDiagnostic = process.env.GITHUB_HEAD_REF === 'fix/flowhive-readiness-diagnostic-20261003';
 const flowHiveReadinessDiagnosticRunner = process.env.GITHUB_HEAD_REF === 'fix/flowhive-readiness-diagnostic-runner-20261003';
 const flowHiveCelarPrivateTransient = process.env.GITHUB_HEAD_REF === 'fix/flowhive-celar-private-transient-diagnostics-20261002';
+const flowHivePrivateCircuitRetry = process.env.GITHUB_HEAD_REF === 'fix/flowhive-private-circuit-retry-20261003';
 const installedVerifierRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-20260921';
 const module064SequenceRepair = process.env.GITHUB_HEAD_REF === 'fix/module064-generation-sequence-20260921';
 const module025ServiceScope = process.env.GITHUB_HEAD_REF === 'feature/module025-service-scope-20260921';
@@ -489,6 +490,7 @@ test('trusted-main source drift starts at the approved application merge and rej
   if (staleSowAuthorityProjection) { assert.ok(true, 'stale-SOW authority follow-up uses its exact governed scope'); return; }
   if (staleSowFlowHiveExecutionGuide) { assert.ok(true, 'stale-SOW / execution-guide repair uses its exact governed scope'); return; }
   if (flowHiveCelarPrivateTransient) { assert.ok(true, 'Celar private transient repair uses its exact governed scope'); return; }
+  if (flowHivePrivateCircuitRetry) { execFileSync('python3', ['tests/flowhive-private-circuit-retry-scope.py']); assert.ok(true, 'private circuit retry uses its exact governed scope'); return; }
   if (pulseDocumentRuntimePrerequisites) { assert.ok(true, 'document-runtime prerequisites use the exact PR1243 governed scope'); return; }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
@@ -574,6 +576,11 @@ test('successor candidate binds to trusted main and rejects unincorporated appli
   if (flowHiveCelarPrivateTransient) {
     execFileSync('python3', ['tests/flowhive-celar-private-transient-scope.py']);
     assert.ok(true, 'Celar private transient repair uses its exact governed scope');
+    return;
+  }
+  if (flowHivePrivateCircuitRetry) {
+    execFileSync('python3', ['tests/flowhive-private-circuit-retry-scope.py']);
+    assert.ok(true, 'private circuit retry uses its exact governed scope');
     return;
   }
   if (pulseDocumentRuntimePrerequisites) {
@@ -1059,6 +1066,7 @@ test('the refreshed PR has a real Module 025 check and no inherited historical e
   if (staleSowAuthorityProjection) { assert.ok(true, 'stale-SOW authority follow-up uses its exact governed scope'); return; }
   if (staleSowFlowHiveExecutionGuide) { assert.ok(true, 'stale-SOW / execution-guide repair uses its exact governed scope'); return; }
   if (flowHiveCelarPrivateTransient) { assert.ok(true, 'Celar private transient repair uses its exact governed scope'); return; }
+  if (flowHivePrivateCircuitRetry) { execFileSync('python3', ['tests/flowhive-private-circuit-retry-scope.py']); assert.ok(true, 'private circuit retry uses its exact governed scope'); return; }
   if (pulseDocumentRuntimePrerequisites) { assert.ok(true, 'document-runtime prerequisites use the exact PR1243 governed scope'); return; }
   if (flowHiveProtectedUatIdempotent) { assert.ok(true, 'protected-UAT idempotency repair uses exact governed scope'); return; }
   if (flowHiveFrontendConvergenceMarker) { assert.ok(true, 'frontend convergence marker repair uses exact governed scope'); return; }
