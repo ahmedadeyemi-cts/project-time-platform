@@ -5,6 +5,11 @@ import hashlib,json,os,re,subprocess,sys,time
 from pathlib import Path
 from test_resources import ACR,COMPONENTS,validate_images,APPS,GROUP,API,runtime_identity_isolated
 ROOT=Path(__file__).resolve().parents[2]
+FINGERPRINT_PATHS=('deployment/pulse-services','deployment/pulse-document-processing')
+CONTROL_ONLY_COMPATIBLE_PATHS=frozenset({
+    'deployment/pulse-services/post_activation_acceptance.py',
+    'deployment/pulse-services/service_images.py',
+})
 
 def require(condition,code):
     if not condition:raise ValueError(code)
@@ -71,13 +76,69 @@ def manifest_verified(manifest,identity):
             'registry_layer_descriptor_invalid')
     return True
 
-def fingerprint():
-    names=command(['git','ls-files','deployment/pulse-services','deployment/pulse-document-processing']).splitlines()
-    data=[]
+def _snapshot_current():
+    names=command(['git','ls-files',*FINGERPRINT_PATHS]).splitlines()
+    hashes={}
     for name in names:
-        p=ROOT/name;require(p.is_file() and not p.is_symlink(),'invalid_source_file')
-        data.append(name+' '+hashlib.sha256(p.read_bytes()).hexdigest())
-    return hashlib.sha256(('\n'.join(data)+'\n').encode()).hexdigest()
+        p=ROOT/name
+        require(p.is_file() and not p.is_symlink(),'invalid_source_file')
+        hashes[name]=hashlib.sha256(p.read_bytes()).hexdigest()
+    digest=hashlib.sha256(('\n'.join(name+' '+hashes[name] for name in names)+'\n').encode()).hexdigest()
+    return digest,hashes
+
+def _reviewed_snapshot(source):
+    require(re.fullmatch('[0-9a-f]{40}',source or '') is not None,'service_source_invalid')
+    listing=subprocess.run(['git','ls-tree','-r','--name-only',source,'--',*FINGERPRINT_PATHS],
+        cwd=ROOT,capture_output=True,text=True,timeout=60)
+    require(listing.returncode==0,'service_source_history_unavailable')
+    names=[name for name in listing.stdout.splitlines() if name]
+    hashes={}
+    for name in names:
+        require(name.startswith(FINGERPRINT_PATHS) and '..' not in Path(name).parts,'service_source_path_invalid')
+        blob=subprocess.run(['git','show',source+':'+name],cwd=ROOT,capture_output=True,timeout=60)
+        require(blob.returncode==0,'service_source_history_unavailable')
+        hashes[name]=hashlib.sha256(blob.stdout).hexdigest()
+    digest=hashlib.sha256(('\n'.join(name+' '+hashes[name] for name in names)+'\n').encode()).hexdigest()
+    return digest,hashes
+
+def fingerprint():
+    return _snapshot_current()[0]
+
+def reviewed_installed_source(tags):
+    if not isinstance(tags,dict):
+        return False
+    source=tags.get('source','')
+    installed_fingerprint=tags.get('serviceFingerprint','')
+    if re.fullmatch('[0-9a-f]{40}',source or '') is None or re.fullmatch('[0-9a-f]{64}',installed_fingerprint or '') is None:
+        return False
+    ancestry=subprocess.run(['git','merge-base','--is-ancestor',source,'HEAD'],cwd=ROOT,
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=60)
+    if ancestry.returncode!=0:
+        return False
+    try:
+        reviewed_fingerprint,_=_reviewed_snapshot(source)
+    except (ValueError,subprocess.SubprocessError,OSError):
+        return False
+    return reviewed_fingerprint==installed_fingerprint
+
+def reviewed_control_only_compatible(tags,current_fingerprint):
+    if not isinstance(tags,dict):
+        return False
+    installed_fingerprint=tags.get('serviceFingerprint','')
+    if installed_fingerprint==current_fingerprint:
+        return True
+    if not reviewed_installed_source(tags):
+        return False
+    source=tags.get('source','')
+    try:
+        _,reviewed_hashes=_reviewed_snapshot(source)
+        current_verified,current_hashes=_snapshot_current()
+    except (ValueError,subprocess.SubprocessError,OSError):
+        return False
+    if current_verified!=current_fingerprint or set(reviewed_hashes)!=set(current_hashes):
+        return False
+    changed={name for name in current_hashes if current_hashes[name]!=reviewed_hashes[name]}
+    return bool(changed) and changed.issubset(CONTROL_ONLY_COMPATIBLE_PATHS)
 
 def context():
     source=os.environ.get('PULSE_SOURCE_SHA','')
@@ -115,30 +176,45 @@ def installed_selection():
     require(modes in (['legacy','legacy'],['pulse_container','pulse_container']),'mixed_service_selection')
     return modes[0]=='pulse_container'
 
-def existing_images(fp):
-    images={}
-    for kind,name in APPS.items():
-        app=json.loads(command(['az','containerapp','show','-g',GROUP,'-n',name,'-o','json','--only-show-errors']))
+def existing_images(fp,*,allow_upgrade=False):
+    images={};provenance=[]
+    for kind,app_name in APPS.items():
+        app=json.loads(command(['az','containerapp','show','-g',GROUP,'-n',app_name,'-o','json','--only-show-errors']))
         p=app['properties'];c=p['configuration'];tags=app.get('tags',{})
-        require(tags.get('managedBy')=='pulse-services-reviewed-cutover' and tags.get('serviceFingerprint')==fp,'service_upgrade_requires_review')
+        require(tags.get('managedBy')=='pulse-services-reviewed-cutover','service_upgrade_requires_review')
+        if allow_upgrade:
+            require(reviewed_installed_source(tags),'service_upgrade_requires_review')
+        else:
+            require(reviewed_control_only_compatible(tags,fp),'service_upgrade_requires_review')
+        source=tags.get('source','');run=tags.get('deploymentRun','');installed_fp=tags.get('serviceFingerprint','')
+        require(re.fullmatch('[0-9a-f]{40}',source or '') is not None and re.fullmatch('[1-9][0-9]{0,19}',run or '') is not None
+            and re.fullmatch('[0-9a-f]{64}',installed_fp or '') is not None,'service_upgrade_requires_review')
+        provenance.append((source,run,installed_fp))
         require(c['ingress']['external'] is False and c['ingress']['allowInsecure'] is False
             and runtime_identity_isolated(c),'existing_service_boundary_changed')
         require(p['latestRevisionName']==p['latestReadyRevisionName'],'existing_service_not_ready')
         for container in p['template']['containers']:
-            name=container['name']
-            if name=='signature-updater':
+            container_name=container['name']
+            if container_name=='signature-updater':
                 require(container['image']==next(x['image'] for x in p['template']['containers'] if x['name']=='scanner'),'signature_image_mismatch')
             else:
-                component='laya' if name=='laya-model' else name
+                component='laya' if container_name=='laya-model' else container_name
                 require(component in COMPONENTS and component not in images,'component_inventory_changed')
                 images[component]=container['image']
+    require(len(set(provenance))==1,'service_upgrade_provenance_mismatch')
     validate_images(images);return images
 
 def build():
     source,safe=context();fp=fingerprint();ids={}
-    selected=installed_selection();installed=existing_images(fp) if selected else None
+    selected=installed_selection();installed=None;mode='initial'
+    if selected:
+        try:
+            installed=existing_images(fp);mode='verify_existing'
+        except ValueError as error:
+            if str(error)!='service_upgrade_requires_review':raise
+            installed=existing_images(fp,allow_upgrade=True);mode='upgrade_existing'
     for component in sorted(COMPONENTS):
-        if selected:
+        if mode=='verify_existing':
             command(['docker','pull',installed[component]])
             command(['docker','tag',installed[component],'pulse-services-'+component+':cutover'])
             ids[component]=inspect(component)['Id'];continue
@@ -149,7 +225,7 @@ def build():
         require(meta['Config']['User']=='65534:65534','nonroot_runtime_required')
         require(meta['Config']['Labels'].get('org.opencontainers.image.revision')==source,'image_source_mismatch')
         ids[component]=meta['Id'];print('PULSE_IMAGE_BUILT='+component,flush=True)
-    (safe/'build-identities.json').write_text(json.dumps({'source':source,'fingerprint':fp,'images':ids,'mode':'verify_existing' if selected else 'initial','installedImages':installed},indent=2)+'\n')
+    (safe/'build-identities.json').write_text(json.dumps({'source':source,'fingerprint':fp,'images':ids,'mode':mode,'installedImages':installed},indent=2)+'\n')
 
 def _publish(source,safe):
     receipt=json.loads((safe/'build-identities.json').read_text())

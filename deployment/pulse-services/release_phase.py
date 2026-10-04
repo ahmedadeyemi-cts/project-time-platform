@@ -36,13 +36,15 @@ def execute():
     source,run,safe,private=initialize()
     receipt={'sourceSha':source,'runId':run,'status':'failed','servicesActivated':False,
         'productionMutation':False,'newServerCreated':False,'originalSecurityFindingsClosed':0}
-    build={};initial_started=False
+    build={};mutation_started=False
     try:
         build=json.loads((safe/'build-identities.json').read_text())
         cutover.check(build.get('source')==source and build.get('fingerprint')==fingerprint(),'build_receipt_changed')
-        selected=installed_selection()
-        cutover.check((build.get('mode')=='verify_existing')==selected,'selection_changed_after_scan')
-        if selected:
+        selected=installed_selection();mode=build.get('mode')
+        cutover.check((not selected and mode=='initial') or
+                      (selected and mode in ('verify_existing','upgrade_existing')),
+                      'selection_changed_after_scan')
+        if mode=='verify_existing':
             cutover.preflight(allow_selected=True)
             before=json.loads((private/'preflight.json').read_text())['adminIdentity']
             expected=json.loads((safe/'registry-images.json').read_text())
@@ -50,8 +52,13 @@ def execute():
             cutover.check(cutover.local_admin(after=True)==before,'local_admin_identity_changed')
             receipt.update(status='passed',servicesActivated=True,mode='existing_verified',images=expected,
                 localSuperAdministratorLoginPassed=True,localSuperAdministratorIdentityUnchanged=True)
+        elif mode=='upgrade_existing':
+            mutation_started=True
+            cutover.upgrade()
+            receipt=json.loads((safe/'cutover.json').read_text())
+            receipt.update(servicesActivated=True,mode='upgrade_existing',runId=run)
         else:
-            initial_started=True
+            mutation_started=True
             cutover.prepare();cutover.switch()
             receipt=json.loads((safe/'cutover.json').read_text())
             receipt.update(servicesActivated=True,mode='initial_activation',runId=run)
@@ -63,7 +70,7 @@ def execute():
         code=str(error) if isinstance(error,(ValueError,cutover.CutoverError)) and re.fullmatch('[a-z_]{1,100}',str(error)) else type(error).__name__
         receipt.update(status='failed',diagnostic=code,servicesActivated=False)
         try:
-            if initial_started:cutover.rollback()
+            if mutation_started:cutover.rollback()
             receipt['rollbackCompleted']=True
         except Exception as rollback_error:
             rollback_code=(str(rollback_error) if isinstance(rollback_error,(ValueError,cutover.CutoverError))
