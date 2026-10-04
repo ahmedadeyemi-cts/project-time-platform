@@ -826,23 +826,6 @@ elif [[ "$HEAD_BRANCH" == 'control/module025-release-trigger-coverage-20260914' 
   }
 elif [[ "$HEAD_BRANCH" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
   run_release_control
-elif [[ "$HEAD_BRANCH" == 'fix/flowhive-private-circuit-retry-20261003' ]]; then
-  printf '%s\n'     '.github/workflows/flowhive-psa-release-control-ci.yml' \
-    'scripts/release-test/validate-protected-test-controller-branches.sh' \
-    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs' \
-    'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveExecutionPolicy.cs' \
-    'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' \
-    'tests/FlowHiveDetailedPlannerTests/Program.cs' \
-    'tests/FlowHiveExecutionTests/Program.cs' \
-    'tests/flowhive-psa-release-control.mjs' \
-    | LC_ALL=C sort -u > "$CIT/flowhive-private-circuit-retry-files"
-  cmp -s "$CIT/diff" "$CIT/flowhive-private-circuit-retry-files" || {
-    echo 'FlowHive private circuit retry contains an unreviewed file.' >&2
-    diff -u "$CIT/flowhive-private-circuit-retry-files" "$CIT/diff" >&2 || true
-    exit 1
-  }
-  run_release_control
-  return
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-planner-provider-deadline-retry-20260914' ]]; then
   printf '%s\n' \
     '.github/workflows/flowhive-psa-release-control-ci.yml' \
