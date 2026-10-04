@@ -139,6 +139,11 @@ class Finalization(unittest.TestCase):
         self.receipt['mode']='existing_verified';(self.safe/'activation-receipt.json').write_text(json.dumps(self.receipt))
         next(s for s in self.jobs['jobs'][0]['steps'] if s['name']==gate.APPLICATION_UAT_STEPS[1])['conclusion']='failure'
         self.assertEqual(self.call(),(1,0,0))
+    def test_failed_application_uat_rolls_back_reviewed_upgrade(self):
+        self.receipt['mode']='upgrade_existing';(self.safe/'activation-receipt.json').write_text(json.dumps(self.receipt))
+        next(s for s in self.jobs['jobs'][0]['steps'] if s['name']==gate.APPLICATION_UAT_STEPS[1])['conclusion']='failure'
+        self.assertEqual(self.call(),(1,1,0))
+
     def test_unknown_origin_fails_before_account_or_rollback_access(self):
         self.run['path']='untrusted.yml'
         with self.assertRaises(cutover.CutoverError):self.call()

@@ -77,15 +77,14 @@ class ScanBinding(unittest.TestCase):
             with patch.object(images,'command',return_value=json.dumps(entries)):self.assertEqual(images.installed_selection(),expected)
         with patch.object(images,'command',return_value=json.dumps([{'name':cutover.PREFIXES[0]+'MODE','value':'pulse_container'}])):
             with self.assertRaises(ValueError):images.installed_selection()
-    def test_reviewed_control_only_service_lineage_can_reuse_installed_images(self):
+    def test_reviewed_service_lineage_is_upgrade_eligible_but_runtime_change_is_not_control_compatible(self):
         installed={'managedBy':'pulse-services-reviewed-cutover',
             'source':'55ac38319fa05b2c72f4744bd8c01ed5844f8099',
             'serviceFingerprint':'da52f4615c09abd20510c4856a8eee271f61e1d6cc6688dc52a20101f51b39ee'}
-        self.assertTrue(images.reviewed_control_only_compatible(installed,images.fingerprint()))
-        self.assertFalse(images.reviewed_control_only_compatible(installed|{'serviceFingerprint':'0'*64},images.fingerprint()))
-        self.assertFalse(images.reviewed_control_only_compatible(installed|{'source':'not-a-commit'},images.fingerprint()))
-        with patch.object(images,'CONTROL_ONLY_COMPATIBLE_PATHS',frozenset()):
-            self.assertFalse(images.reviewed_control_only_compatible(installed,images.fingerprint()))
+        self.assertTrue(images.reviewed_installed_source(installed))
+        self.assertFalse(images.reviewed_control_only_compatible(installed,images.fingerprint()))
+        self.assertFalse(images.reviewed_installed_source(installed|{'serviceFingerprint':'0'*64}))
+        self.assertFalse(images.reviewed_installed_source(installed|{'source':'not-a-commit'}))
 
     def test_control_only_compatibility_allowlist_never_contains_runtime_image_inputs(self):
         docker_inputs=set()
@@ -99,6 +98,31 @@ class ScanBinding(unittest.TestCase):
         self.assertEqual(images.CONTROL_ONLY_COMPATIBLE_PATHS,{
             'deployment/pulse-services/post_activation_acceptance.py',
             'deployment/pulse-services/service_images.py'})
+    def test_selected_reviewed_services_with_runtime_change_build_upgrade_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            safe=Path(tmp)/'pulse-services-safe';safe.mkdir()
+            source='a'*40;fp='b'*64
+            old={c:images.ACR+'/pulse-services-'+c+'@sha256:'+'c'*64 for c in images.COMPONENTS}
+            inspected={c:{'Id':'sha256:'+hashlib.sha256(c.encode()).hexdigest(),
+                'Config':{'User':'65534:65534','Labels':{'org.opencontainers.image.revision':source}}}
+                for c in images.COMPONENTS}
+            calls=[]
+            def existing(_fp,*,allow_upgrade=False):
+                if not allow_upgrade: raise ValueError('service_upgrade_requires_review')
+                return old
+            with patch.object(images,'context',return_value=(source,safe)),patch.object(images,'fingerprint',return_value=fp),                 patch.object(images,'installed_selection',return_value=True),patch.object(images,'existing_images',side_effect=existing),                 patch.object(images,'command',side_effect=lambda args:(calls.append(args) or '')),                 patch.object(images,'inspect',side_effect=lambda c:inspected[c]):
+                images.build()
+            receipt=json.loads((safe/'build-identities.json').read_text())
+            self.assertEqual(receipt['mode'],'upgrade_existing')
+            self.assertEqual(receipt['installedImages'],old)
+            self.assertEqual(len([c for c in calls if c[:2]==['docker','build']]),4)
+            self.assertFalse(any(c[:2]==['docker','pull'] for c in calls))
+
+    def test_laya_runtime_requires_fixed_pcre_revision(self):
+        docker=(D/'Dockerfile.laya').read_text()
+        self.assertIn('libpcre2-8-0',docker)
+        self.assertIn("10.42-1+deb12u2",docker)
+        self.assertIn('dpkg --compare-versions',docker)
 
 class Orchestration(unittest.TestCase):
     def setUp(self):
@@ -143,6 +167,27 @@ class Orchestration(unittest.TestCase):
         with a,b,patch.object(phase,'installed_selection',return_value=False),patch.object(cutover,'prepare',side_effect=RuntimeError('SECRET_SENTINEL value')),patch.object(cutover,'rollback'):
             self.assertEqual(phase.execute(),1)
         self.assertNotIn('SECRET_SENTINEL',(self.safe/'activation-receipt.json').read_text())
+    def test_reviewed_upgrade_uses_upgrade_path_without_initial_cutover(self):
+        self.record['mode']='upgrade_existing';self.record['installedImages']={}
+        (self.safe/'build-identities.json').write_text(json.dumps(self.record))
+        (self.safe/'registry-images.json').write_text('{}')
+        def upgraded():
+            (self.safe/'cutover.json').write_text(json.dumps({'status':'passed','sourceSha':self.source,'serviceUpgrade':True}))
+        a,b=self.mocks()
+        with a,b,patch.object(phase,'installed_selection',return_value=True),patch.object(cutover,'upgrade',side_effect=upgraded) as upgrade,             patch.object(cutover,'prepare') as prepare,patch.object(cutover,'switch') as switch,patch.object(cutover,'rollback') as rollback:
+            self.assertEqual(phase.execute(),0)
+        upgrade.assert_called_once();prepare.assert_not_called();switch.assert_not_called();rollback.assert_not_called()
+        receipt=json.loads((self.safe/'activation-receipt.json').read_text())
+        self.assertEqual(receipt['mode'],'upgrade_existing');self.assertTrue(receipt['servicesActivated'])
+        self.assertEqual(receipt['status'],'pending_application_uat')
+
+    def test_failed_reviewed_upgrade_attempts_exact_rollback(self):
+        self.record['mode']='upgrade_existing';self.record['installedImages']={}
+        (self.safe/'build-identities.json').write_text(json.dumps(self.record))
+        a,b=self.mocks()
+        with a,b,patch.object(phase,'installed_selection',return_value=True),             patch.object(cutover,'upgrade',side_effect=cutover.CutoverError('private_service_acceptance_failed')),             patch.object(cutover,'rollback') as rollback:
+            self.assertEqual(phase.execute(),1)
+        rollback.assert_called_once()
 
 class RegistryPublication(unittest.TestCase):
     def manifest(self, identity):

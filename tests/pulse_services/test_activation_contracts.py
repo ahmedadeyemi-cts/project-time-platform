@@ -83,8 +83,10 @@ class ActivationContracts(unittest.TestCase):
         for value in ("", "0", "01", "-1", "1/../../other", "1 ", "1;command", "9" * 21, None, 123):
             with self.subTest(value=value), self.assertRaises(ValueError): acceptance_job_name(value)
 
-    def test_creation_and_cleanup_share_the_same_name_contract(self):
-        self.assertIn("job=acceptance_job_name(RUN)", inspect.getsource(cutover.prepare))
+    def test_creation_upgrade_and_cleanup_share_the_same_name_contract(self):
+        self.assertIn("job=acceptance_job_name(RUN)", inspect.getsource(cutover._run_acceptance_job))
+        self.assertIn("_run_acceptance_job(images,credentials)", inspect.getsource(cutover.prepare))
+        self.assertIn("_run_acceptance_job(images,credentials)", inspect.getsource(cutover.upgrade))
         self.assertIn("item['name']==acceptance_job_name(RUN)", inspect.getsource(cutover.cleanup_staged))
 
     def test_partial_status_requires_full_service_capability_evidence(self):

@@ -210,6 +210,60 @@ def signatures():
     print('PULSE_SIGNATURE_STORAGE=READY verified_dedicated_mount=true business_share_not_mounted=true')
 
 
+def _service_credential(kind, app):
+    check(kind in APPS and app.get('name')==APPS[kind],'service_identity_changed')
+    resource=ROOT+'/providers/Microsoft.App/containerApps/'+APPS[kind]
+    metadata=app.get('properties',{}).get('configuration',{}).get('secrets',[])
+    retrieved=rest_stage('service_secret_inventory_read_failed','POST',resource+'/listSecrets')
+    from secret_preservation import existing_payload
+    preserved=existing_payload(metadata,retrieved)
+    check(len(preserved)==1 and set(preserved[0])=={'name','value'},'service_credential_inventory_changed')
+    item=preserved[0];prefix='pulse-documents-' if kind=='documents' else 'pulse-laya-'
+    check(item['name'].startswith(prefix) and isinstance(item['value'],str) and len(item['value'])>=32,
+          'service_credential_invalid')
+    gateway='documents' if kind=='documents' else 'laya-gateway'
+    containers=app.get('properties',{}).get('template',{}).get('containers',[])
+    proxy=next((x for x in containers if x.get('name')==gateway),None)
+    check(isinstance(proxy,dict),'service_gateway_missing')
+    token_refs=[x.get('secretRef') for x in proxy.get('env',[]) if x.get('name')=='PULSE_SERVICE_TOKEN']
+    check(token_refs==[item['name']],'service_credential_reference_changed')
+    return {'secret':item['name'],'token':item['value']}
+
+
+def _run_acceptance_job(images, credentials):
+    validate_images(images);check(set(credentials)==set(APPS),'service_credential_inventory_changed')
+    job=acceptance_job_name(RUN)
+    job_env=[{'name':'PULSE_EXPECTED_SOURCE','value':SHA}]
+    job_secrets=[]
+    for kind,c in credentials.items():
+        check(set(c)=={'token','secret'} and isinstance(c['token'],str) and len(c['token'])>=32,
+              'service_credential_invalid')
+        job_secrets.append({'name':c['secret'],'value':c['token']})
+        job_env.append({'name':'PULSE_'+kind.upper()+'_TOKEN','secretRef':c['secret']})
+    body={'location':'westus3','identity':{'type':'UserAssigned','userAssignedIdentities':{IDENTITY:{}}},
+          'tags':{'environment':'test','managedBy':'pulse-services-reviewed-cutover','source':SHA,'deploymentRun':RUN},
+          'properties':{'environmentId':ENV,'workloadProfileName':'Consumption',
+            'configuration':{'triggerType':'Manual','replicaTimeout':900,'replicaRetryLimit':0,
+                'manualTriggerConfig':{'parallelism':1,'replicaCompletionCount':1},
+                'registries':[{'server':ACR,'identity':IDENTITY}],
+                'identitySettings':[{'identity':IDENTITY,'lifecycle':'None'}],'secrets':job_secrets},
+            'template':{'containers':[{'name':'verify','image':images['documents'],
+                'command':['python3','/opt/pulse-services/acceptance.py'],'resources':{'cpu':0.5,'memory':'1Gi'},'env':job_env}]}}}
+    rest('PUT',ROOT+'/providers/Microsoft.App/jobs/'+job,body)
+    journal({'kind':'job','name':job,'run':RUN,'source':SHA})
+    execution=az_stage('acceptance_job_start_failed','containerapp','job','start','-g',GROUP,'-n',job)
+    name=execution['name'];end=time.monotonic()+1000
+    while time.monotonic()<end:
+        e=az_stage('acceptance_job_execution_read_failed','containerapp','job','execution','show','-g',GROUP,'-n',job,'--job-execution-name',name)
+        status=e['properties']['status']
+        if status=='Succeeded':break
+        if status in ('Failed','Stopped','Degraded'):raise CutoverError('private_service_acceptance_failed')
+        time.sleep(10)
+    else:raise CutoverError('private_service_acceptance_deadline')
+    write_private(PRIVATE/'service-acceptance.json',{'source':SHA,'job':job,'execution':name,'status':'passed','images':images})
+    print('PULSE_PRIVATE_SERVICE_JOB=PASS no_customer_documents=true')
+
+
 def journal(record):
     path=PRIVATE/'resource-journal.jsonl'
     fd=os.open(path,os.O_WRONLY|os.O_APPEND|os.O_CREAT|os.O_NOFOLLOW,0o600)
@@ -285,32 +339,72 @@ def prepare():
         check(a['properties']['configuration'].get('ingress',{}).get('external') is False,'service_ingress_drift')
         check(runtime_identity_isolated(a['properties']['configuration']),'service_identity_drift')
         print('PULSE_SERVICE_READY='+kind)
-    job=acceptance_job_name(RUN)
-    job_env=[{'name':'PULSE_EXPECTED_SOURCE','value':SHA}]
-    job_secrets=[]
-    for kind,c in credentials.items():
-        job_secrets.append({'name':c['secret'],'value':c['token']});job_env.append({'name':'PULSE_'+kind.upper()+'_TOKEN','secretRef':c['secret']})
-    body={'location':'westus3','identity':{'type':'UserAssigned','userAssignedIdentities':{IDENTITY:{}}},
-          'tags':{'environment':'test','managedBy':'pulse-services-reviewed-cutover','source':SHA,'deploymentRun':RUN},
-          'properties':{'environmentId':ENV,'workloadProfileName':'Consumption',
-            'configuration':{'triggerType':'Manual','replicaTimeout':900,'replicaRetryLimit':0,
-                'manualTriggerConfig':{'parallelism':1,'replicaCompletionCount':1},
-                'registries':[{'server':ACR,'identity':IDENTITY}], 'identitySettings':[{'identity':IDENTITY,'lifecycle':'None'}], 'secrets':job_secrets},
-            'template':{'containers':[{'name':'verify','image':images['documents'],
-                'command':['python3','/opt/pulse-services/acceptance.py'],'resources':{'cpu':0.5,'memory':'1Gi'},'env':job_env}]}}}
-    rest('PUT',ROOT+'/providers/Microsoft.App/jobs/'+job,body)
-    journal({'kind':'job','name':job,'run':RUN,'source':SHA})
-    execution=az_stage('acceptance_job_start_failed','containerapp','job','start','-g',GROUP,'-n',job)
-    name=execution['name'];end=time.monotonic()+1000
-    while time.monotonic()<end:
-        e=az_stage('acceptance_job_execution_read_failed','containerapp','job','execution','show','-g',GROUP,'-n',job,'--job-execution-name',name)
-        status=e['properties']['status']
-        if status=='Succeeded':break
-        if status in ('Failed','Stopped','Degraded'):raise CutoverError('private_service_acceptance_failed')
-        time.sleep(10)
-    else:raise CutoverError('private_service_acceptance_deadline')
-    write_private(PRIVATE/'service-acceptance.json',{'source':SHA,'job':job,'execution':name,'status':'passed','images':images})
-    print('PULSE_PRIVATE_SERVICE_JOB=PASS no_customer_documents=true')
+    _run_acceptance_job(images,credentials)
+
+def upgrade():
+    preflight(allow_selected=True)
+    images=json.loads(Path(os.environ['PULSE_IMAGE_MANIFEST']).read_text());validate_images(images)
+    build_receipt=json.loads((SAFE/'build-identities.json').read_text())
+    check(build_receipt.get('source')==SHA and build_receipt.get('mode')=='upgrade_existing'
+          and re.fullmatch('[0-9a-f]{64}',build_receipt.get('fingerprint','')),'upgrade_build_receipt_invalid')
+    from service_images import existing_images
+    previous_images=existing_images(build_receipt['fingerprint'],allow_upgrade=True)
+    check(previous_images==build_receipt.get('installedImages'),'upgrade_installed_images_changed')
+    records={kind:get_app(name) for kind,name in APPS.items()}
+    provenance={(record.get('tags',{}).get('source',''),record.get('tags',{}).get('deploymentRun',''),
+                record.get('tags',{}).get('serviceFingerprint','')) for record in records.values()}
+    check(len(provenance)==1,'service_upgrade_provenance_mismatch')
+    previous_source,previous_run,previous_fingerprint=next(iter(provenance))
+    check(re.fullmatch('[0-9a-f]{40}',previous_source or '') is not None
+          and re.fullmatch('[1-9][0-9]{0,19}',previous_run or '') is not None
+          and re.fullmatch('[0-9a-f]{64}',previous_fingerprint or '') is not None,'service_upgrade_provenance_invalid')
+    credentials={kind:_service_credential(kind,records[kind]) for kind in APPS}
+    signatures()
+    write_private(PRIVATE/'upgrade-before.json',{'source':previous_source,'run':previous_run,
+        'fingerprint':previous_fingerprint,'images':previous_images,'credentials':credentials})
+    write_private(PRIVATE/'upgrade-started.json',{'source':SHA,'priorSource':previous_source})
+    for kind,name in APPS.items():
+        c=credentials[kind]
+        body=application(kind,images,c['token'],c['secret'],SHA,RUN)
+        body['tags']['serviceFingerprint']=build_receipt['fingerprint']
+        rest('PUT',ROOT+'/providers/Microsoft.App/containerApps/'+name,body)
+        images_for_app=[images['documents'],images['scanner']] if kind=='documents' else [images['laya-gateway'],images['laya']]
+        wait_app(name,images_for_app,expected_revision=name+'--svc-'+RUN)
+        print('PULSE_SERVICE_UPGRADED='+kind)
+    _run_acceptance_job(images,credentials)
+    before=json.loads((PRIVATE/'preflight.json').read_text())['adminIdentity']
+    check(local_admin(after=True)==before,'local_superadmin_identity_changed')
+    accepted=json.loads((PRIVATE/'service-acceptance.json').read_text())
+    receipt={'status':'passed','sourceSha':SHA,'services':{k:{'application':n,'runtime':'pulse_container'} for k,n in APPS.items()},
+        'localSuperAdministratorLoginPassed':True,'localSuperAdministratorIdentityUnchanged':True,
+        'serviceAcceptance':accepted,'serviceUpgrade':True,'newVmCreated':False,'productionMutation':False,
+        'oracleHostMutation':False,'originalSecurityFindingsClosed':0}
+    SAFE.mkdir(exist_ok=True,parents=True);(SAFE/'cutover.json').write_text(json.dumps(receipt,indent=2)+chr(10))
+    print('PULSE_SERVICE_UPGRADE=PASS scanner_ocr_laya=pulse_container rollback=armed')
+
+def _rollback_upgrade():
+    marker=json.loads((PRIVATE/'upgrade-started.json').read_text())
+    check(marker.get('source')==SHA,'upgrade_rollback_identity_changed')
+    prior=json.loads((PRIVATE/'upgrade-before.json').read_text())
+    old_source=prior.get('source','');old_run=prior.get('run','');old_fingerprint=prior.get('fingerprint','')
+    old_images=prior.get('images');credentials=prior.get('credentials')
+    check(re.fullmatch('[0-9a-f]{40}',old_source or '') is not None
+          and re.fullmatch('[1-9][0-9]{0,19}',old_run or '') is not None
+          and re.fullmatch('[0-9a-f]{64}',old_fingerprint or '') is not None,'upgrade_rollback_provenance_invalid')
+    validate_images(old_images);check(isinstance(credentials,dict) and set(credentials)==set(APPS),'upgrade_rollback_credentials_invalid')
+    for kind,name in APPS.items():
+        c=credentials[kind];check(set(c)=={'token','secret'} and isinstance(c['token'],str) and len(c['token'])>=32,
+                                      'upgrade_rollback_credentials_invalid')
+        body=application(kind,old_images,c['token'],c['secret'],old_source,old_run)
+        body['tags']['serviceFingerprint']=old_fingerprint
+        body['properties']['template']['revisionSuffix']='svcr-'+RUN
+        rest('PUT',ROOT+'/providers/Microsoft.App/containerApps/'+name,body)
+        images_for_app=[old_images['documents'],old_images['scanner']] if kind=='documents' else [old_images['laya-gateway'],old_images['laya']]
+        wait_app(name,images_for_app,expected_revision=name+'--svcr-'+RUN)
+    cleanup_staged()
+    before=json.loads((PRIVATE/'preflight.json').read_text())['adminIdentity']
+    check(local_admin(after=True)==before,'upgrade_rollback_admin_check_failed')
+    print('PULSE_SERVICE_UPGRADE_ROLLBACK=PASS prior_reviewed_images_restored=true')
 
 def switch():
     before=json.loads((PRIVATE/'before.json').read_text());pre=json.loads((PRIVATE/'preflight.json').read_text())
@@ -351,6 +445,9 @@ def switch():
     print('PULSE_SERVICE_CUTOVER=PASS scanner_ocr_laya=pulse_container local_superadmin_preserved=true')
 
 def rollback():
+    if (PRIVATE/'upgrade-started.json').exists():
+        _rollback_upgrade()
+        return
     if not (PRIVATE/'switch-started.json').exists():
         cleanup_staged()
         return

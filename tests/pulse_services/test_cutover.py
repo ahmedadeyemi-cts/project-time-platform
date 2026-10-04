@@ -173,6 +173,78 @@ class CutoverLogic(unittest.TestCase):
         template={'containers':[{'name':'api','env':[]}],'volumes':[]}
         with self.assertRaisesRegex(cutover.CutoverError,'shared_upload_storage_missing'):
             cutover.configure_document_runtime_prerequisites(template)
+    def test_existing_service_credential_is_read_privately_and_bound_to_gateway(self):
+        images={n:spec.ACR+'/pulse-services-'+n+'@sha256:'+'a'*64 for n in spec.COMPONENTS}
+        app=spec.application('documents',images,'q'*64,'pulse-documents-old','a'*40,'101')
+        app['name']=spec.APPS['documents']
+        with patch.object(cutover,'rest_stage',return_value={'value':[{'name':'pulse-documents-old','value':'q'*64}]}):
+            credential=cutover._service_credential('documents',app)
+        self.assertEqual(credential,{'secret':'pulse-documents-old','token':'q'*64})
+
+    def test_reviewed_upgrade_updates_only_private_service_apps(self):
+        cutover.SAFE.mkdir()
+        new_images={n:spec.ACR+'/pulse-services-'+n+'@sha256:'+'b'*64 for n in spec.COMPONENTS}
+        old_images={n:spec.ACR+'/pulse-services-'+n+'@sha256:'+'a'*64 for n in spec.COMPONENTS}
+        fp='c'*64;oldfp='d'*64;oldsource='e'*40;oldrun='101'
+        (cutover.SAFE/'registry-images.json').write_text(json.dumps(new_images))
+        (cutover.SAFE/'build-identities.json').write_text(json.dumps({
+            'source':cutover.SHA,'fingerprint':fp,'mode':'upgrade_existing','installedImages':old_images}))
+        cutover.write_private(cutover.PRIVATE/'preflight.json',{'adminIdentity':'same'})
+        records={}
+        for kind,name in spec.APPS.items():
+            token=('q' if kind=='documents' else 'r')*64
+            secret=('pulse-documents-old' if kind=='documents' else 'pulse-laya-old')
+            body=spec.application(kind,old_images,token,secret,oldsource,oldrun)
+            body['name']=name;body['tags']['serviceFingerprint']=oldfp
+            body['properties']['latestRevisionName']=name+'--svc-'+oldrun
+            body['properties']['latestReadyRevisionName']=name+'--svc-'+oldrun
+            records[kind]=body
+        credentials={'documents':{'token':'q'*64,'secret':'pulse-documents-old'},
+                     'laya':{'token':'r'*64,'secret':'pulse-laya-old'}}
+        calls=[]
+        def write(method,path,body=None):
+            calls.append((method,path,copy.deepcopy(body)));return {}
+        def accept(images,creds):
+            self.assertEqual(images,new_images);self.assertEqual(creds,credentials)
+            cutover.write_private(cutover.PRIVATE/'service-acceptance.json',
+                {'source':cutover.SHA,'job':'pulse-accept','execution':'synthetic','status':'passed','images':images})
+        import service_images
+        with patch.dict(os.environ,{'PULSE_IMAGE_MANIFEST':str(cutover.SAFE/'registry-images.json')},clear=False),              patch.object(cutover,'preflight'),patch.object(service_images,'existing_images',return_value=old_images),              patch.object(cutover,'get_app',side_effect=lambda name: records[next(k for k,v in spec.APPS.items() if v==name)]),              patch.object(cutover,'_service_credential',side_effect=lambda kind,app: credentials[kind]),              patch.object(cutover,'signatures'),patch.object(cutover,'rest',side_effect=write),              patch.object(cutover,'wait_app',return_value={}),patch.object(cutover,'_run_acceptance_job',side_effect=accept),              patch.object(cutover,'local_admin',return_value='same'):
+            cutover.upgrade()
+        puts=[call for call in calls if call[0]=='PUT']
+        self.assertEqual(len(puts),2)
+        self.assertEqual({call[1] for call in puts},{cutover.ROOT+'/providers/Microsoft.App/containerApps/'+n for n in spec.APPS.values()})
+        self.assertTrue(all(call[1].split('/')[-1]!=cutover.API for call in puts))
+        for _,_,body in puts:
+            self.assertEqual(body['tags']['source'],cutover.SHA)
+            self.assertEqual(body['tags']['serviceFingerprint'],fp)
+            self.assertTrue(all(c['image'] in new_images.values() for c in body['properties']['template']['containers']))
+        receipt=json.loads((cutover.SAFE/'cutover.json').read_text())
+        self.assertTrue(receipt['serviceUpgrade']);self.assertFalse(receipt['productionMutation'])
+
+    def test_upgrade_rollback_restores_prior_reviewed_images_without_api_route_mutation(self):
+        old_images={n:spec.ACR+'/pulse-services-'+n+'@sha256:'+'a'*64 for n in spec.COMPONENTS}
+        oldsource='e'*40;oldrun='101';oldfp='d'*64
+        credentials={'documents':{'token':'q'*64,'secret':'pulse-documents-old'},
+                     'laya':{'token':'r'*64,'secret':'pulse-laya-old'}}
+        cutover.write_private(cutover.PRIVATE/'upgrade-started.json',{'source':cutover.SHA,'priorSource':oldsource})
+        cutover.write_private(cutover.PRIVATE/'upgrade-before.json',{'source':oldsource,'run':oldrun,
+            'fingerprint':oldfp,'images':old_images,'credentials':credentials})
+        cutover.write_private(cutover.PRIVATE/'preflight.json',{'adminIdentity':'same'})
+        calls=[]
+        with patch.object(cutover,'rest',side_effect=lambda method,path,body=None:(calls.append((method,path,copy.deepcopy(body))) or {})),             patch.object(cutover,'wait_app',return_value={}),patch.object(cutover,'cleanup_staged') as cleanup,             patch.object(cutover,'local_admin',return_value='same'):
+            cutover._rollback_upgrade()
+        puts=[call for call in calls if call[0]=='PUT']
+        self.assertEqual(len(puts),2);cleanup.assert_called_once()
+        self.assertTrue(all(call[1].split('/')[-1] in set(spec.APPS.values()) for call in puts))
+        self.assertFalse(any(call[1].split('/')[-1]==cutover.API for call in puts))
+        for _,_,body in puts:
+            self.assertEqual(body['tags']['source'],oldsource)
+            self.assertEqual(body['tags']['deploymentRun'],oldrun)
+            self.assertEqual(body['tags']['serviceFingerprint'],oldfp)
+            self.assertEqual(body['properties']['template']['revisionSuffix'],'svcr-'+cutover.RUN)
+            self.assertTrue(all(c['image'] in old_images.values() for c in body['properties']['template']['containers']))
+
 class SignatureStorage(unittest.TestCase):
     def setUp(self):
         import signature_storage
