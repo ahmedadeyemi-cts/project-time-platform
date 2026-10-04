@@ -9,7 +9,10 @@ RUN /bin/sh /build/build-expat-package.sh
 FROM debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 LANG=C.UTF-8 TZ=UTC
 COPY --from=expat /libexpat1-pulse.deb /tmp/libexpat1-pulse.deb
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates /tmp/libexpat1-pulse.deb clamav-daemon clamav-freshclam python3 libseccomp2 && python3 -c "import xml.parsers.expat as e; assert e.EXPAT_VERSION == 'expat_2.8.5', e.EXPAT_VERSION" && rm /tmp/libexpat1-pulse.deb && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates /tmp/libexpat1-pulse.deb clamav-daemon clamav-freshclam python3 libseccomp2 libpcre2-8-0 \
+    && python3 -c "import xml.parsers.expat as e; assert e.EXPAT_VERSION == 'expat_2.8.5', e.EXPAT_VERSION" \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" ge '10.42-1+deb12u2' \
+    && rm /tmp/libexpat1-pulse.deb && rm -rf /var/lib/apt/lists/*
 RUN install -d -m 0770 -o nobody -g nogroup /run/clamav /var/lib/clamav
 COPY --from=isolation /pulse-sandbox /usr/local/bin/pulse-sandbox
 COPY --from=isolation /libpulse-sandbox.so /usr/local/lib/libpulse-sandbox.so

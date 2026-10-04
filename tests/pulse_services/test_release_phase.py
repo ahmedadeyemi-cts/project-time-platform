@@ -118,11 +118,13 @@ class ScanBinding(unittest.TestCase):
             self.assertEqual(len([c for c in calls if c[:2]==['docker','build']]),4)
             self.assertFalse(any(c[:2]==['docker','pull'] for c in calls))
 
-    def test_laya_runtime_requires_fixed_pcre_revision(self):
-        docker=(D/'Dockerfile.laya').read_text()
-        self.assertIn('libpcre2-8-0',docker)
-        self.assertIn("10.42-1+deb12u2",docker)
-        self.assertIn('dpkg --compare-versions',docker)
+    def test_all_private_service_runtimes_require_fixed_pcre_revision(self):
+        for name in ('documents','scanner','laya-gateway','laya'):
+            with self.subTest(image=name):
+                docker=(D/('Dockerfile.'+name)).read_text()
+                self.assertIn('libpcre2-8-0',docker)
+                self.assertIn("10.42-1+deb12u2",docker)
+                self.assertIn('dpkg --compare-versions',docker)
 
 class Orchestration(unittest.TestCase):
     def setUp(self):
