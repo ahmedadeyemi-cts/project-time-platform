@@ -254,6 +254,15 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertIn("id: sow", self.workflow)
         self.assertIn("steps.sow.outcome", self.workflow)
         self.assertNotIn('"/ai-planner/runs", "POST"', self.planner)
+        for token in (
+            "/documents/readiness",
+            '"documentReadiness"',
+            '"categoryStatusCounts"',
+            "FLOWHIVE_PLANNER_RECONCILIATION_SUMMARY",
+        ):
+            self.assertIn(token, self.planner)
+        for forbidden in ("original_file_name", "fileName", "document_reference", "stored_file_path"):
+            self.assertNotIn(forbidden, self.planner)
 
     def test_flowhive_entrypoint_reconciles_before_one_generation_and_never_mocks(self):
         self.assertIn("PREVIOUS_PLANNER_RUN_ID", self.flowhive)
