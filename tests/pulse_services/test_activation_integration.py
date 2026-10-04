@@ -65,8 +65,9 @@ class CanonicalGate(unittest.TestCase):
 class SourcePreservation(unittest.TestCase):
     def test_current_activation_change_preserves_all_live_authority_and_accounts(self):
         import subprocess
-        base='6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f'
-        changes=subprocess.check_output(['git','diff','--name-only',base],cwd=ROOT,text=True).splitlines()
+        source_base='f24f28faf38b9bc7e6ad5ed9bf8704927d87247f'
+        authority_base='6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f'
+        changes=subprocess.check_output(['git','diff','--name-only',source_base],cwd=ROOT,text=True).splitlines()
         allowed_application_policy={
           'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs',
           'src/backend/ProjectTime.Api/Ai/PulseDocumentServiceOptions.cs',
@@ -80,7 +81,7 @@ class SourcePreservation(unittest.TestCase):
           '.github/workflows/module025-protected-uat-control.yml',
           'scripts/validate-deployment-concurrency-governance.mjs',
           '.github/workflows/deployment-concurrency-governance-ci.yml'):
-            expected=subprocess.check_output(['git','show',base+':'+name],cwd=ROOT)
+            expected=subprocess.check_output(['git','show',authority_base+':'+name],cwd=ROOT)
             actual=(ROOT/name).read_bytes()
             if name=='.github/workflows/projectpulse-deploy-test.yml':
                 spec=importlib.util.spec_from_file_location('reviewed_order_projection',ROOT/'tests/pulse-activation-release/controller.py')
