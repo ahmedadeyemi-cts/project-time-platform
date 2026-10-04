@@ -49,6 +49,29 @@ class OrderGates(unittest.TestCase):
                 next(s for s in jobs['jobs'][0]['steps'] if s['name']==name)['conclusion']=outcome
                 with self.subTest(name=name,outcome=outcome),self.assertRaises(ValueError):
                     gate.validate_run(run,jobs,SHA,RUN,final=True)
+    def test_finalizer_observation_retries_lagging_job_state(self):
+        run,jobs=completed_records()
+        lagging=copy.deepcopy(jobs)
+        finalizer=next(s for s in lagging['jobs'][0]['steps'] if s['name']==gate.FINALIZATION_STEP)
+        finalizer.update(status='pending',conclusion=None)
+        previous=lagging['jobs'][0]['steps'][-2]
+        previous.update(status='in_progress',conclusion=None)
+        with patch.object(cutover,'gh',side_effect=[run,lagging,run,jobs]) as gh,patch.object(final.time,'sleep') as sleep:
+            observed=final.observe_canonical_finalization(SHA,RUN,attempts=2,delay_seconds=0)
+        self.assertEqual(observed,(run,jobs));self.assertEqual(gh.call_count,4);sleep.assert_called_once()
+
+    def test_finalizer_observation_never_retries_identity_mismatch(self):
+        run,jobs=completed_records();run['path']='untrusted.yml'
+        with patch.object(cutover,'gh',side_effect=[run,jobs]) as gh,patch.object(final.time,'sleep') as sleep,self.assertRaises(cutover.CutoverError):
+            final.observe_canonical_finalization(SHA,RUN,attempts=5,delay_seconds=0)
+        self.assertEqual(gh.call_count,2);sleep.assert_not_called()
+
+    def test_finalizer_observation_retries_transient_github_read(self):
+        run,jobs=completed_records()
+        with patch.object(cutover,'gh',side_effect=[cutover.CutoverError('command_failed_gh'),run,jobs]) as gh,patch.object(final.time,'sleep') as sleep:
+            observed=final.observe_canonical_finalization(SHA,RUN,attempts=2,delay_seconds=0)
+        self.assertEqual(observed,(run,jobs));self.assertEqual(gh.call_count,3);sleep.assert_called_once()
+
     def test_authentic_failed_uat_can_only_enter_cleanup_identity_gate(self):
         run,jobs=completed_records()
         next(s for s in jobs['jobs'][0]['steps'] if s['name']==gate.APPLICATION_UAT_STEPS[0])['conclusion']='failure'

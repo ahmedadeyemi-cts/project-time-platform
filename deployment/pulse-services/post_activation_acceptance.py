@@ -6,6 +6,7 @@ import json
 import os
 import re
 import shutil
+import time
 from pathlib import Path
 
 import cutover
@@ -32,13 +33,35 @@ def canonical_finalization(run, jobs, source, number):
                   'finalization_step_required')
 
 
+TRANSIENT_FINALIZATION_OBSERVATION = {
+    'command_failed_gh',
+    'canonical_job_required',
+    'active_job_required',
+    'finalization_step_required',
+}
+
+
+def observe_canonical_finalization(source, number, attempts=5, delay_seconds=2):
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            run = cutover.gh('actions/runs/' + number)
+            jobs = cutover.gh('actions/runs/' + number + '/jobs?filter=latest&per_page=10')
+            canonical_finalization(run, jobs, source, number)
+            return run, jobs
+        except cutover.CutoverError as error:
+            last_error = error
+            if str(error) not in TRANSIENT_FINALIZATION_OBSERVATION or attempt + 1 >= attempts:
+                raise
+            time.sleep(delay_seconds * (attempt + 1))
+    raise last_error or cutover.CutoverError('finalization_observation_failed')
+
+
 def finalize():
     source, safe = context()
     number = os.environ.get('GITHUB_RUN_ID', '')
     validate_context(os.environ, source, number)
-    run = cutover.gh('actions/runs/' + number)
-    jobs = cutover.gh('actions/runs/' + number + '/jobs?filter=latest&per_page=10')
-    canonical_finalization(run, jobs, source, number)
+    run, jobs = observe_canonical_finalization(source, number)
     private = Path(os.environ['PULSE_PRIVATE_EVIDENCE'])
     expected = Path(os.environ['RUNNER_TEMP']).resolve() / 'pulse-services-private'
     cutover.check(not private.is_symlink() and private.resolve() == expected, 'private_directory_scope')
