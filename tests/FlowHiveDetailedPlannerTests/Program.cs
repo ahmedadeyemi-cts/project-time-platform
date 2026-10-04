@@ -702,6 +702,36 @@ Assert(!flowHiveRetry.Succeeded && flowHiveRetryCalls == 1
     "flowhive_transient_batch_timeout_returns_immediately_to_source_grounded_failsafe");
 Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("provider_deadline_exceeded"),
     "flowhive_provider_deadline_is_retryable_at_orchestrator_boundary");
+Assert(ProjectPlanningAiOrchestrator.IsRetryableProviderDiagnostic("provider_circuit_open"),
+    "flowhive_provider_circuit_open_is_retryable_at_orchestrator_boundary");
+Assert(ProjectPlanningAiOrchestrator.IsRetryablePrivateProviderDecision(
+        new ProjectPulseAiTargetDecision("deepseek_v4", "skipped", "provider_circuit_open")),
+    "flowhive_skipped_private_circuit_open_uses_bounded_retry");
+Assert(ProjectPlanningAiOrchestrator.IsRetryablePrivateProviderDecision(
+        new ProjectPulseAiTargetDecision("celar_ai", "skipped", "provider_circuit_open")),
+    "flowhive_skipped_celar_circuit_open_uses_bounded_retry");
+Assert(!ProjectPlanningAiOrchestrator.IsRetryablePrivateProviderDecision(
+        new ProjectPulseAiTargetDecision("claude", "skipped", "provider_circuit_open")),
+    "flowhive_external_circuit_open_does_not_drive_private_retry");
+Assert(!ProjectPlanningAiOrchestrator.IsRetryablePrivateProviderDecision(
+        new ProjectPulseAiTargetDecision("celar_ai", "skipped", "privacy_ineligible")),
+    "flowhive_nonavailability_skip_does_not_drive_private_retry");
+var circuitNow = new DateTimeOffset(2026, 10, 3, 20, 0, 0, TimeSpan.Zero);
+var circuitDelay = ProjectPlanningAiOrchestrator.RetryDelayForPrivateProviderDecisions(
+    [
+        new ProjectPulseAiTargetDecision("deepseek_v4", "skipped", "provider_circuit_open"),
+        new ProjectPulseAiTargetDecision("celar_ai", "skipped", "provider_circuit_open")
+    ],
+    circuitNow,
+    provider => provider == "deepseek_v4" ? circuitNow.AddSeconds(120) : circuitNow.AddSeconds(180));
+Assert(circuitDelay == TimeSpan.FromSeconds(185),
+    "flowhive_private_circuit_retry_waits_until_latest_reopen_plus_guard");
+var missingCircuitDelay = ProjectPlanningAiOrchestrator.RetryDelayForPrivateProviderDecisions(
+    [new ProjectPulseAiTargetDecision("celar_ai", "skipped", "provider_circuit_open")],
+    circuitNow,
+    _ => null);
+Assert(missingCircuitDelay == ProjectFlowHiveExecutionPolicy.OverallBudget,
+    "flowhive_missing_circuit_reopen_time_fails_closed_without_early_retry");
 foreach (var diagnostic in new[]
 {
     "celar_ai_private_http_502",

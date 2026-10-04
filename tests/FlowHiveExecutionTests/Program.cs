@@ -141,8 +141,10 @@ Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(2,DateTimeOffset.UtcNow.AddMinu
 Check(!ProjectFlowHiveExecutionPolicy.CanAttempt(0,DateTimeOffset.UtcNow.AddSeconds(-1),DateTimeOffset.UtcNow), "expired operation cannot attempt inference");
 Check(ProjectFlowHiveExecutionPolicy.OverallBudget == TimeSpan.FromMinutes(40), "the durable planner deadline is forty minutes and remains bounded");
 Check(ProjectFlowHiveExecutionPolicy.InferenceBudget == TimeSpan.FromMinutes(38), "the provider request may use the configured thirty-eight-minute background budget");
-Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(39),DateTimeOffset.UtcNow), "a first transient failure can retry when the full bounded request still fits");
-Check(!ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(10).AddSeconds(20),DateTimeOffset.UtcNow), "a late transient failure cannot start a retry that would outlive the run");
+Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(39),DateTimeOffset.UtcNow), "a first transient failure can retry when a meaningful execution window remains");
+Check(!ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(10).AddSeconds(20),DateTimeOffset.UtcNow), "a late transient failure cannot start a retry without the minimum execution window");
+Check(ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(39),DateTimeOffset.UtcNow,TimeSpan.FromMinutes(3).Add(TimeSpan.FromSeconds(5))), "a private circuit cooldown can be honored inside the bounded run");
+Check(!ProjectFlowHiveExecutionPolicy.CanRetry(1,DateTimeOffset.UtcNow.AddMinutes(12),DateTimeOffset.UtcNow,TimeSpan.FromMinutes(3).Add(TimeSpan.FromSeconds(5))), "a circuit cooldown is not retried when less than the minimum execution window would remain");
 Check(!ProjectFlowHiveExecutionPolicy.CanRetry(2,DateTimeOffset.UtcNow.AddMinutes(12),DateTimeOffset.UtcNow), "the retry budget remains capped at two attempts");
 Check(!ProjectFlowHiveExecutionPolicy.MatchesWorkingCopy(null,Guid.NewGuid()), "null starting version is not an overwrite wildcard");
 var module = typeof(ProjectFlowHiveExecutionPolicy).Assembly.GetType("ProjectTime.Api.Modules.ProjectFlowHiveAiPlannerOrchestrationModule")!;

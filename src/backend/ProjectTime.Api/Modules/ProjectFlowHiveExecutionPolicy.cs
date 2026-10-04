@@ -15,6 +15,8 @@ public static class ProjectFlowHiveExecutionPolicy
     // Phase calls have their own 330-second cap; two minutes remain for admission/persistence.
     public static readonly TimeSpan InferenceBudget = TimeSpan.FromMinutes(38);
     public static readonly TimeSpan RetryDelay = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan CircuitReopenGuard = TimeSpan.FromSeconds(5);
+    public static readonly TimeSpan MinimumRetryExecutionBudget = TimeSpan.FromMinutes(10);
 
     public static string Fingerprint(ProjectFlowHivePlanRequest plan, Guid actual, Guid effective,
         string outcome, string detail, string sources) => Hash(JsonSerializer.Serialize(new
@@ -29,9 +31,14 @@ public static class ProjectFlowHiveExecutionPolicy
     public static bool IsActive(string status) => status is "queued" or "processing" or "generating";
     public static bool CanAttempt(int attempts, DateTimeOffset deadline, DateTimeOffset now) =>
         attempts >= 0 && attempts < MaximumAttempts && now < deadline;
-    public static bool CanRetry(int attempt, DateTimeOffset deadline, DateTimeOffset now) =>
-        CanAttempt(attempt, deadline, now)
-        && now + RetryDelay + InferenceBudget < deadline;
+    public static bool CanRetry(int attempt, DateTimeOffset deadline, DateTimeOffset now,
+        TimeSpan? retryDelay = null)
+    {
+        var delay = retryDelay ?? RetryDelay;
+        return delay >= TimeSpan.Zero
+            && CanAttempt(attempt, deadline, now)
+            && now + delay + MinimumRetryExecutionBudget < deadline;
+    }
     public static bool MatchesWorkingCopy(Guid? expected, Guid? actual) => expected == actual;
 
     internal static string SelectionFingerprint(ProjectPlanningDocumentResolution documents) =>

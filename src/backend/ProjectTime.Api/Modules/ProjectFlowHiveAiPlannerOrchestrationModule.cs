@@ -554,19 +554,22 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         {
             var refused = generation.Status == "project_planning_safety_refusal";
             var transient = generation.Status == "project_planning_ai_temporarily_unavailable";
+            var retryDelay = generation.RetryDelay ?? ProjectFlowHiveExecutionPolicy.RetryDelay;
             var retry = transient
                 && stored.DeadlineAt is { } deadline
                 && ProjectFlowHiveExecutionPolicy.CanRetry(
                     attempt,
                     deadline,
-                    DateTimeOffset.UtcNow);
+                    DateTimeOffset.UtcNow,
+                    retryDelay);
             var retryLog = retry
                 ? $"AI route retry {attempt} is scheduled within the fixed two-attempt and forty-minute deadline."
                 : transient
                     ? "The bounded AI route retry limit was reached. Review the evidence status and start AI Planner again when private generation is available."
                     : generation.Message;
             var providerDiagnostics = (generation.Composition?.TargetDecisions ?? [])
-                .Where(decision => decision.Outcome is "failed" or "refused")
+                .Where(decision => decision.Outcome is "failed" or "refused"
+                    || ProjectPlanningAiOrchestrator.IsRetryablePrivateProviderDecision(decision))
                 .Select(decision => $"provider_{Clean(decision.Target, 40, "unknown")}_{Clean(decision.ReasonCode, 120, "unclassified")}")
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -587,7 +590,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                 null,
                 null,
                 cancellationToken,
-                completed: !retry);
+                completed: !retry,
+                retryDelay: retryDelay);
             return;
         }
 
@@ -1290,7 +1294,8 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         ProjectFlowHivePlanValidationResult? validation,
         CancellationToken cancellationToken,
         bool completed = false,
-        NpgsqlTransaction? transaction = null)
+        NpgsqlTransaction? transaction = null,
+        TimeSpan? retryDelay = null)
     {
         await using var command = new NpgsqlCommand($"""
             UPDATE {RunTable}
@@ -1306,7 +1311,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
                 updated_at=NOW(),
                 completed_at=CASE WHEN @completed THEN NOW() ELSE completed_at END,
                 row_version=gen_random_uuid(),
-                next_attempt_at=CASE WHEN @phase='ai_route_retry' THEN NOW()+INTERVAL '30 seconds' ELSE NOW()+INTERVAL '3 seconds' END
+                next_attempt_at=CASE WHEN @phase='ai_route_retry' THEN NOW()+@retry_delay ELSE NOW()+INTERVAL '3 seconds' END
             WHERE run_id=@run_id AND status IN ('queued','processing','generating')
               AND ((@completed AND @phase NOT IN ('working_draft_ready','candidate_review_required')) OR deadline_at>clock_timestamp());
             """, connection, transaction);
@@ -1320,6 +1325,7 @@ internal static partial class ProjectFlowHiveAiPlannerOrchestrationModule
         command.Parameters.Add("schedule", NpgsqlDbType.Text).Value = schedule is null ? DBNull.Value : JsonSerializer.Serialize(schedule, Json);
         command.Parameters.Add("validation", NpgsqlDbType.Text).Value = validation is null ? DBNull.Value : JsonSerializer.Serialize(validation, Json);
         command.Parameters.AddWithValue("completed", completed);
+        command.Parameters.AddWithValue("retry_delay", retryDelay ?? ProjectFlowHiveExecutionPolicy.RetryDelay);
         command.Parameters.AddWithValue("run_id", runId);
         var changed = await command.ExecuteNonQueryAsync(cancellationToken);
         if (changed != 1 && phase is "working_draft_ready" or "candidate_review_required")
