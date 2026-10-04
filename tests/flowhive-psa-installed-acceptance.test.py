@@ -249,6 +249,9 @@ class InstalledAcceptanceContract(unittest.TestCase):
         ):
             self.assertIn(token, self.planner)
         self.assertIn("Reconcile prior planner operation before any generation", self.workflow)
+        planner_step = self.step(self.verification_job, "planner")
+        self.assertIn("python3 scripts/release-test/reconcile-flowhive-planner.py", planner_step["run"])
+        self.assertNotIn("flowhive-psa-browser/bin/python", planner_step["run"])
         self.assertIn("id: planner", self.workflow)
         self.assertIn("steps.planner.outcome", self.workflow)
         self.assertIn("id: sow", self.workflow)

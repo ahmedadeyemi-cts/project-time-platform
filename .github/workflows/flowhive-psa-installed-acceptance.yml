@@ -101,7 +101,7 @@ jobs:
           FLOWHIVE_APPROVED_PROJECT_ID: 0ea25cb8-1a7f-4baf-ba7b-2dd76215be49
         run: |
           set -Eeuo pipefail
-          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/reconcile-flowhive-planner.py
+          python3 scripts/release-test/reconcile-flowhive-planner.py
 
       - name: Verify installed API identity before business writes
         id: identity
