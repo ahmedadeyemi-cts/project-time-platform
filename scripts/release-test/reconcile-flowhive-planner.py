@@ -132,6 +132,27 @@ def main() -> int:
             "readySowCount": sum(1 for item in workspace.get("sowEvidence") or [] if item.get("readyForAiPlanner") is True),
         }
 
+        status, readiness = request(base + "/documents/readiness", token=token)
+        require(status == 200 and isinstance(readiness, dict), "document_readiness_read_failed")
+        preparation = readiness.get("preparation") or {}
+        readiness_documents = preparation.get("documents") or []
+        require(isinstance(readiness_documents, list)
+                and all(isinstance(item, dict) for item in readiness_documents),
+                "document_readiness_shape_invalid")
+        category_status_counts = {}
+        for item in readiness_documents:
+            category = re.sub(r"[^A-Za-z0-9 _-]", "", str(item.get("category") or "unknown"))[:40]
+            state = re.sub(r"[^A-Za-z0-9 _-]", "", str(item.get("status") or "unknown"))[:40]
+            key = f"{category or 'unknown'}|{state or 'unknown'}"
+            category_status_counts[key] = category_status_counts.get(key, 0) + 1
+        report["documentReadiness"] = {
+            "status": re.sub(r"[^a-z0-9_]", "", str(preparation.get("status") or "").lower())[:80],
+            "readyForAi": preparation.get("readyForAi") is True,
+            "readyCount": preparation.get("readyCount") if isinstance(preparation.get("readyCount"), int) else 0,
+            "totalCount": preparation.get("totalCount") if isinstance(preparation.get("totalCount"), int) else len(readiness_documents),
+            "categoryStatusCounts": dict(sorted(category_status_counts.items())),
+        }
+
         status, prior = request(base + f"/ai-planner/runs/{PREVIOUS_RUN}", token=token)
         require(status in (200, 202) and isinstance(prior, dict), "prior_planner_status_read_failed")
         require(prior.get("runId") == PREVIOUS_RUN, "prior_planner_identity_mismatch")
@@ -172,6 +193,17 @@ def main() -> int:
         logout(token)
         (evidence_dir / "flowhive-planner-reconciliation.json").write_text(json.dumps(report, indent=2) + "\n")
     print("FLOWHIVE_PLANNER_RECONCILIATION=" + ("PASS" if report["status"] == "passed" else "BLOCKED"))
+    if report["status"] == "passed":
+        summary = {
+            "approvedSowScopeReady": (report.get("workingCopy") or {}).get("approvedSowScopeReady") is True,
+            "readySowCount": (report.get("workingCopy") or {}).get("readySowCount", 0),
+            "documentReadiness": report.get("documentReadiness") or {},
+            "priorPlannerStatus": (report.get("priorPlanner") or {}).get("status", ""),
+            "priorPlannerPhase": (report.get("priorPlanner") or {}).get("phase", ""),
+            "latestPlannerHttpStatus": (report.get("latestPlanner") or {}).get("httpStatus"),
+            "latestPlannerTerminal": (report.get("latestPlanner") or {}).get("terminal"),
+        }
+        print("FLOWHIVE_PLANNER_RECONCILIATION_SUMMARY=" + json.dumps(summary, sort_keys=True, separators=(",", ":")))
     return 0 if report["status"] == "passed" else 1
 
 
