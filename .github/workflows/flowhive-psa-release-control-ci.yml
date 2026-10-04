@@ -212,6 +212,8 @@ jobs:
             python3 tests/stale-sow-flowhive-execution-guide-scope.py
           elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-celar-private-transient-diagnostics-20261002 ]]; then
             python3 tests/flowhive-celar-private-transient-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-private-circuit-retry-20261003 ]]; then
+            python3 tests/flowhive-private-circuit-retry-scope.py
           elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-source-grounded-failsafe-20260926 ]]; then
             python3 tests/flowhive-whole-wbs-failsafe-scope.py
           elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-whole-wbs-live-final-20260926 ]]; then
