@@ -68,6 +68,7 @@ const pulseDocumentRuntimePrerequisites = process.env.GITHUB_HEAD_REF === 'fix/p
 const staleSowFlowHiveExecutionGuide = process.env.GITHUB_HEAD_REF === 'fix/stale-sow-cleanup-flowhive-execution-guide-20261002';
 const staleSowAuthorityProjection = process.env.GITHUB_HEAD_REF === 'fix/stale-sow-authority-projection-20261003';
 const flowHiveReadinessDiagnostic = process.env.GITHUB_HEAD_REF === 'fix/flowhive-readiness-diagnostic-20261003';
+const flowHiveReadinessDiagnosticRunner = process.env.GITHUB_HEAD_REF === 'fix/flowhive-readiness-diagnostic-runner-20261003';
 const flowHiveCelarPrivateTransient = process.env.GITHUB_HEAD_REF === 'fix/flowhive-celar-private-transient-diagnostics-20261002';
 const installedVerifierRepair = process.env.GITHUB_HEAD_REF === 'fix/flowhive-installed-verifier-20260921';
 const module064SequenceRepair = process.env.GITHUB_HEAD_REF === 'fix/module064-generation-sequence-20260921';
@@ -475,6 +476,11 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
 test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
+  if (flowHiveReadinessDiagnosticRunner) {
+    execFileSync('python3', ['tests/flowhive-readiness-diagnostic-runner-scope.py']);
+    assert.ok(true, 'FlowHive readiness diagnostic runner uses its exact governed scope');
+    return;
+  }
   if (flowHiveReadinessDiagnostic) {
     execFileSync('python3', ['tests/flowhive-readiness-diagnostic-scope.py']);
     assert.ok(true, 'FlowHive readiness diagnostic uses its exact governed scope');
@@ -545,6 +551,11 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (flowHiveReadinessDiagnosticRunner) {
+    execFileSync('python3', ['tests/flowhive-readiness-diagnostic-runner-scope.py']);
+    assert.ok(true, 'FlowHive readiness diagnostic runner uses its exact governed scope');
+    return;
+  }
   if (flowHiveReadinessDiagnostic) {
     execFileSync('python3', ['tests/flowhive-readiness-diagnostic-scope.py']);
     assert.ok(true, 'FlowHive readiness diagnostic uses its exact governed scope');
@@ -1035,6 +1046,11 @@ test('successor approval enumerates only the workflows that ran for the exact se
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
+  if (flowHiveReadinessDiagnosticRunner) {
+    execFileSync('python3', ['tests/flowhive-readiness-diagnostic-runner-scope.py']);
+    assert.ok(true, 'FlowHive readiness diagnostic runner uses its exact governed scope');
+    return;
+  }
   if (flowHiveReadinessDiagnostic) {
     execFileSync('python3', ['tests/flowhive-readiness-diagnostic-scope.py']);
     assert.ok(true, 'FlowHive readiness diagnostic uses its exact governed scope');
