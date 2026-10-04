@@ -194,7 +194,7 @@ await using(var c=new NpgsqlConnection(cs))
 {
     await c.OpenAsync();
     await Invoke("StopRunAsync",c,run,"cancelled","test cancellation",CancellationToken.None);
-    await Invoke("UpdateRunAsync",c,run,"processing","ai_route_retry",70,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),null,null,null,CancellationToken.None,false,null);
+    await Invoke("UpdateRunAsync",c,run,"processing","ai_route_retry",70,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),null,null,null,CancellationToken.None,false,null,null);
 }
 Check((string)(await Sql("SELECT phase FROM project_flowhive_ai_planner_runs WHERE run_id=@r",("r",run)))! == "cancelled","late retry cannot revive a cancelled run");
 try { await Sql("UPDATE project_flowhive_ai_planner_runs SET status='generating' WHERE run_id=@r",("r",run)); throw new Exception("Revived terminal run"); }
@@ -212,7 +212,7 @@ await using(var c=new NpgsqlConnection(cs))
     await saved;
     try {
         await Invoke("RecordWorkingCopyReceiptAsync",c,transaction,expired,currentVersion,1,CancellationToken.None);
-        await Invoke("UpdateRunAsync",c,expired,"completed","working_draft_ready",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,transaction);
+        await Invoke("UpdateRunAsync",c,expired,"completed","working_draft_ready",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,transaction,null);
         throw new Exception("Expired completion was accepted");
     } catch(TimeoutException) { await transaction.RollbackAsync(); Check(true,"deadline during commit rolls back the working-copy transaction"); }
 }
@@ -231,7 +231,7 @@ await using(var c=new NpgsqlConnection(cs))
     savedVersion=(Guid)saved.GetType().GetProperty("RowVersion")!.GetValue(saved)!;
     savedRevision=(int)saved.GetType().GetProperty("WorkingRevision")!.GetValue(saved)!;
     await Invoke("RecordWorkingCopyReceiptAsync",c,transaction,successful,savedVersion,savedRevision,CancellationToken.None);
-    await Invoke("UpdateRunAsync",c,successful,"completed","working_draft_ready",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,transaction);
+    await Invoke("UpdateRunAsync",c,successful,"completed","working_draft_ready",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,transaction,null);
     await transaction.CommitAsync();
     var loaded=(await Invoke("LoadRunAsync",c,project,successful,CancellationToken.None))!;
     var response=module.GetMethod("ToResponse",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[loaded]);
@@ -256,7 +256,7 @@ var reviewRun=await Queue("explicit reviewed proposal",savedVersion);
 await using(var c=new NpgsqlConnection(cs))
 {
     await c.OpenAsync();
-    await Invoke("UpdateRunAsync",c,reviewRun,"completed","candidate_review_required",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,null);
+    await Invoke("UpdateRunAsync",c,reviewRun,"completed","candidate_review_required",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,null,null);
     var loaded=(await Invoke("LoadRunAsync",c,project,reviewRun,CancellationToken.None))!;
     var projected=JsonSerializer.SerializeToElement(module.GetMethod("ToResponse",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[loaded]),new JsonSerializerOptions(JsonSerializerDefaults.Web));
     Check(projected.GetProperty("candidateAvailable").GetBoolean() && projected.GetProperty("candidate").GetProperty("persisted").GetBoolean(),"staged proposal has an observable durable candidate receipt");
@@ -297,7 +297,7 @@ var interruptedReview=await Queue("interrupted reviewed proposal",reviewedVersio
 await using(var c=new NpgsqlConnection(cs))
 {
     await c.OpenAsync();
-    await Invoke("UpdateRunAsync",c,interruptedReview,"needs_attention","cancelled",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,null);
+    await Invoke("UpdateRunAsync",c,interruptedReview,"needs_attention","cancelled",100,Array.Empty<string>(),Array.Empty<string>(),Array.Empty<string>(),seed,schedule,validation,CancellationToken.None,true,null,null);
 }
 try{await CommitReview(interruptedReview,reviewRequest with {ExpectedWorkingRowVersion=reviewedVersion});throw new Exception("Cancelled review committed");}
 catch(InvalidOperationException){Check(true,"failed final review guard rolls back working-copy and audit writes together");}
