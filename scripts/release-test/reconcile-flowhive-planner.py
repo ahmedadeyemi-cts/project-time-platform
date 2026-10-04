@@ -175,10 +175,24 @@ def main() -> int:
             require(isinstance(latest, dict), "latest_planner_payload_invalid")
             latest_run = latest.get("runId")
             require(not latest_run or latest.get("terminal") is True, "another_planner_operation_active")
+            planning_evidence = latest.get("planningEvidence") or {}
+            working_draft = latest.get("workingDraft") or {}
+            blockers = latest.get("blockers") or []
+            warnings = latest.get("warnings") or []
             report["latestPlanner"] = {
                 "httpStatus": status,
                 "runIdPresent": bool(latest_run),
                 "terminal": latest.get("terminal") is True,
+                "status": re.sub(r"[^a-z0-9_]", "", str(latest.get("status") or "").lower())[:80],
+                "phase": re.sub(r"[^a-z0-9_]", "", str(latest.get("phase") or "").lower())[:80],
+                "workingDraftPersisted": working_draft.get("persisted") is True,
+                "blockerCount": len(blockers) if isinstance(blockers, list) else 0,
+                "warningCount": len(warnings) if isinstance(warnings, list) else 0,
+                "sourceGrounded": planning_evidence.get("sourceGrounded") is True,
+                "evidenceCitationCount": planning_evidence.get("evidenceCitationCount") if isinstance(planning_evidence.get("evidenceCitationCount"), int) else 0,
+                "approvedSowCitationCount": planning_evidence.get("approvedSowCitationCount") if isinstance(planning_evidence.get("approvedSowCitationCount"), int) else 0,
+                "scopeOfServicesCitationCount": planning_evidence.get("scopeOfServicesCitationCount") if isinstance(planning_evidence.get("scopeOfServicesCitationCount"), int) else 0,
+                "completedPhaseCount": planning_evidence.get("completedPhaseCount") if isinstance(planning_evidence.get("completedPhaseCount"), int) else 0,
             }
         else:
             report["latestPlanner"] = {"httpStatus": status, "projection": "stale_or_unavailable"}
@@ -202,6 +216,16 @@ def main() -> int:
             "priorPlannerPhase": (report.get("priorPlanner") or {}).get("phase", ""),
             "latestPlannerHttpStatus": (report.get("latestPlanner") or {}).get("httpStatus"),
             "latestPlannerTerminal": (report.get("latestPlanner") or {}).get("terminal"),
+            "latestPlannerStatus": (report.get("latestPlanner") or {}).get("status", ""),
+            "latestPlannerPhase": (report.get("latestPlanner") or {}).get("phase", ""),
+            "latestPlannerWorkingDraftPersisted": (report.get("latestPlanner") or {}).get("workingDraftPersisted") is True,
+            "latestPlannerBlockerCount": (report.get("latestPlanner") or {}).get("blockerCount", 0),
+            "latestPlannerWarningCount": (report.get("latestPlanner") or {}).get("warningCount", 0),
+            "latestPlannerSourceGrounded": (report.get("latestPlanner") or {}).get("sourceGrounded") is True,
+            "latestPlannerEvidenceCitationCount": (report.get("latestPlanner") or {}).get("evidenceCitationCount", 0),
+            "latestPlannerApprovedSowCitationCount": (report.get("latestPlanner") or {}).get("approvedSowCitationCount", 0),
+            "latestPlannerScopeOfServicesCitationCount": (report.get("latestPlanner") or {}).get("scopeOfServicesCitationCount", 0),
+            "latestPlannerCompletedPhaseCount": (report.get("latestPlanner") or {}).get("completedPhaseCount", 0),
         }
         print("FLOWHIVE_PLANNER_RECONCILIATION_SUMMARY=" + json.dumps(summary, sort_keys=True, separators=(",", ":")))
     return 0 if report["status"] == "passed" else 1

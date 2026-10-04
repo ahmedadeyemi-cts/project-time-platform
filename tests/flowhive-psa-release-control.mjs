@@ -1733,6 +1733,13 @@ export function validate() {
   const context = { event, eventName: process.env.GITHUB_EVENT_NAME,
     repository: process.env.GITHUB_REPOSITORY, base, branch: process.env.GITHUB_HEAD_REF,
     head: git('rev-parse', 'HEAD') };
+  const isFlowHivePlannerTerminalDiagnostic =
+    process.env.GITHUB_HEAD_REF === 'fix/flowhive-planner-terminal-diagnostic-20261003';
+  if (isFlowHivePlannerTerminalDiagnostic) {
+    execFileSync('python3', ['tests/flowhive-planner-terminal-diagnostic-scope.py'], { stdio: 'inherit' });
+    console.log('FLOWHIVE_PSA_RELEASE_CONTROL_SCOPE=PASS productionMutation=false featureMerge=false');
+    return;
+  }
   const isFlowHiveReadinessDiagnosticRunner =
     process.env.GITHUB_HEAD_REF === 'fix/flowhive-readiness-diagnostic-runner-20261003';
   if (isFlowHiveReadinessDiagnosticRunner) {

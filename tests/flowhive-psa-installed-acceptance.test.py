@@ -262,6 +262,12 @@ class InstalledAcceptanceContract(unittest.TestCase):
             '"documentReadiness"',
             '"categoryStatusCounts"',
             "FLOWHIVE_PLANNER_RECONCILIATION_SUMMARY",
+            '"latestPlannerStatus"',
+            '"latestPlannerPhase"',
+            '"latestPlannerEvidenceCitationCount"',
+            '"latestPlannerApprovedSowCitationCount"',
+            '"latestPlannerScopeOfServicesCitationCount"',
+            '"latestPlannerCompletedPhaseCount"',
         ):
             self.assertIn(token, self.planner)
         for forbidden in ("original_file_name", "fileName", "document_reference", "stored_file_path"):
