@@ -77,6 +77,28 @@ class ScanBinding(unittest.TestCase):
             with patch.object(images,'command',return_value=json.dumps(entries)):self.assertEqual(images.installed_selection(),expected)
         with patch.object(images,'command',return_value=json.dumps([{'name':cutover.PREFIXES[0]+'MODE','value':'pulse_container'}])):
             with self.assertRaises(ValueError):images.installed_selection()
+    def test_reviewed_control_only_service_lineage_can_reuse_installed_images(self):
+        installed={'managedBy':'pulse-services-reviewed-cutover',
+            'source':'55ac38319fa05b2c72f4744bd8c01ed5844f8099',
+            'serviceFingerprint':'da52f4615c09abd20510c4856a8eee271f61e1d6cc6688dc52a20101f51b39ee'}
+        self.assertTrue(images.reviewed_control_only_compatible(installed,images.fingerprint()))
+        self.assertFalse(images.reviewed_control_only_compatible(installed|{'serviceFingerprint':'0'*64},images.fingerprint()))
+        self.assertFalse(images.reviewed_control_only_compatible(installed|{'source':'not-a-commit'},images.fingerprint()))
+        with patch.object(images,'CONTROL_ONLY_COMPATIBLE_PATHS',frozenset()):
+            self.assertFalse(images.reviewed_control_only_compatible(installed,images.fingerprint()))
+
+    def test_control_only_compatibility_allowlist_never_contains_runtime_image_inputs(self):
+        docker_inputs=set()
+        for dockerfile in D.glob('Dockerfile.*'):
+            for line in dockerfile.read_text().splitlines():
+                if not line.startswith('COPY '): continue
+                for token in line.split()[1:]:
+                    if token.startswith('--') or token.startswith('/'): continue
+                    if token.startswith('deployment/'): docker_inputs.add(token)
+        self.assertFalse(images.CONTROL_ONLY_COMPATIBLE_PATHS & docker_inputs)
+        self.assertEqual(images.CONTROL_ONLY_COMPATIBLE_PATHS,{
+            'deployment/pulse-services/post_activation_acceptance.py',
+            'deployment/pulse-services/service_images.py'})
 
 class Orchestration(unittest.TestCase):
     def setUp(self):

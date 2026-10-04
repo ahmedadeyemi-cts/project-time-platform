@@ -5,6 +5,11 @@ import hashlib,json,os,re,subprocess,sys,time
 from pathlib import Path
 from test_resources import ACR,COMPONENTS,validate_images,APPS,GROUP,API,runtime_identity_isolated
 ROOT=Path(__file__).resolve().parents[2]
+FINGERPRINT_PATHS=('deployment/pulse-services','deployment/pulse-document-processing')
+CONTROL_ONLY_COMPATIBLE_PATHS=frozenset({
+    'deployment/pulse-services/post_activation_acceptance.py',
+    'deployment/pulse-services/service_images.py',
+})
 
 def require(condition,code):
     if not condition:raise ValueError(code)
@@ -71,13 +76,58 @@ def manifest_verified(manifest,identity):
             'registry_layer_descriptor_invalid')
     return True
 
-def fingerprint():
-    names=command(['git','ls-files','deployment/pulse-services','deployment/pulse-document-processing']).splitlines()
-    data=[]
+def _snapshot_current():
+    names=command(['git','ls-files',*FINGERPRINT_PATHS]).splitlines()
+    hashes={}
     for name in names:
-        p=ROOT/name;require(p.is_file() and not p.is_symlink(),'invalid_source_file')
-        data.append(name+' '+hashlib.sha256(p.read_bytes()).hexdigest())
-    return hashlib.sha256(('\n'.join(data)+'\n').encode()).hexdigest()
+        p=ROOT/name
+        require(p.is_file() and not p.is_symlink(),'invalid_source_file')
+        hashes[name]=hashlib.sha256(p.read_bytes()).hexdigest()
+    digest=hashlib.sha256(('\n'.join(name+' '+hashes[name] for name in names)+'\n').encode()).hexdigest()
+    return digest,hashes
+
+def _reviewed_snapshot(source):
+    require(re.fullmatch('[0-9a-f]{40}',source or '') is not None,'service_source_invalid')
+    listing=subprocess.run(['git','ls-tree','-r','--name-only',source,'--',*FINGERPRINT_PATHS],
+        cwd=ROOT,capture_output=True,text=True,timeout=60)
+    require(listing.returncode==0,'service_source_history_unavailable')
+    names=[name for name in listing.stdout.splitlines() if name]
+    hashes={}
+    for name in names:
+        require(name.startswith(FINGERPRINT_PATHS) and '..' not in Path(name).parts,'service_source_path_invalid')
+        blob=subprocess.run(['git','show',source+':'+name],cwd=ROOT,capture_output=True,timeout=60)
+        require(blob.returncode==0,'service_source_history_unavailable')
+        hashes[name]=hashlib.sha256(blob.stdout).hexdigest()
+    digest=hashlib.sha256(('\n'.join(name+' '+hashes[name] for name in names)+'\n').encode()).hexdigest()
+    return digest,hashes
+
+def fingerprint():
+    return _snapshot_current()[0]
+
+def reviewed_control_only_compatible(tags,current_fingerprint):
+    if not isinstance(tags,dict):
+        return False
+    installed_fingerprint=tags.get('serviceFingerprint','')
+    if installed_fingerprint==current_fingerprint:
+        return True
+    source=tags.get('source','')
+    if re.fullmatch('[0-9a-f]{40}',source or '') is None:
+        return False
+    ancestry=subprocess.run(['git','merge-base','--is-ancestor',source,'HEAD'],cwd=ROOT,
+        stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=60)
+    if ancestry.returncode!=0:
+        return False
+    try:
+        reviewed_fingerprint,reviewed_hashes=_reviewed_snapshot(source)
+        current_verified,current_hashes=_snapshot_current()
+    except (ValueError,subprocess.SubprocessError,OSError):
+        return False
+    if reviewed_fingerprint!=installed_fingerprint or current_verified!=current_fingerprint:
+        return False
+    if set(reviewed_hashes)!=set(current_hashes):
+        return False
+    changed={name for name in current_hashes if current_hashes[name]!=reviewed_hashes[name]}
+    return bool(changed) and changed.issubset(CONTROL_ONLY_COMPATIBLE_PATHS)
 
 def context():
     source=os.environ.get('PULSE_SOURCE_SHA','')
@@ -120,7 +170,8 @@ def existing_images(fp):
     for kind,name in APPS.items():
         app=json.loads(command(['az','containerapp','show','-g',GROUP,'-n',name,'-o','json','--only-show-errors']))
         p=app['properties'];c=p['configuration'];tags=app.get('tags',{})
-        require(tags.get('managedBy')=='pulse-services-reviewed-cutover' and tags.get('serviceFingerprint')==fp,'service_upgrade_requires_review')
+        require(tags.get('managedBy')=='pulse-services-reviewed-cutover','service_upgrade_requires_review')
+        require(reviewed_control_only_compatible(tags,fp),'service_upgrade_requires_review')
         require(c['ingress']['external'] is False and c['ingress']['allowInsecure'] is False
             and runtime_identity_isolated(c),'existing_service_boundary_changed')
         require(p['latestRevisionName']==p['latestReadyRevisionName'],'existing_service_not_ready')

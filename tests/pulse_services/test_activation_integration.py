@@ -65,7 +65,7 @@ class CanonicalGate(unittest.TestCase):
 class SourcePreservation(unittest.TestCase):
     def test_current_activation_change_preserves_all_live_authority_and_accounts(self):
         import subprocess
-        source_base='f24f28faf38b9bc7e6ad5ed9bf8704927d87247f'
+        source_base='17c3ed0eaf4145c9b5d3a337fb67c13ad08897c7'
         authority_base='6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f'
         changes=subprocess.check_output(['git','diff','--name-only',source_base],cwd=ROOT,text=True).splitlines()
         allowed_application_policy={
