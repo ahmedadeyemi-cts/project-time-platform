@@ -2224,6 +2224,16 @@
       "review_default": "review_required",
       "decision": "review_required",
       "rationale": "Finance billing handoff notification policy candidate. Requires explicit migration review and governed Protected UAT release; no production execution or activation is authorized by this inventory entry."
+    },
+    {
+      "path": "database/migrations/134_customer_billing_notification_profiles.sql",
+      "sha256": "f4aafd6683daec853970bf10057e3550cba3a2b5808de53ddb31be9e4c964e8b",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Pulse-owned per-customer invoice workflow notification profile and enterprise notification policy. Requires explicit migration review and governed Protected UAT release; defaults off and does not enable external customer-contact delivery."
     }
   ]
 }

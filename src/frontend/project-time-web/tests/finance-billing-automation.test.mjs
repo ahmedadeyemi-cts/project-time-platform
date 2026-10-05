@@ -16,12 +16,14 @@ test('billing readiness selects customer before project', () => {
   assert.ok(source.indexOf('            Customer\n') < source.indexOf('            Project\n'));
 });
 
-test('invoice center filters by customer and keeps the selected preview in visible scope', () => {
+test('invoice center filters by customer, keeps preview in scope, and guards empty manual billing state', () => {
   const source = readWeb('src/InvoiceBillingCenter.jsx');
   assert.ok(source.includes("const [customerFilter, setCustomerFilter] = useState('All')"));
   assert.ok(source.includes("customerFilter !== 'All'"));
   assert.ok(source.includes('All customers'));
   assert.ok(source.includes('filtered.some((candidate) => candidate.projectId === selectedId)'));
+  assert.ok(source.includes('const manualBillingActive = Boolean(manualBasis)'));
+  assert.ok(!source.includes("manualBasis?.projectId === selected?.projectId && (manualBasis.manualInvoicesExist"));
 });
 
 test('batch invoice automation remains partial and server validated', () => {
@@ -57,11 +59,34 @@ test('closeout policies route to all Finance billing roles', () => {
   assert.ok(migration.includes('Ready for billing'));
 });
 
-test('protected Test release applies and verifies the Finance notification migration', () => {
+test('customer directory owns the per-customer invoice workflow notification profile', () => {
+  const directory = readWeb('src/CustomerDirectoryCenter.jsx');
+  const profileModule = readRepo('src/backend/ProjectTime.Api/Modules/CustomerBillingNotificationProfileModule.cs');
+  const invoice = readRepo('src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs');
+  const migration = readRepo('database/migrations/134_customer_billing_notification_profiles.sql');
+
+  assert.ok(directory.includes('Invoice-generated back-office notification'));
+  assert.ok(directory.includes('Email + Teams'));
+  assert.ok(directory.includes('Customer contacts'));
+  assert.ok(directory.includes('Not notified'));
+  assert.ok(profileModule.includes('CUSTOMER_INVOICE_WORKFLOW_ACTION_REQUIRED'));
+  assert.ok(profileModule.includes('enterprise:customer-invoice-workflow:'));
+  assert.ok(profileModule.includes('Customer Directory managers'));
+  assert.ok(invoice.includes('CustomerBillingNotificationProfileModule.QueueInvoiceCreatedAsync'));
+  assert.ok(migration.includes('customer_billing_notification_profiles'));
+  assert.ok(migration.includes('module_021_042_customer_billing_profile_v1'));
+  assert.ok(migration.includes('"channels":["email","teams"]'));
+});
+
+test('protected Test release applies and verifies both Finance notification migrations', () => {
   const deploy = readRepo('.github/workflows/projectpulse-deploy-test.yml');
   assert.ok(deploy.includes('database/migrations/133_finance_billing_handoff_notifications.sql'));
+  assert.ok(deploy.includes('database/migrations/134_customer_billing_notification_profiles.sql'));
   assert.ok(deploy.includes("'133_finance_billing_handoff_notifications'"));
-  assert.ok(deploy.includes('MIGRATIONS_112_113_114_133=APPLIED_AND_VERIFIED'));
+  assert.ok(deploy.includes("'134_customer_billing_notification_profiles'"));
+  assert.ok(deploy.includes('MIGRATIONS_112_113_114_133_134=APPLIED_AND_VERIFIED'));
   assert.ok(deploy.includes("policy_code='CLOSEOUT_STARTED'"));
   assert.ok(deploy.includes("policy_code='CLOSEOUT_COMPLETED'"));
+  assert.ok(deploy.includes("policy_code='CUSTOMER_INVOICE_WORKFLOW_ACTION_REQUIRED'"));
+  assert.ok(deploy.includes("to_regclass('public.customer_billing_notification_profiles') IS NOT NULL"));
 });
