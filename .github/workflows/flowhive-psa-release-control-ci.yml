@@ -75,15 +75,1077 @@ jobs:
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
           if [[ "$GITHUB_HEAD_REF" == 'feat/finance-billing-automation-20261005' ]]; then
-            git diff --name-only "$BASE_SHA...HEAD" | grep -Ei 'flowhive' | grep -v '^.github/workflows/flowhive-psa-release-control-ci.yml$' > "$RUNNER_TEMP/finance-flowhive-unexpected" || true
+            # Finance legitimately updates the shared Protected-Test controller and the
+            # FlowHive installed-deployment resolver/receipt test. Keep this exception
+            # exact: no other FlowHive-owned source is admitted.
+            git diff --name-only "$BASE_SHA...HEAD" | grep -Ei 'flowhive' | grep -Ev '^(.github/workflows/flowhive-psa-release-control-ci.yml|scripts/release-test/resolve-flowhive-installed-deployment.py|tests/flowhive-installed-resolution.test.py)
+          if [[ "$GITHUB_HEAD_REF" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
+            python3 tests/pulse-runtime-prerequisites/scope.py
+            python3 tests/pulse-runtime-prerequisites/test_scope.py
+            python3 tests/flowhive-installed-resolution.test.py
+            node --test tests/flowhive-psa-admission.test.mjs
+            python3 tests/security-release/test_controller_registration.py
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-protected-planner-diagnostic-20261001' ]]; then
+            python3 tests/pulse-activation-order/scope.py
+            python3 tests/pulse-activation-order/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            python3 tests/security-release/test_controller_registration.py
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'feature/pulse-private-services-activation-20260930' ]]; then
+            python3 tests/pulse-activation-release/scope.py
+            python3 tests/pulse-activation-release/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            python3 tests/security-release/test_controller_registration.py
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'fix/installed-acceptance-browser-evidence-20260929' ]]; then
+            python3 tests/installed-browser-resolution/scope.py
+            python3 tests/installed-browser-resolution/test_scope.py
+            python3 tests/flowhive-installed-resolution.test.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'codex/flowhive-save-schedule-approval-polish' ]]; then
+            python3 tests/flowhive-save-release/scope.py
+            python3 tests/flowhive-save-release/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
+            python3 tests/combined-release/scope.py
+            python3 tests/combined-release/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/pulse-services-cutover-laya-20260930' ]]; then
+            python3 tests/pulse-services-release/scope.py
+            python3 tests/pulse-services-release/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/pulse-documents-integration-20260930' ]]; then
+            python3 tests/pulse-document-integration/scope.py
+            python3 tests/pulse-document-integration/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/uat-provider-answer-contract-20260930' ]]; then
+            python3 tests/uat-provider-answer/scope.py
+            python3 tests/uat-provider-answer/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/security-audit-followup-20260929' ]]; then
+            python3 tests/security-audit-followup/scope.py
+            python3 tests/security-audit-followup/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/security-uat-acceptance-20260929' ]]; then
+            python3 tests/security-uat-acceptance/scope.py
+            python3 tests/security-uat-acceptance/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-team-findings-20260928' ]]; then
+            python3 tests/security-release/scope.py
+            python3 tests/security-release/test_scope.py
+            python3 tests/security-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'codex/module060-approval-contract-funding' ]]; then
+            python3 tests/contracts-release/scope.py
+            python3 tests/contracts-release/test_scope.py
+            python3 tests/contracts-release/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'feature/module065-email-teams-notification-parity-20260928' ]]; then
+            python3 tests/notification-parity/release_scope.py
+            python3 tests/notification-parity/test_release_scope.py
+            python3 tests/notification-parity/admission_fixture.py --run-all
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == fix/enterprise-ux-consistency-20260928 ]]; then
+            python3 tests/enterprise-ux-release-scope.py
+            node --test tests/enterprise-ux-consistency.test.mjs
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == fix/module064-optional-provider-controls ]]; then
+            python3 tests/module064-provider-controls-scope.py
+            exit 0
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' ]]; then
+            python3 tests/laya/release-registration.py --control
+            python3 tests/module064-migration-rollout.test.py
+            node tests/validate-systemwide-image-build-controller.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/automatic-document-admission-laya-20260923' ]]; then
+            python3 tests/laya/release-registration.py --application
+            python3 tests/laya/processed-source-scope.py
+            node tests/validate-systemwide-image-build-controller.mjs
+          elif [[ "$GITHUB_HEAD_REF" == feature/module025-service-scope-20260921 ]]; then
+            python3 tests/service-scope/release_scope.py
+          elif [[ "$GITHUB_HEAD_REF" == feature/role-scoped-animated-user-stories-20260922 ]]; then
+            python3 tests/role-journey-visual-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/module064-generation-sequence-20260921 ]]; then
+            python3 tests/module064-generation-sequence-scope.py
+          # LAYA_RELEASE_BEGIN ownership
+          elif [[ "$GITHUB_HEAD_REF" == feature/celar-laya-document-decisions-20260921 ]]; then
+            python3 tests/laya/release-scope.py
+          # LAYA_RELEASE_END ownership
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-installed-verifier-20260921 ]]; then
+            python3 tests/flowhive-installed-verifier-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-sow-private-generation-20260921 ]]; then
+            python3 tests/flowhive-sow-private-generation-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-sow-plan-depth-20260925 ]]; then
+            python3 tests/flowhive-sow-plan-depth-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-enterprise-usability-routing-20260926 ]]; then
+            python3 tests/flowhive-enterprise-usability-routing-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/stale-sow-cleanup-flowhive-execution-guide-20261002 ]]; then
+            python3 tests/stale-sow-flowhive-execution-guide-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-celar-private-transient-diagnostics-20261002 ]]; then
+            python3 tests/flowhive-celar-private-transient-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-private-circuit-retry-20261003 ]]; then
+            python3 tests/flowhive-private-circuit-retry-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-source-grounded-failsafe-20260926 ]]; then
+            python3 tests/flowhive-whole-wbs-failsafe-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-whole-wbs-live-final-20260926 ]]; then
+            python3 tests/flowhive-whole-wbs-live-final-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-replace-untouched-legacy-ai-draft-20260926 ]]; then
+            python3 tests/flowhive-replace-untouched-legacy-ai-draft-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-reviewable-partial-wbs-20260926 ]]; then
+            python3 tests/flowhive-reviewable-partial-wbs-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-frontend-convergence-marker-20260926 ]]; then
+            python3 tests/flowhive-frontend-convergence-marker-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-protected-uat-idempotent-20260927 ]]; then
+            python3 tests/flowhive-protected-uat-idempotent-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == feature/flowhive-enterprise-pm-ux-notifications-20260927 ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/pr1140-uat-recovery-ci.yml' \
+              '.github/workflows/pr1151-uat-supersession-ci.yml' \
+              '.github/workflows/uat-migration-throttle-recovery-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveNotificationSource.cs' \
+              'src/frontend/project-time-web/src/ProjectFlowHiveCenter.jsx' \
+              'src/frontend/project-time-web/src/ProjectFlowHiveOverview.jsx' \
+              'src/frontend/project-time-web/src/ProjectFlowHivePsaWorkspace.jsx' \
+              'src/frontend/project-time-web/src/project-flowhive-center.css' \
+              'tests/FlowHiveNotificationTests/Program.cs' \
+              'tests/flowhive-psa-react-browser.py' \
+              'tests/flowhive-team-calendar-browser.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/pm-ux-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/pm-ux-actual"
+            cmp -s "$RUNNER_TEMP/pm-ux-files" "$RUNNER_TEMP/pm-ux-actual" || { diff -u "$RUNNER_TEMP/pm-ux-files" "$RUNNER_TEMP/pm-ux-actual" >&2 || true; exit 1; }
+            dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore 2>/dev/null || dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-sow-technical-wbs-automation-20260927 ]]; then
+            printf '%s\n' \
+              'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAutomation.cs' \
+              'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' \
+              'src/frontend/project-time-web/src/ProjectFlowHivePlannerReview.jsx' \
+              'tests/flowhive-psa-react-browser.py' \
+              'tests/flowhive-psa-review-browser.py' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/flowhive-enterprise-psa-ci.yml' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/technical-wbs-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/technical-wbs-actual"
+            cmp -s "$RUNNER_TEMP/technical-wbs-files" "$RUNNER_TEMP/technical-wbs-actual" || { diff -u "$RUNNER_TEMP/technical-wbs-files" "$RUNNER_TEMP/technical-wbs-actual" >&2 || true; exit 1; }
+            dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release --no-restore 2>/dev/null || dotnet build src/backend/ProjectTime.Api/ProjectTime.Api.csproj --configuration Release
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == fix/module064-authoritative-model-catalog-20260920 ]]; then
+            python3 tests/module064-authoritative-model-catalog-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/flowhive-migration-runner-20260920 ]]; then
+            python3 tests/flowhive-psa-migration-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == feature/flowhive-auto-first-draft-20260920 ]]; then
+            python3 tests/flowhive-psa-automatic-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == feature/flowhive-sequential-wbs-20260920 ]]; then
+            python3 tests/flowhive-psa-sequential-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == feat/module025-phase-progress-20260920 ]]; then
+            node tests/module025-phase-progress-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == feat/sa-workspace-redesign-20260920 ]]; then
+            node tests/module025-sa-workspace-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == feature/flowhive-document-readiness-archive-20260920 ]]; then
+            python3 tests/flowhive-psa-preparation-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == feature/flowhive-psa-team-workspace-20260919 ]]; then
+            python3 tests/flowhive-psa-workspace-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/enterprise-completion-20260919 ]]; then
+            python3 tests/enterprise-completion-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/module025-export-retention-scope ]]; then
+            python3 tests/module025-export-retention-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/module025-standard-download-formats-20260919 ]]; then
+            node tests/module025-standard-download-formats-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == fix/module025-private-generation-recovery ]]; then
+            python3 tests/module025-private-generation-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == fix/connectwise-sell-module026 ]]; then
+            python3 tests/connectwise-sell-release-scope.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pm-acceptance-contract' ]]; then
+            node tests/validate-flowhive-pm-acceptance-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-retained-record-lookup-20260919' ]]; then
+            node tests/module025-retained-record-lookup-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-retained-register-verification-20260919' ]]; then
+            node tests/module025-retained-register-scope.mjs
+            python3 tests/module025-retained-register-control.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-register-entry-diagnostics-20260919' ]]; then
+            node tests/module025-register-entry-diagnostics-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-register-startup-readiness-20260918' ]]; then
+            node tests/module025-register-startup-readiness-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-register-report-contract-20260918' ]]; then
+            node tests/module025-register-report-contract-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-phase-provider-recovery-20260918' ]]; then
+            node tests/module025-phase-provider-recovery-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-register-browser-acceptance-20260918' ]]; then
+            node tests/module025-register-browser-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-fixture-generation-authorization-20260918' ]]; then
+            node tests/module025-worker-authorization-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/module025-review-timing-delete-reliability-20260918' ]]; then
+            node tests/module025-review-timing-delete-scope.mjs
+            node tests/module025-review-timing-delete.test.mjs
+            bash tests/test-module025-draft-delete-migration-110.sh
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/module025-project-name-20260917' ]]; then
+            node tests/module025-project-name-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/module025-auto-protected-test-20260917' ]]; then
+            node tests/module025-auto-protected-test-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-scope-progress-20260917' ]]; then
+            node tests/module025-scope-progress-scope.mjs
+            node --test tests/module025-generation-feedback.test.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-catalog-consistency-20260917' ]]; then
+            node tests/module-catalog-scope.mjs
+            node --test tests/module-catalog-consistency.test.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-workspace-entry-20260917' ]]; then
+            node tests/module025-workspace-entry-scope.mjs
+            python3 tests/flowhive-psa-installed-acceptance.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-browser-verifier-20260917' ]]; then
+            node tests/module025-browser-verifier-scope.mjs
+            python3 tests/flowhive-psa-installed-acceptance.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-assembly-predecessors-20260917' ]]; then
+            node tests/module025-assembly-predecessors-scope.mjs
+            python3 tests/flowhive-psa-installed-acceptance.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-version-facts-20260917' ]]; then
+            node tests/module025-version-facts-scope.mjs
+            python3 tests/module025-provider-qualification.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-structured-contract-20260917' ]]; then
+            node tests/module025-structured-contract-scope.mjs
+            python3 tests/module025-provider-qualification.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-output-budget-preflight-20260917' ]]; then
+            node tests/module025-output-budget-preflight-scope.mjs
+            python3 tests/module025-provider-qualification.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-complete-acceptance-20260917' ]]; then
+            node tests/module025-complete-acceptance-scope.mjs
+            python tests/module025-complete-acceptance.test.py
+            python tests/flowhive-psa-installed-acceptance.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-qualification-policy-20260917' ]]; then
+            node tests/module025-qualification-policy-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-qualification-contract-20260917' ]]; then
+            node tests/module025-provider-qualification-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-provider-diagnostics-20260917' ]]; then
+            node tests/module025-provider-diagnostics-scope.mjs
+            python tests/flowhive-psa-installed-acceptance.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-external-sow-20260916' ]]; then
+            node tests/module025-external-sow-scope.mjs
+            python tests/flowhive-psa-installed-acceptance.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-durable-engine-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-detailed-planner-ci.yml' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/CelarAiCapabilityRouting.cs' \
+              'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformContracts.cs' \
+              'src/backend/ProjectTime.Api/Ai/CelarAiEnterprisePlatformService.cs' \
+              'src/backend/ProjectTime.Api/Ai/Module025GenerationEngine.cs' \
+              'src/backend/ProjectTime.Api/Ai/ProjectPulseDeepSeekProvider.cs' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'src/backend/ProjectTime.Api/Modules/Module025GenerationJournal.cs' \
+              'src/backend/ProjectTime.Api/Modules/Module025SowGsdModule.cs' \
+              'src/backend/ProjectTime.Api/Modules/Module025SowSellModule.cs' \
+              'src/frontend/project-time-web/src/module025/SowGsdAuthoringWorkspace.jsx' \
+              'tests/DeepSeekProviderTests/Program.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Module025GenerationEngineTests.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/module025-engine-scope.mjs' \
+              'tests/test-sow-uat-isolation.py' \
+              'tests/validate-celar-ai-pr630-consolidated.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-engine-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-engine-actual"
+            cmp -s "$RUNNER_TEMP/module025-engine-files" "$RUNNER_TEMP/module025-engine-actual" || {
+              diff -u "$RUNNER_TEMP/module025-engine-files" "$RUNNER_TEMP/module025-engine-actual" >&2 || true
+              exit 1
+            }
+            python tests/flowhive-psa-installed-acceptance.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-scoped-test-deploy-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-deploy-test.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-workflow.test.py' \
+              'scripts/release-test/resolve-flowhive-installed-deployment.py' \
+              'tests/flowhive-installed-resolution.test.py' \
+              'tests/module025-scoped-deploy.test.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-scoped-deploy-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-scoped-deploy-actual"
+            cmp -s "$RUNNER_TEMP/module025-scoped-deploy-files" "$RUNNER_TEMP/module025-scoped-deploy-actual" || {
+              echo 'Module 025 deployment correction differs from its exact file scope.' >&2
+              diff -u "$RUNNER_TEMP/module025-scoped-deploy-files" "$RUNNER_TEMP/module025-scoped-deploy-actual" >&2 || true
+              exit 1
+            }
+            python tests/module025-scoped-deploy.test.py
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-generation-path-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-generation-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-generation-actual"
+            cmp -s "$RUNNER_TEMP/module025-generation-files" "$RUNNER_TEMP/module025-generation-actual" || {
+              echo 'Module 025 generation correction differs from its exact file scope.' >&2
+              diff -u "$RUNNER_TEMP/module025-generation-files" "$RUNNER_TEMP/module025-generation-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sa-review-confirm-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-review-confirm-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-review-confirm-actual"
+            cmp -s "$RUNNER_TEMP/module025-review-confirm-files" "$RUNNER_TEMP/module025-review-confirm-actual" || {
+              echo 'Module 025 verifier correction differs from its exact file scope.' >&2
+              diff -u "$RUNNER_TEMP/module025-review-confirm-files" "$RUNNER_TEMP/module025-review-confirm-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/sow-runtime-diagnostics-and-uat-isolation-20260906' ]]; then
+            node tests/validate-sow-generation-uat-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-pr914-followup-20260911' ]]; then
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$GITHUB_HEAD_REF" == 'feature/flowhive-psa-graphical-exports-20260908' || "$GITHUB_HEAD_REF" == 'release/flowhive-sow-successor-20260908' || "$GITHUB_HEAD_REF" == 'fix/flowhive-installed-pm-readiness-candidate-20260911' ]]; then
+            node tests/flowhive-psa-scope.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-compact-batch-20260913' ]]; then
+            test -s .github/flowhive-planner-compact-batch-release-files.txt
+            grep -Ev '^[[:space:]]*(#|$)' .github/flowhive-planner-compact-batch-release-files.txt | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-compact-batch-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-compact-batch-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-compact-batch-files" "$RUNNER_TEMP/flowhive-planner-compact-batch-actual" || {
+              echo 'Planner compact-batch PR differs from its exact reviewed release manifest.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-compact-batch-files" "$RUNNER_TEMP/flowhive-planner-compact-batch-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/sow-role-installed-acceptance-20260913' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-release-control-files.txt' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'src/frontend/project-time-web/scripts/role-journeys-vite-plugin.mjs' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-actual"
+            cmp -s "$RUNNER_TEMP/installed-sow-role-acceptance-files" "$RUNNER_TEMP/installed-sow-role-acceptance-actual" || {
+              echo 'Installed SOW/My Role acceptance PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/installed-sow-role-acceptance-files" "$RUNNER_TEMP/installed-sow-role-acceptance-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/installed-sow-role-acceptance-scope-20260913' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-installed-acceptance.yml' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-acceptance-actual"
+            cmp -s "$RUNNER_TEMP/installed-sow-role-acceptance-files" "$RUNNER_TEMP/installed-sow-role-acceptance-actual" || {
+              echo 'Installed SOW/My Role acceptance PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/installed-sow-role-acceptance-files" "$RUNNER_TEMP/installed-sow-role-acceptance-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/installed-sow-role-identity-lane-20260913' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/flowhive-psa-release-control-files.txt' \
+              'scripts/release-test/resolve-flowhive-installed-deployment.py' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              'tests/flowhive-installed-resolution.test.py' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-identity-lane-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/installed-sow-role-identity-lane-actual"
+            cmp -s "$RUNNER_TEMP/installed-sow-role-identity-lane-files" "$RUNNER_TEMP/installed-sow-role-identity-lane-actual" || {
+              echo 'Installed identity-lane verifier PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/installed-sow-role-identity-lane-files" "$RUNNER_TEMP/installed-sow-role-identity-lane-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-my-role-celar-repair-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'src/frontend/project-time-web/scripts/inject-pulse-ai-system-chat-group7-compatibility.mjs' \
+              'src/frontend/project-time-web/src/EnterpriseExperienceController.jsx' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-celar-repair-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-celar-repair-actual"
+            cmp -s "$RUNNER_TEMP/module025-my-role-celar-repair-files" "$RUNNER_TEMP/module025-my-role-celar-repair-actual" || {
+              echo 'Module 025/My Role/Celar repair PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-my-role-celar-repair-files" "$RUNNER_TEMP/module025-my-role-celar-repair-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'src/backend/ProjectTime.Api/DynamicRbacAdministrationModule.g.cs' \
+              'src/backend/ProjectTime.Api/Modules/DynamicRbacAdministrationModule.cs' \
+              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicyPersistence.cs' \
+              'src/backend/ProjectTime.Api/Modules/ScopedRolePolicySupport.cs' \
+              'src/backend/ProjectTime.Api/ScopedRolePolicyPersistence.g.cs' \
+              'src/frontend/project-time-web/src/module-availability-bridge.js' \
+              'src/frontend/project-time-web/src/role-journeys/use-role-journey-context.js' \
+              'src/frontend/project-time-web/tests/role-journeys.test.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-acceptance-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-live-acceptance-files" "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual" || {
+              echo 'SOW/My Role live acceptance repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-live-acceptance-files" "$RUNNER_TEMP/module025-sow-role-live-acceptance-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-my-role-live-verifier-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/run-flowhive-my-role-browser.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-live-verifier-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-live-verifier-actual"
+            cmp -s "$RUNNER_TEMP/module025-my-role-live-verifier-files" "$RUNNER_TEMP/module025-my-role-live-verifier-actual" || {
+              echo 'Module 025/My Role verifier PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-my-role-live-verifier-files" "$RUNNER_TEMP/module025-my-role-live-verifier-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-my-role-scope-boundary-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/run-flowhive-my-role-browser.py' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-scope-boundary-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-scope-boundary-actual"
+            cmp -s "$RUNNER_TEMP/module025-my-role-scope-boundary-files" "$RUNNER_TEMP/module025-my-role-scope-boundary-actual" || {
+              echo 'Module 025/My Role scope-boundary PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-my-role-scope-boundary-files" "$RUNNER_TEMP/module025-my-role-scope-boundary-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-my-role-observability-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/run-flowhive-my-role-browser.py' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-observability-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-my-role-observability-actual"
+            cmp -s "$RUNNER_TEMP/module025-my-role-observability-files" "$RUNNER_TEMP/module025-my-role-observability-actual" || {
+              echo 'Module 025/My Role observability PR contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-my-role-observability-files" "$RUNNER_TEMP/module025-my-role-observability-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sow-role-live-repair-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/run-flowhive-my-role-browser.py' \
+              'scripts/release-test/run-module025-installed-sa-uat.py' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-installed-acceptance.test.py' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-repair-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-live-repair-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-live-repair-files" "$RUNNER_TEMP/module025-sow-role-live-repair-actual" || {
+              echo 'SOW/My Role live repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-live-repair-files" "$RUNNER_TEMP/module025-sow-role-live-repair-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-final-20260914' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-candidate-refresh-final-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-candidate-refresh-final-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-candidate-refresh-final-files" "$RUNNER_TEMP/module025-sow-role-candidate-refresh-final-actual" || {
+              echo 'Final SOW/My Role candidate refresh contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-candidate-refresh-final-files" "$RUNNER_TEMP/module025-sow-role-candidate-refresh-final-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-1009-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-1014-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-provider-deadline-candidate-refresh-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif case "$GITHUB_HEAD_REF" in 'control/flowhive-planner-compact-phase-native-gate-20260915'|'control/flowhive-planner-parallel-phase-candidate-refresh-20260915'|'control/flowhive-planner-capacity-safe-candidate-refresh-20260915'|'control/flowhive-planner-live-capacity-candidate-refresh-20260915'|'control/flowhive-portfolio-db-alias-candidate-refresh-20260915') true;; *) false;; esac; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-release-trigger-coverage-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-admission-scope-20260914' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-admission-scope-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-admission-scope-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-admission-scope-files" "$RUNNER_TEMP/module025-sow-role-admission-scope-actual" || {
+              echo 'SOW/My Role admission scope correction contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-admission-scope-files" "$RUNNER_TEMP/module025-sow-role-admission-scope-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-native-activation-20260914' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-native-activation-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-native-activation-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-native-activation-files" "$RUNNER_TEMP/module025-sow-role-native-activation-actual" || {
+              echo 'SOW/My Role native activation contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-native-activation-files" "$RUNNER_TEMP/module025-sow-role-native-activation-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-native-active-20260914' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-native-active-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-native-active-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-native-active-files" "$RUNNER_TEMP/module025-sow-role-native-active-actual" || {
+              echo 'SOW/My Role active native cutover contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-native-active-files" "$RUNNER_TEMP/module025-sow-role-native-active-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-sow-role-candidate-refresh-20260914' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci-reregistered.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-candidate-refresh-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-sow-role-candidate-refresh-actual"
+            cmp -s "$RUNNER_TEMP/module025-sow-role-candidate-refresh-files" "$RUNNER_TEMP/module025-sow-role-candidate-refresh-actual" || {
+              echo 'SOW/My Role candidate refresh contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-sow-role-candidate-refresh-files" "$RUNNER_TEMP/module025-sow-role-candidate-refresh-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/module025-sow-role-live-acceptance-20260914' ]]; then
+            BASE_SHA="$CURRENT_BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+            echo 'EXACT_MODULE025_SOW_ROLE_LIVE_ACCEPTANCE_SCOPE=PASSED'
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-provider-deadline-retry-20260914' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Modules/ProjectPlanningAiOrchestrator.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-provider-deadline-retry-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-provider-deadline-retry-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-provider-deadline-retry-files" "$RUNNER_TEMP/flowhive-planner-provider-deadline-retry-actual" || {
+              echo 'FlowHive provider deadline retry contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-provider-deadline-retry-files" "$RUNNER_TEMP/flowhive-planner-provider-deadline-retry-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'control/module025-admission-manifest-order-20260914' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-canonical-dispatch-20260911' ]]; then
+            node --input-type=module -e "import fs from 'node:fs'; import { verifyController } from './tests/flowhive-psa-release-control.mjs'; verifyController(fs.readFileSync('.github/workflows/projectpulse-deploy-test.yml', 'utf8'));"
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-celar-approval-20260915' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-live-celar-budget-approval-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-live-celar-budget-branch-correction-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-module025-candidate-refresh-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-admission-manifest-refresh-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-module025-manual-check-trigger-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-check-trigger-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-check-trigger-actual"
+            cmp -s "$RUNNER_TEMP/module025-manual-check-trigger-files" "$RUNNER_TEMP/module025-manual-check-trigger-actual" || {
+              echo 'Module 025 manual-check trigger contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-manual-check-trigger-files" "$RUNNER_TEMP/module025-manual-check-trigger-actual" >&2 || true
+              exit 1
+            }
+            echo 'MODULE025_MANUAL_CHECK_TRIGGER_SCOPE=PASSED'
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-module025-manual-trigger-registration-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-trigger-registration-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-trigger-registration-actual"
+            cmp -s "$RUNNER_TEMP/module025-manual-trigger-registration-files" "$RUNNER_TEMP/module025-manual-trigger-registration-actual" || {
+              echo 'Module 025 manual-trigger registration contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-manual-trigger-registration-files" "$RUNNER_TEMP/module025-manual-trigger-registration-actual" >&2 || true
+              exit 1
+            }
+            echo 'MODULE025_MANUAL_TRIGGER_REGISTRATION_SCOPE=PASSED'
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-module025-manual-trigger-exact-candidate-20260916' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-enterprise-psa-release-files.txt' \
+              '.github/flowhive-planner-output-budget-release-files.txt' \
+              '.github/flowhive-planner-parallel-phases-release-files.txt' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/flowhive-psa-release-control-files.txt' \
+              '.github/module025-sow-sell-governed-release-files.txt' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              'tests/flowhive-psa-scope.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-actual"
+            cmp -s "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-files" "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-actual" || {
+              echo 'Module 025 exact-candidate registration contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-files" "$RUNNER_TEMP/module025-manual-trigger-exact-candidate-actual" >&2 || true
+              exit 1
+            }
+            echo 'MODULE025_MANUAL_TRIGGER_EXACT_CANDIDATE_SCOPE=PASSED'
+            exit 0
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-celar-required-check-refresh-20260915' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-planner-live-completion-candidate-refresh-20260915' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-candidate-refresh-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-candidate-refresh-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-candidate-refresh-files" "$RUNNER_TEMP/flowhive-planner-candidate-refresh-actual" || {
+              echo 'FlowHive planner candidate refresh contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-candidate-refresh-files" "$RUNNER_TEMP/flowhive-planner-candidate-refresh-actual" >&2 || true
+              exit 1
+            }
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-portfolio-db-alias-candidate-refresh-20260915' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-psa-protected-cutover.json' \
+              '.github/flowhive-psa-protected-test-candidate.json' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'docs/releases/FLOWHIVE-PSA-PROTECTED-TEST-ADMISSION.md' \
+              'scripts/release-test/dispatch-flowhive-psa-test.mjs' \
+              'scripts/release-test/flowhive-psa-admission.mjs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-files" "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-actual" || {
+              echo 'FlowHive portfolio DB-alias candidate refresh contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-files" "$RUNNER_TEMP/flowhive-portfolio-db-alias-control-actual" >&2 || true
+              exit 1
+            }
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-portfolio-db-alias-20260915' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/ProjectPulseAiDatabaseConnection.cs' \
+              'src/backend/ProjectTime.Api/Modules/ProjectFlowHiveModule.cs' \
+              'tests/CelarAiProductionHardeningTests/ReleaseRuntimeBehavior.cs' \
+              'tests/FlowHiveExecutionTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-portfolio-db-alias-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-portfolio-db-alias-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-portfolio-db-alias-files" "$RUNNER_TEMP/flowhive-portfolio-db-alias-actual" || {
+              echo 'FlowHive portfolio database-alias repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-portfolio-db-alias-files" "$RUNNER_TEMP/flowhive-portfolio-db-alias-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-live-completion-20260915' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/projectpulse-release-test-control-ci.yml' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-release-control.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-completion-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-completion-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-live-completion-files" "$RUNNER_TEMP/flowhive-planner-live-completion-actual" || {
+              echo 'FlowHive live-completion repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-live-completion-files" "$RUNNER_TEMP/flowhive-planner-live-completion-actual" >&2 || true
+              exit 1
+            }
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-live-celar-acceptance-20260915' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-enterprise-psa-release-files.txt' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-scope.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-files" "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-actual" || {
+              echo 'FlowHive Celar live-acceptance repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-files" "$RUNNER_TEMP/flowhive-planner-live-celar-acceptance-actual" >&2 || true
+              exit 1
+            }
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-live-celar-compact-prompt-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-compact-prompt-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-compact-prompt-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-live-celar-compact-prompt-files" "$RUNNER_TEMP/flowhive-planner-live-celar-compact-prompt-actual" || {
+              echo 'FlowHive Celar compact-prompt repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-live-celar-compact-prompt-files" "$RUNNER_TEMP/flowhive-planner-live-celar-compact-prompt-actual" >&2 || true
+              exit 1
+            }
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-celar-response-contract-20260916' ]]; then
+            printf '%s\n' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-celar-response-contract-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-celar-response-contract-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-celar-response-contract-files" "$RUNNER_TEMP/flowhive-planner-celar-response-contract-actual" || {
+              echo 'FlowHive Celar response-contract repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-celar-response-contract-files" "$RUNNER_TEMP/flowhive-planner-celar-response-contract-actual" >&2 || true
+              exit 1
+            }
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/flowhive-planner-live-celar-budget-main-20260915' ]]; then
+            printf '%s\n' \
+              '.github/flowhive-enterprise-psa-release-files.txt' \
+              '.github/workflows/flowhive-psa-release-control-ci.yml' \
+              '.github/workflows/module025-governed-protected-test-release-manual.yml' \
+              'scripts/release-test/validate-protected-test-controller-branches.sh' \
+              'src/backend/ProjectTime.Api/Ai/ProjectPulseAiServiceCollectionExtensions.cs' \
+              'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRagService.cs' \
+              'tests/CelarAiOracleExternalRuntimeTests/Program.cs' \
+              'tests/FlowHiveDetailedPlannerTests/Program.cs' \
+              'tests/flowhive-psa-admission.test.mjs' \
+              'tests/flowhive-psa-scope.mjs' \
+              'tests/validate-systemwide-image-build-controller.mjs' \
+              | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-budget-files"
+            git diff --name-only "$BASE_SHA...HEAD" | LC_ALL=C sort -u > "$RUNNER_TEMP/flowhive-planner-live-celar-budget-actual"
+            cmp -s "$RUNNER_TEMP/flowhive-planner-live-celar-budget-files" "$RUNNER_TEMP/flowhive-planner-live-celar-budget-actual" || {
+              echo 'FlowHive Celar planner budget repair contains an unreviewed file.' >&2
+              diff -u "$RUNNER_TEMP/flowhive-planner-live-celar-budget-files" "$RUNNER_TEMP/flowhive-planner-live-celar-budget-actual" >&2 || true
+              exit 1
+            }
+            node tests/flowhive-psa-scope.mjs --allow-reviewed-superset
+          elif [[ "$GITHUB_HEAD_REF" == 'control/flowhive-dispatch-validation-20260916' || "$GITHUB_HEAD_REF" == 'control/flowhive-dispatch-validation-followup-20260916' ]]; then
+            BASE_SHA="$BASE_SHA" GITHUB_HEAD_REF="$GITHUB_HEAD_REF" node tests/flowhive-psa-release-control.mjs
+          else
+            node tests/flowhive-psa-release-control.mjs
+          fi
+          if [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' || "$GITHUB_HEAD_REF" == 'fix/automatic-document-admission-laya-20260923' ]]; then
+            python3 tests/laya/release-admission-fixture.py --prepare
+            LAYA_ADMISSION_TEST=tests/laya-release-admission.generated.test.mjs
+          fi
+          # Preserve the exact executed test source and TAP output so a fixture
+          # failure can be correlated with this checkout, not a stale job log.
+          install -d -m 0700 "$RUNNER_TEMP/admission-source-diagnostics"
+          git rev-parse HEAD > "$RUNNER_TEMP/admission-source-diagnostics/checkout.txt"
+          sha256sum "${LAYA_ADMISSION_TEST:-tests/flowhive-psa-admission.test.mjs}" > "$RUNNER_TEMP/admission-source-diagnostics/test-sha256.txt"
+          cp -- "${LAYA_ADMISSION_TEST:-tests/flowhive-psa-admission.test.mjs}" "$RUNNER_TEMP/admission-source-diagnostics/executed-test.mjs"
+          node --test "${LAYA_ADMISSION_TEST:-tests/flowhive-psa-admission.test.mjs}" 2>&1 | tee "$RUNNER_TEMP/admission-source-diagnostics/result.tap"
+          python tests/flowhive-psa-live-uat.test.py
+          python tests/flowhive-psa-installed-acceptance.test.py
+          python tests/flowhive-installed-resolution.test.py
+          node tests/validate-flowhive-pm-acceptance-scope.mjs --self-test
+          python tests/flowhive-psa-release-workflow.test.py
+          python -m py_compile \
+            scripts/release-test/check-flowhive-acceptance-inputs.py \
+            scripts/release-test/resolve-flowhive-installed-deployment.py \
+            scripts/release-test/check-module025-installed-prerequisite.py \
+            scripts/release-test/run-flowhive-my-role-browser.py \
+            scripts/release-test/verify-flowhive-installed-identity.py
+          bash -n scripts/release-test/apply-flowhive-psa-migrations.sh
+          bash -n scripts/release-test/build-and-run-flowhive-psa-migrations.sh
+          git diff --check
+      - name: Retain exact admission source and failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: admission-source-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/admission-source-diagnostics
+          if-no-files-found: ignore
+          retention-days: 1
+      # LAYA_RELEASE_BEGIN fixture_cleanup
+      - name: Remove the generated historical test fixture
+        if: always() && github.head_ref == 'feature/celar-laya-document-decisions-20260921'
+        run: rm -f -- tests/laya-admission-fixture.generated.test.mjs
+      # LAYA_RELEASE_END fixture_cleanup
+      # Live readiness is deliberately not a source-only PR result. The
+      # owner-authorized admission workflow acquires the lock, rechecks the
+      # live controller, and fails closed immediately before dispatch.
+  module025_browser:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install the existing frontend and isolated browser test dependencies
+        run: |
+          npm ci --prefix src/frontend/project-time-web
+          npm install --prefix "$RUNNER_TEMP/module025-browser" --no-audit --no-fund playwright@1.57.0
+          node "$RUNNER_TEMP/module025-browser/node_modules/playwright/cli.js" install --with-deps chromium
+      - name: Exercise visible actions and authenticated downloads without live inference
+        run: |
+          PLAYWRIGHT_MODULE_PATH="$RUNNER_TEMP/module025-browser/node_modules/playwright" node tests/module025-document-actions.test.mjs
+      - name: Exercise the installed SA verifier against the complete production build
+        run: |
+          npm run build --prefix src/frontend/project-time-web
+          python3 -m venv "$RUNNER_TEMP/module025-python-browser"
+          "$RUNNER_TEMP/module025-python-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
+          "$RUNNER_TEMP/module025-python-browser/bin/python" tests/module025-installed-browser.test.py
+          "$RUNNER_TEMP/module025-python-browser/bin/python" tests/module025-register-browser.test.py
+      - name: Verify retained versions and SELL receipt constraints in disposable PostgreSQL
+        run: bash tests/test-module025-sow-sell-register-migration-106.sh
+
+  manual_validate:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    name: Validate exact dispatched FlowHive candidate and release controls
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out the exact requested candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: '22'
+
+      - name: Validate requested candidate, Module 025, systemwide, security, and concurrency controls
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -Eeuo pipefail
+          fail() { echo "ERROR: $*" >&2; exit 1; }
+
+          [[ "$GITHUB_REF" == 'refs/heads/main' ]] || fail 'Manual validation must execute from trusted main.'
+          [[ "$GITHUB_SHA" == "$BASE_SHA" ]] || fail 'Manual validation controller SHA does not match the requested trusted-main base.'
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Requested release SHA is not a complete lowercase commit SHA.'
+          [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'Requested base SHA is not a complete lowercase commit SHA.'
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]] || fail 'Manual validation did not check out the requested candidate SHA.'
+          git cat-file -e "$BASE_SHA^{commit}" || fail 'Requested trusted-main base commit is unavailable.'
+          git merge-base --is-ancestor "$BASE_SHA" HEAD || fail 'Requested trusted-main base is not an ancestor of the candidate.'
+
+          node src/frontend/project-time-web/scripts/validate-module025-sow-register.mjs
+          bash tests/test-module025-sow-sell-register-migration-106.sh
+          node tests/validate-systemwide-enterprise-reliability.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          node scripts/validate-deployment-concurrency-governance.mjs --repo-root "$GITHUB_WORKSPACE" --verify-repository
+          python3 scripts/security/validate-repository-security-posture.py
+          git diff --check "$BASE_SHA...HEAD"
+
+          echo "FLOWHIVE_DISPATCH_CANDIDATE_SHA=$RELEASE_SHA"
+          echo "FLOWHIVE_DISPATCH_BASE_SHA=$BASE_SHA"
+          echo 'FLOWHIVE_DISPATCH_EXACT_CANDIDATE_VALIDATION=PASSED'
+          echo 'MODULE025_SOW_MIGRATION_106=PASSED'
+          echo 'SYSTEMWIDE_RELEASE_CONTROLS=PASSED'
+          echo 'SECURITY_POSTURE=PASSED'
+          echo 'DEPLOYMENT_CONCURRENCY=PASSED'
+          echo 'PRODUCTION_MUTATION=NONE'
+  migrations:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      FLOWHIVE_CANDIDATE_ROOT: ${{ github.workspace }}/candidate
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: control
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read the pinned candidate SHA
+        id: candidate
+        working-directory: control
+        env:
+          FEATURE_HEAD: ${{ github.event.pull_request.head.sha }}
+          FEATURE_BRANCH: ${{ github.head_ref }}
+        run: |
+          set -Eeuo pipefail
+          test -s .github/flowhive-psa-protected-test-candidate.json || { echo 'ERROR: trusted candidate approval file is missing.' >&2; exit 1; }
+          if [[ "$FEATURE_BRANCH" == 'feature/flowhive-enterprise-psa-revamp-20260906' || "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' || "$FEATURE_BRANCH" == 'fix/flowhive-planner-provider-budget-20260912' ]]; then
+            [[ "$FEATURE_HEAD" =~ ^[a-f0-9]{40}$ ]]
+            echo "sha=$FEATURE_HEAD" >> "$GITHUB_OUTPUT"
+            if [[ "$FEATURE_BRANCH" == 'release/flowhive-sow-successor-20260908' ]]; then
+              echo 'staging=successor' >> "$GITHUB_OUTPUT"
+            else
+              echo 'staging=approved' >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "sha=$(jq -er '.sha | select(test("^[a-f0-9]{40}$"))' .github/flowhive-psa-protected-test-candidate.json)" >> "$GITHUB_OUTPUT"
+            echo 'staging=approved' >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ steps.candidate.outputs.sha }}
+          path: candidate
+          persist-credentials: false
+      - name: Start isolated PostgreSQL fixture
+        id: fixture_database
+        shell: bash
+        env:
+          FIXTURE_DATABASE: flowhive_migrations_test
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          [[ "$FIXTURE_DATABASE" == flowhive_execution_test || "$FIXTURE_DATABASE" == flowhive_migrations_test ]]
+          name="flowhive-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "$name" =~ ^flowhive-ci-[0-9]+-[0-9]+$ ]]
+          echo "CI_POSTGRES_CONTAINER=$name" >> "$GITHUB_ENV"
+          env_file="$(mktemp "$RUNNER_TEMP/flowhive-postgres-XXXXXX")"
+          trap 'rm -f -- "$env_file"' EXIT
+          trap 'docker rm -f "$name" >/dev/null 2>&1 || true' ERR
+          password="$(openssl rand -hex 32)"
+          echo "::add-mask::$password"
+          printf 'POSTGRES_USER=flowhive\nPOSTGRES_DB=%s\nPOSTGRES_PASSWORD=%s\n' "$FIXTURE_DATABASE" "$password" > "$env_file"
+          docker run --detach --rm --name "$name" --publish 127.0.0.1::5432 \
+            --env-file "$env_file" --health-cmd "pg_isready -U flowhive -d $FIXTURE_DATABASE" \
+            --health-interval 2s --health-timeout 2s --health-retries 30 postgres:16 >/dev/null
+          health='starting'
+          for attempt in {1..30}; do
+            health="$(timeout 5s docker inspect --format '{{.State.Health.Status}}' "$name")"
+            [[ "$health" != healthy ]] || break
+            [[ "$health" != unhealthy ]] || exit 1
+            sleep 2
+          done
+          [[ "$health" == healthy ]] || { echo 'CI PostgreSQL readiness expired.' >&2; exit 1; }
+          address="$(timeout 5s docker port "$name" 5432/tcp)"
+          [[ "$address" =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]]
+          port="${BASH_REMATCH[1]}"
+          {
+            printf 'PGHOST=127.0.0.1\nPGPORT=%s\nPGDATABASE=%s\nPGUSER=flowhive\nPGPASSWORD=%s\n' "$port" "$FIXTURE_DATABASE" "$password"
+            printf 'FLOWHIVE_TEST_DB=Host=127.0.0.1;Port=%s;Database=%s;Username=flowhive;Password=%s\n' "$port" "$FIXTURE_DATABASE" "$password"
+          } >> "$GITHUB_ENV"
+          trap - ERR
+      - name: Exercise selected release SQL and the real image entrypoint in disposable PostgreSQL
+        working-directory: control
+        env:
+          FLOWHIVE_MIGRATION_STAGING: ${{ steps.candidate.outputs.staging }}
+        run: |
+          set -Eeuo pipefail
+          sudo mkdir -p /opt/projectpulse/release
+          sudo chown "$(id -u):$(id -g)" /opt/projectpulse/release
+          python3 tests/flowhive-psa-migration-fixture.py
+      - name: Remove isolated PostgreSQL fixture
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          name="${CI_POSTGRES_CONTAINER:-}"
+          [[ -n "$name" ]] || exit 0
+          [[ "$name" == "flowhive-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]
+          docker rm -f "$name" >/dev/null
+ > "$RUNNER_TEMP/finance-flowhive-unexpected" || true
             [[ ! -s "$RUNNER_TEMP/finance-flowhive-unexpected" ]] || {
-              echo 'Finance billing automation changed FlowHive-owned source unexpectedly.' >&2
+              echo 'Finance billing automation changed unregistered FlowHive-owned source.' >&2
               cat "$RUNNER_TEMP/finance-flowhive-unexpected" >&2
               exit 1
             }
+            REGISTERED_FINANCE_CONTROLLER="$(jq -er '.controllerBlob | select(test("^[0-9a-f]{40}$"))' tests/finance-billing-controller-registration.json)"
+            [[ "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" == "$REGISTERED_FINANCE_CONTROLLER" ]] || {
+              echo 'Finance Test controller does not match the exact registered controller identity.' >&2
+              exit 1
+            }
+            git diff --exit-code "$BASE_SHA" HEAD -- .github/workflows/projectpulse-deploy-production.yml
             python3 tests/security-release/test_controller_registration.py
             node tests/validate-systemwide-image-build-controller.mjs
-            echo 'FLOWHIVE_FINANCE_BILLING_INHERITED_SOURCE=PASS'
+            python3 tests/flowhive-installed-resolution.test.py
+            node --test src/frontend/project-time-web/tests/finance-billing-automation.test.mjs
+            git diff --check "$BASE_SHA"...HEAD
+            echo 'FLOWHIVE_FINANCE_BILLING_REVIEWED_SCOPE=PASS'
+            echo 'FINANCE_REGISTERED_TEST_CONTROLLER=PASS'
+            echo 'PRODUCTION_CONTROLLER_UNCHANGED=PASS'
             exit 0
           fi
           if [[ "$GITHUB_HEAD_REF" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
