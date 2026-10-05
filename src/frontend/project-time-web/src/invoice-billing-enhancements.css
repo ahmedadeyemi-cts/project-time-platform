@@ -132,3 +132,11 @@ body[data-theme="dark"] .m042-finance-manual-guide li { background:#182c40; colo
   .m042-finance-manual-guide ol { grid-template-columns: 1fr; }
   .m042-manual-mode-badge { white-space: normal; }
 }
+
+/* Finance manual-operations header dark-mode contrast. */
+[data-theme="dark"] .m042-finance-manual-operations > header p,
+body[data-theme="dark"] .m042-finance-manual-operations > header p,
+[data-theme="dark"] .m042-finance-manual-operations > header .eyebrow,
+body[data-theme="dark"] .m042-finance-manual-operations > header .eyebrow {
+  color: #cbd5e1;
+}

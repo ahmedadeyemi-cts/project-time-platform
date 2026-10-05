@@ -258,3 +258,21 @@ body[data-theme="dark"] .finance-billing-safety {
   color: var(--text-muted, #60768a);
   line-height: 1.45;
 }
+
+/* Finance workflow dark-mode contrast: muted guidance must remain WCAG AA readable. */
+[data-theme="dark"] .finance-billing-workflow > header p,
+body[data-theme="dark"] .finance-billing-workflow > header p,
+[data-theme="dark"] .finance-billing-eyebrow,
+body[data-theme="dark"] .finance-billing-eyebrow,
+[data-theme="dark"] .finance-billing-steps small,
+body[data-theme="dark"] .finance-billing-steps small,
+[data-theme="dark"] .finance-billing-operating-model span,
+body[data-theme="dark"] .finance-billing-operating-model span,
+[data-theme="dark"] .finance-billing-connectors p,
+body[data-theme="dark"] .finance-billing-connectors p,
+[data-theme="dark"] .finance-billing-connectors small,
+body[data-theme="dark"] .finance-billing-connectors small,
+[data-theme="dark"] .finance-billing-integration-note,
+body[data-theme="dark"] .finance-billing-integration-note {
+  color: #cbd5e1;
+}
