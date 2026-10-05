@@ -91,6 +91,17 @@ src/frontend/project-time-web/src/completion-checklist-model.mjs
 src/frontend/project-time-web/src/customer-directory-center.css
 src/frontend/project-time-web/src/invoice-billing-enhancements.css
 src/frontend/project-time-web/tests/finance-billing-automation.test.mjs
+.github/workflows/flowhive-psa-release-control-ci.yml
+scripts/release-test/recover-pr1139-uat-orphan.py
+scripts/release-test/recover-pr1140-migration-retry-orphan.py
+scripts/release-test/recover-pr1140-uat-orphan.py
+scripts/release-test/verify-module025-quarantine-controller.py
+scripts/release-test/verify-pr1151-uat-supersession.py
+scripts/release-test/verify-pr1204-uat-supersession.py
+tests/finance-billing-controller-registration.json
+tests/laya/processed-source-scope.py
+tests/pulse-activation-release/controller.py
+tests/security-release/test_controller_registration.py
 FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-pm-acceptance-contract' ]]; then
   node tests/validate-flowhive-pm-acceptance-scope.mjs

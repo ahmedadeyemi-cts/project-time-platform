@@ -1,0 +1,64 @@
+{
+  "controllerBlob": "954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602",
+  "controllerSha256": "9f96b44aeabff2055c2630071b4c63d7ce9d2eb61e630a237634f251700ab122",
+  "previousControllerBlob": "a50b87bcfdeb19dd60e2c82d29edd98035dda6e7",
+  "previousControllerSha256": "267e6105d955f372617ac9376ff5bb4ae16e6089fb0490ea6feaead7d3b4b71b",
+  "patches": {
+    "scripts/release-test/recover-pr1139-uat-orphan.py": [
+      [
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"",
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"\n# Exact Finance billing automation controller; prior reviewed controllers remain valid history.\nFINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\""
+      ],
+      [
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB),",
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB, FINANCE_BILLING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-uat-orphan.py": [
+      [
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"",
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"\n# Exact Finance billing automation controller; prior reviewed controllers remain valid history.\nFINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\""
+      ],
+      [
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB),",
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB, FINANCE_BILLING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-migration-retry-orphan.py": [
+      [
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"",
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"\n# Exact Finance billing automation controller; prior reviewed controllers remain valid history.\nFINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\""
+      ],
+      [
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB),",
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB, FINANCE_BILLING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1151-uat-supersession.py": [
+      [
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"",
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"\n# Exact Finance billing automation controller; prior reviewed controllers remain valid history.\nFINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\""
+      ],
+      [
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB),",
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB, FINANCE_BILLING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1204-uat-supersession.py": [
+      [
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"",
+        "STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = \"a50b87bcfdeb19dd60e2c82d29edd98035dda6e7\"\n# Exact Finance billing automation controller; prior reviewed controllers remain valid history.\nFINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\""
+      ],
+      [
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB),",
+        "PULSE_DOCUMENT_PREREQUISITES_PATH_DEPLOYMENT_BLOB, STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB, FINANCE_BILLING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-module025-quarantine-controller.py": [
+      [
+        "    # Exact stale-SOW maintenance controller; unknown future bytes remain rejected.\n    if hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256, \"6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff\", \"11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3\", \"6c7d701fc02599626f5fcfb638f4f5d4809e27102dbeb2085ac5c7f81532ca62\", \"941c13231b28d0fa40e0e72af02a079c31f4a6b6a78c27e2af156bf93ee2eae6\", \"b1583d34382fc774c9b40ac5b145f2a5f7154ab06e48203310a1f402e262fdef\") and hashlib.sha256(current).hexdigest() == \"267e6105d955f372617ac9376ff5bb4ae16e6089fb0490ea6feaead7d3b4b71b\":\n        return True\n",
+        "    # Exact stale-SOW maintenance controller; unknown future bytes remain rejected.\n    if hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256, \"6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff\", \"11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3\", \"6c7d701fc02599626f5fcfb638f4f5d4809e27102dbeb2085ac5c7f81532ca62\", \"941c13231b28d0fa40e0e72af02a079c31f4a6b6a78c27e2af156bf93ee2eae6\", \"b1583d34382fc774c9b40ac5b145f2a5f7154ab06e48203310a1f402e262fdef\") and hashlib.sha256(current).hexdigest() == \"267e6105d955f372617ac9376ff5bb4ae16e6089fb0490ea6feaead7d3b4b71b\":\n        return True\n    # Exact Finance billing controller; only reviewed migration/evidence bytes changed.\n    if hashlib.sha256(original).hexdigest() in (ORIGINAL_SHA256, EXPORT_SHA256, ENTERPRISE_SHA256, DOCUMENT_ADMISSION_SHA256, NORMAL_SA_SHA256, \"6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff\", \"11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3\", \"6c7d701fc02599626f5fcfb638f4f5d4809e27102dbeb2085ac5c7f81532ca62\", \"941c13231b28d0fa40e0e72af02a079c31f4a6b6a78c27e2af156bf93ee2eae6\", \"b1583d34382fc774c9b40ac5b145f2a5f7154ab06e48203310a1f402e262fdef\", \"267e6105d955f372617ac9376ff5bb4ae16e6089fb0490ea6feaead7d3b4b71b\") and hashlib.sha256(current).hexdigest() == \"9f96b44aeabff2055c2630071b4c63d7ce9d2eb61e630a237634f251700ab122\":\n        return True\n"
+      ]
+    ]
+  }
+}
