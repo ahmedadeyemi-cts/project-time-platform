@@ -110,6 +110,16 @@ const emptySellState = {
   runs: [],
 };
 
+const emptyBillingNotificationProfile = {
+  invoiceGeneratedActionRequiredEnabled: false,
+  workflowNotes: '',
+  version: 0,
+  channels: ['email', 'teams'],
+  recipientRoles: ['BILLING', 'FINANCE', 'ACCOUNTING', 'ACCOUNTING_BILLING'],
+  projectContextCc: ['PROJECT_MANAGER', 'PROJECT_TEAM_COORDINATOR'],
+  externalCustomerContactsEnabled: false,
+};
+
 function providerReady(status) {
   return Boolean(
     status?.provider?.configured
@@ -132,6 +142,12 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
   const [sellFilters, setSellFilters] = useState({ search: '', relationship: 'customer', page: 1, pageSize: 100 });
   const [selectedSellIds, setSelectedSellIds] = useState([]);
   const [showSellHistory, setShowSellHistory] = useState(false);
+  const [billingNotificationProfile, setBillingNotificationProfile] = useState({
+    loading: false,
+    saving: false,
+    error: '',
+    data: emptyBillingNotificationProfile,
+  });
 
   async function loadDirectory(preferredClientId = '') {
     setDirectory((current) => ({ ...current, loading: true, error: null }));
@@ -207,6 +223,64 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
   const selectedCustomer = customers.find((customer) => customer.clientId === selectedClientId) ?? filteredCustomers[0];
   const selectedContacts = contacts.filter((contact) => contact.clientId === selectedCustomer?.clientId);
   const selectedPrimaryContact = selectedContacts.find((contact) => contact.isPrimary);
+
+  async function loadBillingNotificationProfile(clientId) {
+    if (!clientId) {
+      setBillingNotificationProfile({ loading: false, saving: false, error: '', data: emptyBillingNotificationProfile });
+      return;
+    }
+
+    setBillingNotificationProfile((current) => ({ ...current, loading: true, error: '' }));
+    try {
+      const result = await fetchJson(`/api/customers/${clientId}/billing-notification-profile`);
+      setBillingNotificationProfile({
+        loading: false,
+        saving: false,
+        error: '',
+        data: { ...emptyBillingNotificationProfile, ...result },
+      });
+    } catch (error) {
+      setBillingNotificationProfile({
+        loading: false,
+        saving: false,
+        error: error instanceof Error ? error.message : 'Unable to load customer billing notification profile.',
+        data: emptyBillingNotificationProfile,
+      });
+    }
+  }
+
+  async function saveBillingNotificationProfile() {
+    if (!selectedCustomer?.clientId || !canManageCustomers) return;
+
+    setBillingNotificationProfile((current) => ({ ...current, saving: true, error: '' }));
+    try {
+      const result = await sendJson(
+        `/api/customers/${selectedCustomer.clientId}/billing-notification-profile`,
+        'PUT',
+        {
+          invoiceGeneratedActionRequiredEnabled: billingNotificationProfile.data.invoiceGeneratedActionRequiredEnabled === true,
+          workflowNotes: billingNotificationProfile.data.workflowNotes || '',
+        },
+      );
+      setBillingNotificationProfile({
+        loading: false,
+        saving: false,
+        error: '',
+        data: { ...emptyBillingNotificationProfile, ...(result.profile || {}) },
+      });
+      setActionStatus(result.message ?? 'Customer billing notification profile saved.');
+    } catch (error) {
+      setBillingNotificationProfile((current) => ({
+        ...current,
+        saving: false,
+        error: error instanceof Error ? error.message : 'Unable to save customer billing notification profile.',
+      }));
+    }
+  }
+
+  useEffect(() => {
+    void loadBillingNotificationProfile(selectedCustomer?.clientId || '');
+  }, [selectedCustomer?.clientId]);
 
   const customerDirectoryMetrics = useMemo(() => {
     const activeCustomers = customers.filter((customer) => customer.isActive !== false).length;
@@ -677,8 +751,99 @@ export default function CustomerDirectoryCenter({ canManageCustomers = false }) 
 
               <div className="customer-local-enrichment-banner">
                 <strong>Local enrichment</strong>
-                <span>Contacts, titles, relationships, phone numbers, and addresses added below remain Pulse-owned and are preserved when the customer is refreshed from ConnectWise SELL.</span>
+                <span>Contacts, titles, relationships, phone numbers, addresses, and customer billing notification settings added below remain Pulse-owned and are preserved when the customer is refreshed from ConnectWise SELL.</span>
               </div>
+
+              <section className="customer-billing-notification-profile" aria-labelledby="customer-billing-notification-title">
+                <div className="customer-billing-notification-heading">
+                  <div>
+                    <p className="eyebrow">Billing workflow notification</p>
+                    <h4 id="customer-billing-notification-title">Invoice-generated back-office notification</h4>
+                    <p className="muted">
+                      Enable this only for customers that require special internal actions after a Pulse invoice is generated.
+                      One governed event drives both Email and Teams through Module 065.
+                    </p>
+                  </div>
+                  <span className={billingNotificationProfile.data.invoiceGeneratedActionRequiredEnabled ? 'enabled' : 'disabled'}>
+                    {billingNotificationProfile.loading
+                      ? 'Checking…'
+                      : billingNotificationProfile.data.invoiceGeneratedActionRequiredEnabled
+                        ? 'Enabled'
+                        : 'Off'}
+                  </span>
+                </div>
+
+                {billingNotificationProfile.error ? (
+                  <div className="customer-directory-alert error">{billingNotificationProfile.error}</div>
+                ) : null}
+
+                <div className="customer-billing-notification-facts">
+                  <article>
+                    <span>Channels</span>
+                    <strong>Email + Teams</strong>
+                    <small>Queued independently from the same Module 065 event.</small>
+                  </article>
+                  <article>
+                    <span>Primary recipients</span>
+                    <strong>Billing · Finance · Accounting</strong>
+                    <small>Active ACCOUNTING_BILLING roles are included as well.</small>
+                  </article>
+                  <article>
+                    <span>Project context</span>
+                    <strong>PM + PTC copied</strong>
+                    <small>Current project ownership is resolved at notification time.</small>
+                  </article>
+                  <article>
+                    <span>Customer contacts</span>
+                    <strong>Not notified</strong>
+                    <small>External customer delivery stays off until explicitly designed and approved.</small>
+                  </article>
+                </div>
+
+                {canManageCustomers ? (
+                  <div className="customer-billing-notification-form">
+                    <label className="checkbox-label">
+                      <input
+                        type="checkbox"
+                        checked={billingNotificationProfile.data.invoiceGeneratedActionRequiredEnabled === true}
+                        disabled={billingNotificationProfile.loading || billingNotificationProfile.saving}
+                        onChange={(event) => setBillingNotificationProfile((current) => ({
+                          ...current,
+                          data: {
+                            ...current.data,
+                            invoiceGeneratedActionRequiredEnabled: event.target.checked,
+                          },
+                        }))}
+                      />
+                      Notify internal billing teams whenever an invoice is generated for this customer
+                    </label>
+                    <label>
+                      Internal workflow note
+                      <textarea
+                        rows="3"
+                        maxLength="4000"
+                        placeholder="Optional: document the special back-office process for this customer. Additional automation can be added when requirements are confirmed."
+                        value={billingNotificationProfile.data.workflowNotes || ''}
+                        disabled={billingNotificationProfile.loading || billingNotificationProfile.saving}
+                        onChange={(event) => setBillingNotificationProfile((current) => ({
+                          ...current,
+                          data: { ...current.data, workflowNotes: event.target.value },
+                        }))}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="primary-action"
+                      disabled={billingNotificationProfile.loading || billingNotificationProfile.saving}
+                      onClick={() => void saveBillingNotificationProfile()}
+                    >
+                      {billingNotificationProfile.saving ? 'Saving notification profile…' : 'Save billing notification profile'}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="muted">Customer Directory managers control this setting.</p>
+                )}
+              </section>
 
               <div className="customer-cost-grid">
                 <article><span>Project planned cost</span><strong>{fmtMoney(selectedCustomer.plannedProjectTotalCost)}</strong></article>

@@ -885,14 +885,31 @@ public static partial class WorkLifecycleModule
             context.RequestAborted);
 
         await transaction.CommitAsync(context.RequestAborted);
+        bool? billingNotificationQueued = null;
+        if (operation == "complete")
+        {
+            billingNotificationQueued = await WorkLifecycleBillingNotificationBridge.QueueAsync(
+                "CLOSEOUT_COMPLETED",
+                context.TraceIdentifier,
+                projectId,
+                access.ActualUserId,
+                "closed",
+                "#invoice-billing-center",
+                context,
+                CancellationToken.None);
+        }
+
         return Results.Ok(new
         {
             status = operation == "complete" ? "project_closed" : "closeout_saved",
             message = operation == "complete"
-                ? "Project closed and the complete decision trail was recorded."
+                ? billingNotificationQueued == true
+                    ? "Project closed, the complete decision trail was recorded, and Finance/Billing closeout notification was queued."
+                    : "Project closed and the complete decision trail was recorded. Notification delivery requires Module 065 review."
                 : closeoutStatus == "ready"
                     ? "Closeout request saved and ready for final approval."
                     : "Closeout request saved with remaining blockers.",
+            billingNotificationQueued,
             closeoutStatus,
             blockers
         });

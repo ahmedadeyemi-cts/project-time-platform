@@ -21,6 +21,7 @@ ORDER_REGISTRATION = json.loads((ROOT/'tests/pulse-activation-order/recovery_reg
 PREREQUISITE_REGISTRATION = json.loads((ROOT/'tests/pulse-runtime-prerequisites/recovery_registration.json').read_text())
 PATHFIX_REGISTRATION = json.loads((ROOT/'tests/pulse-runtime-prerequisites/pathfix_registration.json').read_text())
 STALE_SOW_REGISTRATION = json.loads((ROOT/'tests/stale-sow-controller-registration.json').read_text())
+FINANCE_BILLING_REGISTRATION = json.loads((ROOT/'tests/finance-billing-controller-registration.json').read_text())
 def historical_controller():
     return _activation.normalize((ROOT/CONTROLLER).read_bytes())
 
@@ -54,7 +55,7 @@ def verify_publication_only(current):
 class ControllerTests(unittest.TestCase):
     def test_actual_activation_controller_is_exact_and_additive(self):
         current=(ROOT/CONTROLLER).read_bytes()
-        self.assertEqual(hashlib.sha256(current).hexdigest(),_activation.STALE_SOW_MAINTENANCE_SHA256)
+        self.assertEqual(hashlib.sha256(current).hexdigest(),_activation.FINANCE_BILLING_SHA256)
         self.assertEqual(hashlib.sha256(historical_controller()).hexdigest(),_activation.BASE_SHA256)
         for changed in (current+b'\n',current.replace(b"exit-code: '1'",b"exit-code: '0'",1)):
             with self.assertRaises(AssertionError):_activation.normalize(changed)
@@ -85,6 +86,8 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
             for before,after in STALE_SOW_REGISTRATION['patches'][file]:
                 self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
+            for before,after in FINANCE_BILLING_REGISTRATION['patches'][file]:
+                self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
             self.assertEqual((ROOT/file).read_text(),old)
     def test_all_five_recovery_contexts_accept_only_exact_current_controller(self):
         current='b'*40
@@ -94,14 +97,14 @@ class ControllerTests(unittest.TestCase):
             class Api:
                 def read(self,*_): return {'object':{'sha':current}}
             env={'GITHUB_REPOSITORY':m.REPOSITORY,'GITHUB_REF':'refs/heads/main','GITHUB_EVENT_NAME':'push','GITHUB_SHA':current,'GITHUB_WORKFLOW_REF':f'{m.REPOSITORY}/{m.SUPERVISOR}@refs/heads/main'}
-            for blob in [REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob'],'0'*40]:
+            for blob in [REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob'],FINANCE_BILLING_REGISTRATION['controllerBlob'],'0'*40]:
                 def git(*args):
                     if args==('rev-parse','HEAD'): return current
                     if args==('rev-parse',f'{current}:{m.DEPLOYMENT}'): return blob
                     if args[0]=='rev-parse': return m.DEPLOYMENT_BLOB
                     return ''
                 with patch.dict(os.environ,env,clear=True),patch.object(m,'git',side_effect=git):
-                    if blob in (REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob']): self.assertEqual(m.verify_context(Api()),current)
+                    if blob in (REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob'],FINANCE_BILLING_REGISTRATION['controllerBlob']): self.assertEqual(m.verify_context(Api()),current)
                     else:
                         with self.assertRaises(RuntimeError): m.verify_context(Api())
     def test_known_quarantine_base_and_byte_changes(self):

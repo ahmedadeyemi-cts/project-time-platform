@@ -161,10 +161,28 @@ public static partial class WorkLifecycleModule
                 await mirror.ExecuteNonQueryAsync(context.RequestAborted);
             }
             await transaction.CommitAsync(context.RequestAborted);
+            bool? billingNotificationQueued = null;
+            if (action == "delivery")
+            {
+                billingNotificationQueued = await WorkLifecycleBillingNotificationBridge.QueueAsync(
+                    "CLOSEOUT_STARTED",
+                    receipt.ReceiptId.ToString("N"),
+                    projectId,
+                    access.ActualUserId,
+                    "ready_for_billing",
+                    "#invoice-billing-center",
+                    context,
+                    CancellationToken.None);
+            }
+
             return Results.Ok(new
             {
                 status = "completion_evidence_recorded", stateChanged = true, revision = next.Revision,
-                message = action == "delivery" ? "Delivery recorded and closeout started. Billing and acceptance can now be completed separately."
+                billingNotificationQueued,
+                message = action == "delivery"
+                    ? billingNotificationQueued == true
+                        ? "Delivery recorded and closeout started. Finance, Billing, and Accounting were notified that the project is ready for billing review."
+                        : "Delivery recorded and closeout started. The Finance notification could not be queued; Module 065 needs attention."
                     : action == "sent" ? "Billing handoff confirmation recorded. No external transmission was performed; billing is not yet marked complete."
                     : action == "billed" ? "Fully billed confirmation recorded for the current charge evidence. Finish the remaining closeout checks before closing."
                     : "Evidence recorded with its author, date and audit history."

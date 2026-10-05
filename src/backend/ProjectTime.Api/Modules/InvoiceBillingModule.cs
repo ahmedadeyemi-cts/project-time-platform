@@ -583,6 +583,16 @@ public static partial class InvoiceBillingModule
             await transaction.CommitAsync();
 
             var invoice = await LoadInvoiceDetailAsync(connection, invoiceId);
+            var customerWorkflowNotification = await CustomerBillingNotificationProfileModule.QueueInvoiceCreatedAsync(
+                projectId,
+                project.ClientId,
+                invoiceId,
+                identity.InvoiceNumber,
+                invoiceType,
+                subtotal,
+                sessionUserId.Value,
+                httpContext,
+                CancellationToken.None);
 
             return Results.Created(
                 $"/api/billing/invoices/{invoiceId}",
@@ -590,7 +600,13 @@ public static partial class InvoiceBillingModule
                 {
                     status = "billing_invoice_created",
                     message = $"{(invoiceType == "final" ? "Final" : "Partial")} invoice {identity.InvoiceNumber} was created from verified labor and governed package records.",
-                    invoice
+                    invoice,
+                    customerWorkflowNotification = new
+                    {
+                        profileEnabled = customerWorkflowNotification.ProfileEnabled,
+                        eventQueued = customerWorkflowNotification.EventQueued,
+                        diagnosticCode = customerWorkflowNotification.DiagnosticCode
+                    }
                 });
         }
         catch (PostgresException exception) when (exception.SqlState is "23505" or "40001")

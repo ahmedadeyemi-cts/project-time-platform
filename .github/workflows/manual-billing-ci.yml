@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/manual-billing-ci.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
       - 'src/backend/ProjectTime.Api/Modules/*Billing*.cs'
       - 'src/backend/ProjectTime.Api/Modules/ManualBillingPolicy.cs'
       - 'src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs'
@@ -15,10 +16,24 @@ on:
       - 'src/frontend/project-time-web/src/invoice-billing-enhancements.css'
       - 'src/frontend/project-time-web/src/CertiniaInvoiceDeliveryPanel.jsx'
       - 'src/frontend/project-time-web/src/certinia-invoice-delivery.css'
+      - 'src/frontend/project-time-web/src/ProjectCompletionChecklist.jsx'
+      - 'src/frontend/project-time-web/src/completion-checklist-model.mjs'
       - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs'
+      - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleBillingNotificationBridge.cs'
+      - 'src/backend/ProjectTime.Api/Modules/CustomerBillingNotificationProfileModule.cs'
+      - 'src/backend/ProjectTime.Api/Program.cs'
+      - 'src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs'
+      - 'src/frontend/project-time-web/src/CustomerDirectoryCenter.jsx'
+      - 'src/frontend/project-time-web/src/customer-directory-center.css'
+      - 'database/migrations/133_finance_billing_handoff_notifications.sql'
+      - 'database/rollback/133_finance_billing_handoff_notifications_rollback.sql'
+      - 'database/migrations/134_customer_billing_notification_profiles.sql'
+      - 'database/rollback/134_customer_billing_notification_profiles_rollback.sql'
       - 'src/frontend/project-time-web/src/manual-invoice-model.mjs'
       - 'src/frontend/project-time-web/tests/manual-invoice.test.mjs'
       - 'src/frontend/project-time-web/tests/finance-billing-production-readiness.test.mjs'
+      - 'src/frontend/project-time-web/tests/finance-billing-automation.test.mjs'
       - 'src/frontend/project-time-web/scripts/test-manual-billing-browser.mjs'
       - 'tests/ManualBillingTests/**'
 permissions:
@@ -61,7 +76,7 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: |
           npm ci
-          node --test tests/manual-invoice.test.mjs tests/completion-checklist.test.mjs tests/finance-billing-production-readiness.test.mjs
+          node --test tests/manual-invoice.test.mjs tests/completion-checklist.test.mjs tests/finance-billing-production-readiness.test.mjs tests/finance-billing-automation.test.mjs
           node scripts/validate-work-to-cash-lifecycle.mjs
           npm install --prefix "$RUNNER_TEMP/manual-billing-browser" --no-audit --no-fund playwright@1.57.0 esbuild@0.25.12
           "$RUNNER_TEMP/manual-billing-browser/node_modules/.bin/playwright" install --with-deps chromium

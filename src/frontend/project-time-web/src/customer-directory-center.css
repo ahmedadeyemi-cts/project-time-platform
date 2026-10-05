@@ -297,3 +297,151 @@
     margin-top: 6px;
   }
 }
+
+.customer-billing-notification-profile {
+  display: grid;
+  gap: .85rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 14px;
+  background: var(--surface-color, #fff);
+}
+
+.customer-billing-notification-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.customer-billing-notification-heading h4 {
+  margin: .15rem 0 .35rem;
+}
+
+.customer-billing-notification-heading p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.customer-billing-notification-heading > span {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: .35rem .65rem;
+  border-radius: 999px;
+  font-size: .76rem;
+  font-weight: 900;
+}
+
+.customer-billing-notification-heading > span.enabled {
+  border: 1px solid #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.customer-billing-notification-heading > span.disabled {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.customer-billing-notification-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .65rem;
+}
+
+.customer-billing-notification-facts article {
+  display: grid;
+  gap: .2rem;
+  min-width: 0;
+  padding: .7rem;
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, .72);
+}
+
+.customer-billing-notification-facts span,
+.customer-billing-notification-facts small {
+  color: var(--muted, #64748b);
+}
+
+.customer-billing-notification-facts span {
+  font-size: .7rem;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.customer-billing-notification-facts strong,
+.customer-billing-notification-facts small {
+  overflow-wrap: anywhere;
+}
+
+.customer-billing-notification-form {
+  display: grid;
+  gap: .7rem;
+  padding: .85rem;
+  border-radius: 10px;
+  background: rgba(14, 165, 233, .06);
+}
+
+.customer-billing-notification-form label:not(.checkbox-label) {
+  display: grid;
+  gap: .35rem;
+  font-weight: 800;
+}
+
+.customer-billing-notification-form textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 78px;
+  padding: .65rem .7rem;
+  border: 1px solid rgba(148, 163, 184, .34);
+  border-radius: .6rem;
+  background: var(--surface, #fff);
+  color: var(--text, #0f172a);
+}
+
+[data-theme='dark'] .customer-billing-notification-profile,
+body[data-theme='dark'] .customer-billing-notification-profile,
+[data-theme='dark'] .customer-billing-notification-facts article,
+body[data-theme='dark'] .customer-billing-notification-facts article {
+  background: #182c40;
+  color: #edf5ff;
+}
+
+[data-theme='dark'] .customer-billing-notification-facts span,
+body[data-theme='dark'] .customer-billing-notification-facts span,
+[data-theme='dark'] .customer-billing-notification-facts small,
+body[data-theme='dark'] .customer-billing-notification-facts small {
+  color: #cbd5e1;
+}
+
+[data-theme='dark'] .customer-billing-notification-form,
+body[data-theme='dark'] .customer-billing-notification-form {
+  background: #163047;
+}
+
+[data-theme='dark'] .customer-billing-notification-heading > span.disabled,
+body[data-theme='dark'] .customer-billing-notification-heading > span.disabled {
+  background: #26384a;
+  color: #dbe7f2;
+  border-color: #4b6073;
+}
+
+@media (max-width: 1050px) {
+  .customer-billing-notification-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .customer-billing-notification-heading {
+    flex-direction: column;
+  }
+
+  .customer-billing-notification-facts {
+    grid-template-columns: 1fr;
+  }
+}

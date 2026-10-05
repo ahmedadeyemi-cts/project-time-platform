@@ -69,7 +69,47 @@ tests/validate-systemwide-image-build-controller.mjs
 tests/validate-utilization-role-scoping.mjs
 FILES
 sed -i 's/^[[:space:]]*//' "$CIT/allowed-release-files"
-if [[ "$HEAD_BRANCH" == 'fix/flowhive-pm-acceptance-contract' ]]; then
+if [[ "$HEAD_BRANCH" == 'feat/finance-billing-automation-20261005' ]]; then
+  cat >> "$CIT/allowed-release-files" <<'FILES'
+.github/workflows/manual-billing-ci.yml
+.github/workflows/pr1139-uat-recovery-ci.yml
+.github/workflows/pr1140-uat-recovery-ci.yml
+.github/workflows/pr1151-uat-supersession-ci.yml
+.github/workflows/uat-migration-throttle-recovery-ci.yml
+database/migrations/133_finance_billing_handoff_notifications.sql
+database/migrations/134_customer_billing_notification_profiles.sql
+database/rollback/133_finance_billing_handoff_notifications_rollback.sql
+database/rollback/134_customer_billing_notification_profiles_rollback.sql
+docs/production-readiness/foundation/initialization-review.json
+src/backend/ProjectTime.Api/Modules/CustomerBillingNotificationProfileModule.cs
+src/backend/ProjectTime.Api/Modules/InvoiceBillingModule.cs
+src/backend/ProjectTime.Api/Modules/WorkLifecycleBillingNotificationBridge.cs
+src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs
+src/backend/ProjectTime.Api/Modules/WorkLifecycleModule.cs
+src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs
+src/frontend/project-time-web/src/BillingReadinessCenter.jsx
+src/frontend/project-time-web/src/CustomerDirectoryCenter.jsx
+src/frontend/project-time-web/src/InvoiceBillingCenter.jsx
+src/frontend/project-time-web/src/ProjectCompletionChecklist.jsx
+src/frontend/project-time-web/src/completion-checklist-model.mjs
+src/frontend/project-time-web/src/customer-directory-center.css
+src/frontend/project-time-web/src/invoice-billing-enhancements.css
+src/frontend/project-time-web/tests/finance-billing-automation.test.mjs
+.github/workflows/flowhive-psa-release-control-ci.yml
+scripts/release-test/recover-pr1139-uat-orphan.py
+scripts/release-test/recover-pr1140-migration-retry-orphan.py
+scripts/release-test/recover-pr1140-uat-orphan.py
+scripts/release-test/verify-module025-quarantine-controller.py
+scripts/release-test/verify-pr1151-uat-supersession.py
+scripts/release-test/verify-pr1204-uat-supersession.py
+tests/finance-billing-controller-registration.json
+tests/laya/processed-source-scope.py
+tests/pulse-activation-release/controller.py
+tests/security-release/test_controller_registration.py
+scripts/release-test/resolve-flowhive-installed-deployment.py
+tests/flowhive-installed-resolution.test.py
+FILES
+elif [[ "$HEAD_BRANCH" == 'fix/flowhive-pm-acceptance-contract' ]]; then
   node tests/validate-flowhive-pm-acceptance-scope.mjs
   node tests/validate-flowhive-pm-acceptance-scope.mjs --print-files >> "$CIT/allowed-release-files"
 elif [[ "$HEAD_BRANCH" == 'fix/ai-planner-evidence-fallback-20260905' ]]; then

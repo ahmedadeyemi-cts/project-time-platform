@@ -13,6 +13,30 @@ def current_branch():
     return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
+if current_branch() == 'feat/finance-billing-automation-20261005':
+    base = subprocess.check_output(['git','-C',str(ROOT),'merge-base','origin/main','HEAD'], text=True).strip()
+    inherited = [
+        'database/migrations/125_automatic_document_admission_laya.sql',
+        'src/backend/ProjectTime.Api/Ai/LayaProcessedSourceReader.cs',
+        'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationWorker.cs',
+        'src/backend/ProjectTime.Api/Ai/LayaAutomaticClassificationRepository.cs',
+        'src/backend/ProjectTime.Api/Ai/LayaWorkerLease.cs',
+        'src/backend/ProjectTime.Api/Ai/PulseAiDocumentIndexAuthorization.cs',
+        'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeRepository.cs',
+        'src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentRuntimeService.cs',
+        'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeSourceResolver.cs',
+        'src/backend/ProjectTime.Api/Modules/LayaDecisionModule.cs',
+        'src/backend/ProjectTime.Api/Modules/ProjectPlanningDocumentPreparation.cs',
+    ]
+    for path in inherited:
+        current = (ROOT/path).read_bytes()
+        accepted = subprocess.check_output(['git','-C',str(ROOT),'show',f'{base}:{path}'])
+        if current != accepted:
+            raise SystemExit('Finance billing automation changed inherited Laya source: '+path)
+    subprocess.run(['git','-C',str(ROOT),'diff','--check',base,'HEAD'], check=True)
+    print('LAYA_FINANCE_BILLING_INHERITED_SOURCE=PASS; laya_runtime_unchanged=true')
+    raise SystemExit(0)
+
 if current_branch() == CURRENT_STALE_SOW_EXECUTION_GUIDE:
     base = subprocess.check_output(['git','-C',str(ROOT),'merge-base','origin/main','HEAD'], text=True).strip()
     inherited = [

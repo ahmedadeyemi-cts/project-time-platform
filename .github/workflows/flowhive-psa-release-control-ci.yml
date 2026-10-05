@@ -74,6 +74,20 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
+          if [[ "$GITHUB_HEAD_REF" == 'feat/finance-billing-automation-20261005' ]]; then
+            git diff --name-only "$BASE_SHA...HEAD" | grep -Ei 'flowhive' | grep -Ev '^(\.github/workflows/flowhive-psa-release-control-ci\.yml|scripts/release-test/resolve-flowhive-installed-deployment\.py|tests/flowhive-installed-resolution\.test\.py)$' > "$RUNNER_TEMP/finance-flowhive-unexpected" || true
+            [[ ! -s "$RUNNER_TEMP/finance-flowhive-unexpected" ]] || { cat "$RUNNER_TEMP/finance-flowhive-unexpected" >&2; exit 1; }
+            REGISTERED_FINANCE_CONTROLLER="$(jq -er '.controllerBlob | select(test("^[0-9a-f]{40}$"))' tests/finance-billing-controller-registration.json)"
+            [[ "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" == "$REGISTERED_FINANCE_CONTROLLER" ]] || exit 1
+            git diff --exit-code "$BASE_SHA" HEAD -- .github/workflows/projectpulse-deploy-production.yml
+            python3 tests/security-release/test_controller_registration.py
+            node tests/validate-systemwide-image-build-controller.mjs
+            python3 tests/flowhive-installed-resolution.test.py
+            node --test src/frontend/project-time-web/tests/finance-billing-automation.test.mjs
+            git diff --check "$BASE_SHA"...HEAD
+            echo 'FLOWHIVE_FINANCE_BILLING_REVIEWED_SCOPE=PASS'
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'fix/pulse-document-runtime-prereqs-20261002' ]]; then
             python3 tests/pulse-runtime-prerequisites/scope.py
             python3 tests/pulse-runtime-prerequisites/test_scope.py

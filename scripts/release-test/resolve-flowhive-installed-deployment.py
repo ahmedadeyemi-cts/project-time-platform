@@ -49,6 +49,8 @@ CURRENT_MAIN_MIGRATIONS = (
     "124_module025_service_scope",
     "125_automatic_document_admission_laya",
     "127_flowhive_pm_automatic_planning_defaults",
+    "133_finance_billing_handoff_notifications",
+    "134_customer_billing_notification_profiles",
 )
 LEGACY_MIGRATION_STEP = "Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network"
 CURRENT_MIGRATION_STEP = "Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network"
