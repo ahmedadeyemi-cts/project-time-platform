@@ -102,6 +102,8 @@ tests/finance-billing-controller-registration.json
 tests/laya/processed-source-scope.py
 tests/pulse-activation-release/controller.py
 tests/security-release/test_controller_registration.py
+scripts/release-test/resolve-flowhive-installed-deployment.py
+tests/flowhive-installed-resolution.test.py
 FILES
 elif [[ "$HEAD_BRANCH" == 'fix/flowhive-pm-acceptance-contract' ]]; then
   node tests/validate-flowhive-pm-acceptance-scope.mjs

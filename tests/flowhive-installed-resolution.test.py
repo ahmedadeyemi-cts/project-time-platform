@@ -169,6 +169,8 @@ class ResolutionTests(unittest.TestCase):
         self.assertEqual(len(receipt_lists), 1)
         data[3]["migrations.json"]["migrations"] = json.loads(receipt_lists[0])
         self.assertIn("109_module025_project_name", data[3]["migrations.json"]["migrations"])
+        self.assertIn("133_finance_billing_handoff_notifications", data[3]["migrations.json"]["migrations"])
+        self.assertIn("134_customer_billing_notification_profiles", data[3]["migrations.json"]["migrations"])
         context = validate(data)
         self.assertTrue(context["installationVerified"])
         self.assertFalse(context["functionalAcceptanceVerified"])
