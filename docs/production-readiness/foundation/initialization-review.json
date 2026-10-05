@@ -2214,6 +2214,16 @@
       "review_default": "review_required",
       "decision": "review_required",
       "rationale": "Combined approval routing candidate. Requires migration review and governed Protected UAT release; no live execution or production approval implied."
+    },
+    {
+      "path": "database/migrations/133_finance_billing_handoff_notifications.sql",
+      "sha256": "72a140e421f1fd2a91f6e5feac3c2b1d44887afcde6dae73175328e1b1c5a434",
+      "signals": [
+        "data_mutation"
+      ],
+      "review_default": "review_required",
+      "decision": "review_required",
+      "rationale": "Finance billing handoff notification policy candidate. Requires explicit migration review and governed Protected UAT release; no production execution or activation is authorized by this inventory entry."
     }
   ]
 }
