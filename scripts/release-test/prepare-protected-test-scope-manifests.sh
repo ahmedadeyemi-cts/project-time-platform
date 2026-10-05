@@ -72,6 +72,10 @@ sed -i 's/^[[:space:]]*//' "$CIT/allowed-release-files"
 if [[ "$HEAD_BRANCH" == 'feat/finance-billing-automation-20261005' ]]; then
   cat >> "$CIT/allowed-release-files" <<'FILES'
 .github/workflows/manual-billing-ci.yml
+.github/workflows/pr1139-uat-recovery-ci.yml
+.github/workflows/pr1140-uat-recovery-ci.yml
+.github/workflows/pr1151-uat-supersession-ci.yml
+.github/workflows/uat-migration-throttle-recovery-ci.yml
 database/migrations/133_finance_billing_handoff_notifications.sql
 database/migrations/134_customer_billing_notification_profiles.sql
 database/rollback/133_finance_billing_handoff_notifications_rollback.sql
