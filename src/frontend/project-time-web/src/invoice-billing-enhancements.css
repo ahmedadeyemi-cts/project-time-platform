@@ -49,3 +49,94 @@ details.m042-output-commandbar > summary, details.m042-preview-mode > summary { 
 [data-theme="dark"] .m042-manual-panel, [data-theme="dark"] .m042-manual-fields input, [data-theme="dark"] .m042-manual-fields textarea, [data-theme="dark"] .m042-manual-fields select { background: #152235; color: #eef4ff; border-color: #536780; }
 @media (max-width: 700px) { .m042-manual-fields { grid-template-columns: 1fr; } }
 .m042-manual-panel .m042-reference-summary dt { color: inherit; }
+
+.m042-finance-manual-operations {
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 16px;
+  background: var(--surface-color, #fff);
+  color: var(--text-color, #172b4d);
+}
+.m042-finance-manual-operations > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+.m042-finance-manual-operations > header h2 { margin: .2rem 0 .35rem; }
+.m042-finance-manual-operations > header p { margin: 0; max-width: 76ch; color: var(--text-muted, #60768a); }
+.m042-manual-mode-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: .35rem .65rem;
+  border-radius: 999px;
+  border: 1px solid #fdba74;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: .78rem;
+  font-weight: 900;
+}
+.m042-finance-manual-guide {
+  margin-top: .85rem;
+  padding: .9rem;
+  border-left: 4px solid #0ea5e9;
+  border-radius: 10px;
+  background: #f0f9ff;
+  color: #0c4a6e;
+}
+.m042-finance-manual-guide ol {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: .65rem;
+  margin: .65rem 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: finance-manual;
+}
+.m042-finance-manual-guide li {
+  position: relative;
+  padding: .7rem .7rem .7rem 2.2rem;
+  border: 1px solid #bae6fd;
+  border-radius: 9px;
+  background: #fff;
+  color: #164e63;
+  line-height: 1.35;
+  counter-increment: finance-manual;
+}
+.m042-finance-manual-guide li::before {
+  content: counter(finance-manual);
+  position: absolute;
+  left: .65rem;
+  top: .68rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  border-radius: 50%;
+  background: #0369a1;
+  color: #fff;
+  font-size: .68rem;
+  font-weight: 900;
+}
+[data-theme="dark"] .m042-finance-manual-operations,
+body[data-theme="dark"] .m042-finance-manual-operations { background:#132335; color:#edf5ff; }
+[data-theme="dark"] .m042-finance-manual-guide,
+body[data-theme="dark"] .m042-finance-manual-guide { background:#163047; color:#d8f2ff; }
+[data-theme="dark"] .m042-finance-manual-guide li,
+body[data-theme="dark"] .m042-finance-manual-guide li { background:#182c40; color:#d8f2ff; border-color:#315777; }
+@media (max-width: 1100px) { .m042-finance-manual-guide ol { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 700px) {
+  .m042-finance-manual-operations > header { flex-direction: column; }
+  .m042-finance-manual-guide ol { grid-template-columns: 1fr; }
+  .m042-manual-mode-badge { white-space: normal; }
+}
+
+/* Finance manual-operations header dark-mode contrast. */
+[data-theme="dark"] .m042-finance-manual-operations > header p,
+body[data-theme="dark"] .m042-finance-manual-operations > header p,
+[data-theme="dark"] .m042-finance-manual-operations > header .eyebrow,
+body[data-theme="dark"] .m042-finance-manual-operations > header .eyebrow {
+  color: #cbd5e1;
+}

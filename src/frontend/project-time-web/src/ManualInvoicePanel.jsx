@@ -75,9 +75,9 @@ function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
     } catch { if (alive.current) { setUncertain(true); setMessage('The save result is not confirmed. Retry this same request, or reload and review invoice history before creating another invoice.'); } }
     finally { window.clearTimeout(timer); flight.current = false; if (alive.current) setBusy(false); }
   }
-  return <details className="m042-manual-panel"><summary>Manual partial / full invoice</summary>
-    <h2>Manual invoice · {projectName}</h2>
-    <p>Create an authorized fixed-price invoice using verified commercial terms and progress evidence, including when SELL or Certinia is unavailable. Enter the cumulative amount to bill for the project; prior invoices are deducted automatically. A full invoice covers the remaining agreed balance.</p>
+  return <details className="m042-manual-panel" id="finance-manual-fixed-price"><summary>Fixed-price project amount invoice (manual)</summary>
+    <h2>Project amount invoice · {projectName}</h2>
+    <p>Use this path when Finance is billing an authorized fixed-price project amount or milestone instead of selecting individual time lines. Pulse deducts prior Pulse invoices and recorded external billing so only the newly authorized amount is charged. This remains available when SELL, Salesforce, or Certinia are not connected.</p>
     {state.loading ? <p role="status">Loading prior billing…</p> : state.error ? <p role="alert">{state.error}</p> : <>
       <dl className="m042-reference-summary"><div><dt>Already invoiced in Pulse</dt><dd>{money(basis.pulseInvoiced)}</dd></div><div><dt>Previously recorded outside Pulse</dt><dd>{money(basis.previouslyBilledOutsidePulse)}</dd></div><div><dt>New invoice amount</dt><dd>{charge === null ? 'Enter billing amounts' : money(charge)}</dd></div></dl>
       <p>Time evidence: {basis.submittedTimeCount} submitted entries; {basis.pendingTimeCount} entries awaiting approval. Delivery: {basis.deliveryComplete ? 'completion recorded' : 'still in progress'}.</p>

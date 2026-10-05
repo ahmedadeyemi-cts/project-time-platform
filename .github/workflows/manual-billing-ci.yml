@@ -8,9 +8,17 @@ on:
       - 'src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs'
       - 'src/frontend/project-time-web/src/ManualInvoicePanel.jsx'
       - 'src/frontend/project-time-web/src/BillingReconciliationPanel.jsx'
+      - 'src/frontend/project-time-web/src/InvoiceBillingCenter.jsx'
+      - 'src/frontend/project-time-web/src/BillingReadinessCenter.jsx'
+      - 'src/frontend/project-time-web/src/FinanceBillingWorkflow.jsx'
+      - 'src/frontend/project-time-web/src/finance-billing-workflow.css'
+      - 'src/frontend/project-time-web/src/invoice-billing-enhancements.css'
+      - 'src/frontend/project-time-web/src/CertiniaInvoiceDeliveryPanel.jsx'
+      - 'src/frontend/project-time-web/src/certinia-invoice-delivery.css'
       - 'src/backend/ProjectTime.Api/Modules/WorkLifecycleCompletionWorkflow.cs'
       - 'src/frontend/project-time-web/src/manual-invoice-model.mjs'
       - 'src/frontend/project-time-web/tests/manual-invoice.test.mjs'
+      - 'src/frontend/project-time-web/tests/finance-billing-production-readiness.test.mjs'
       - 'src/frontend/project-time-web/scripts/test-manual-billing-browser.mjs'
       - 'tests/ManualBillingTests/**'
 permissions:
@@ -53,7 +61,7 @@ jobs:
         working-directory: src/frontend/project-time-web
         run: |
           npm ci
-          node --test tests/manual-invoice.test.mjs tests/completion-checklist.test.mjs
+          node --test tests/manual-invoice.test.mjs tests/completion-checklist.test.mjs tests/finance-billing-production-readiness.test.mjs
           node scripts/validate-work-to-cash-lifecycle.mjs
           npm install --prefix "$RUNNER_TEMP/manual-billing-browser" --no-audit --no-fund playwright@1.57.0 esbuild@0.25.12
           "$RUNNER_TEMP/manual-billing-browser/node_modules/.bin/playwright" install --with-deps chromium
