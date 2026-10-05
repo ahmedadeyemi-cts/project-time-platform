@@ -377,7 +377,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const allEligibleLinesSelected = (fixedPrice || selectedRows.every((item) => item.selected && item.rate))
     && selectedEvidenceRows.every((item) => item.selected)
     && (selectedRows.length > 0 || selectedEvidenceRows.length > 0);
-  const manualBillingActive = manualBasis?.projectId === selected?.projectId && (manualBasis.manualInvoicesExist || manualBasis.finalInvoiceExists || manualBasis.closed);
+  const manualBillingActive = Boolean(manualBasis && selected && manualBasis.projectId === selected.projectId && (manualBasis.manualInvoicesExist || manualBasis.finalInvoiceExists || manualBasis.closed));
   const projectAllowsInvoice = selected?.canCreateInvoice === true && !manualBillingActive;
   const userAllowsInvoice = payload.canCreateInvoices === true && selected?.currentUserCanCreateInvoices === true;
   const selectedSourceCount = selectedReadyRows.length + selectedReadyEvidenceRows.length;

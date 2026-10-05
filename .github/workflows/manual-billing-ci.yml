@@ -20,6 +20,7 @@ on:
       - 'src/frontend/project-time-web/tests/manual-invoice.test.mjs'
       - 'src/frontend/project-time-web/tests/finance-billing-production-readiness.test.mjs'
       - 'src/frontend/project-time-web/scripts/test-manual-billing-browser.mjs'
+      - 'src/frontend/project-time-web/scripts/test-invoice-empty-state-browser.mjs'
       - 'tests/ManualBillingTests/**'
 permissions:
   contents: read
@@ -66,6 +67,7 @@ jobs:
           npm install --prefix "$RUNNER_TEMP/manual-billing-browser" --no-audit --no-fund playwright@1.57.0 esbuild@0.25.12
           "$RUNNER_TEMP/manual-billing-browser/node_modules/.bin/playwright" install --with-deps chromium
           BILLING_BROWSER_TOOLS="$RUNNER_TEMP/manual-billing-browser/node_modules" node scripts/test-manual-billing-browser.mjs
+          BILLING_BROWSER_TOOLS="$RUNNER_TEMP/manual-billing-browser/node_modules" node scripts/test-invoice-empty-state-browser.mjs
       - name: Remove disposable database
         if: always()
         run: docker rm --force manual-billing-db || true

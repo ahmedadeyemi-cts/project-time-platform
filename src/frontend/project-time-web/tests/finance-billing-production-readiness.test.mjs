@@ -28,7 +28,7 @@ test('finance billing workflow is explicit, ordered, and connector aware', () =>
   ]) assert.ok(workflow.includes(step), step);
 });
 
-test('invoice center uses the stable recovery layout while preserving manual billing controls', () => {
+test('invoice center uses the stable recovery layout and fails safe when no project is selected', () => {
   const source = read('src/InvoiceBillingCenter.jsx');
   const manualIndex = source.indexOf('<ManualInvoicePanel');
   const workspaceIndex = source.indexOf('className="m042-workspace"');
@@ -36,6 +36,8 @@ test('invoice center uses the stable recovery layout while preserving manual bil
   assert.ok(manualIndex < workspaceIndex, 'stable invoice layout must mount project controls before the workspace');
   assert.ok(source.includes('Create an invoice in three steps'));
   assert.ok(source.includes('Manual invoicing works without Certinia or SELL'));
+  assert.ok(source.includes('Boolean(manualBasis && selected && manualBasis.projectId === selected.projectId'));
+  assert.ok(!source.includes("manualBasis?.projectId === selected?.projectId && (manualBasis.manualInvoicesExist"));
 });
 
 test('manual amount billing and Certinia fallback are governed production paths', () => {
