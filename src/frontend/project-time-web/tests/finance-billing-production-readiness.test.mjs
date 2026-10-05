@@ -28,15 +28,14 @@ test('finance billing workflow is explicit, ordered, and connector aware', () =>
   ]) assert.ok(workflow.includes(step), step);
 });
 
-test('invoice center requires project context before project-specific manual operations', () => {
+test('invoice center uses the stable recovery layout while preserving manual billing controls', () => {
   const source = read('src/InvoiceBillingCenter.jsx');
-  const projectIndex = source.indexOf('id="finance-line-invoice"');
-  const manualIndex = source.indexOf('id="finance-manual-operations"');
-  assert.ok(projectIndex >= 0, 'project billing workspace anchor missing');
-  assert.ok(manualIndex > projectIndex, 'manual operations must follow project selection/review');
-  assert.ok(source.includes('Production manual path'));
-  assert.ok(source.includes('Finish the Finance workflow for'));
-  assert.ok(source.includes('Record the external invoice or handoff reference below'));
+  const manualIndex = source.indexOf('<ManualInvoicePanel');
+  const workspaceIndex = source.indexOf('className="m042-workspace"');
+  assert.ok(manualIndex >= 0, 'manual billing controls missing');
+  assert.ok(manualIndex < workspaceIndex, 'stable invoice layout must mount project controls before the workspace');
+  assert.ok(source.includes('Create an invoice in three steps'));
+  assert.ok(source.includes('Manual invoicing works without Certinia or SELL'));
 });
 
 test('manual amount billing and Certinia fallback are governed production paths', () => {
@@ -49,11 +48,12 @@ test('manual amount billing and Certinia fallback are governed production paths'
   assert.ok(certinia.includes('BillingReconciliationPanel'));
 });
 
-test('billing readiness and invoice center use the shared finance operating workflow', () => {
+test('billing readiness keeps the shared finance workflow while invoice center stays on the stable recovery shell', () => {
   const readiness = read('src/BillingReadinessCenter.jsx');
   const invoice = read('src/InvoiceBillingCenter.jsx');
   assert.ok(readiness.includes('<FinanceBillingWorkflow stage="readiness" />'));
-  assert.ok(invoice.includes('<FinanceBillingWorkflow'));
-  assert.ok(invoice.includes('connectorStatuses={payload.connectorStatuses}'));
   assert.ok(readiness.includes('id="billing-readiness-workflow"'));
+  assert.ok(!invoice.includes('<FinanceBillingWorkflow'));
+  assert.ok(invoice.includes('<ManualInvoicePanel'));
+  assert.ok(invoice.includes('<ProjectCompletionChecklist'));
 });
