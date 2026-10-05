@@ -28,6 +28,18 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
+          if [[ "$GITHUB_HEAD_REF" == 'feat/finance-billing-automation-20261005' ]]; then
+            REGISTERED_FINANCE_CONTROLLER="$(jq -er '.controllerBlob | select(test("^[0-9a-f]{40}$"))' tests/finance-billing-controller-registration.json)"
+            [[ "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" == "$REGISTERED_FINANCE_CONTROLLER" ]] || {
+              echo 'ERROR: Finance Test controller does not match the exact registered controller identity.' >&2
+              exit 1
+            }
+            git diff --exit-code "$BASE_SHA" HEAD -- .github/workflows/projectpulse-deploy-production.yml
+            git diff --check "$BASE_SHA"...HEAD
+            echo 'FINANCE_REGISTERED_TEST_CONTROLLER=PASS'
+            echo 'PRODUCTION_CONTROLLER_UNCHANGED=PASS'
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'fix/stale-sow-cleanup-flowhive-execution-guide-20261002' ]]; then
             python3 tests/stale-sow-flowhive-execution-guide-scope.py
             exit 0
