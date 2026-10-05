@@ -493,6 +493,7 @@ function blockerGuidance(issue) {
 export default function BillingReadinessCenter() {
   const [payload, setPayload] = useState({ loading: true, error: null, degradedSources: [], workspace: null, intake: null, customers: null, certifyExpenses: null, certifyExceptions: null, billingCandidates: [] });
   const [billingMode, setBillingMode] = useState('project');
+  const [selectedCustomerName, setSelectedCustomerName] = useState('');
   const [selectedProjectKey, setSelectedProjectKey] = useState('');
   const [packageType, setPackageType] = useState('Partial project invoice');
   const [evidenceDescription, setEvidenceDescription] = useState('');
@@ -561,15 +562,39 @@ export default function BillingReadinessCenter() {
     );
   }, [payload.workspace, payload.intake, payload.customers, payload.billingCandidates]);
 
+  const customerOptions = useMemo(() => {
+    return [...new Set(projectCandidates
+      .map((project) => String(project.customerName || '').trim())
+      .filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right));
+  }, [projectCandidates]);
+
   useEffect(() => {
-    if (!selectedProjectKey && projectCandidates.length > 0) {
-      setSelectedProjectKey(String(projectCandidates[0].id));
+    if ((!selectedCustomerName || !customerOptions.includes(selectedCustomerName)) && customerOptions.length > 0) {
+      setSelectedCustomerName(customerOptions[0]);
     }
-  }, [projectCandidates, selectedProjectKey]);
+  }, [customerOptions, selectedCustomerName]);
+
+  const customerProjectCandidates = useMemo(() => {
+    if (!selectedCustomerName) return projectCandidates;
+    return projectCandidates.filter((project) => project.customerName === selectedCustomerName);
+  }, [projectCandidates, selectedCustomerName]);
+
+  useEffect(() => {
+    if (customerProjectCandidates.length === 0) {
+      setSelectedProjectKey('');
+      return;
+    }
+    if (!customerProjectCandidates.some((project) => String(project.id) === String(selectedProjectKey))) {
+      setSelectedProjectKey(String(customerProjectCandidates[0].id));
+    }
+  }, [customerProjectCandidates, selectedProjectKey]);
 
   const selectedProject = useMemo(() => {
-    return projectCandidates.find((project) => String(project.id) === String(selectedProjectKey)) ?? projectCandidates[0] ?? null;
-  }, [projectCandidates, selectedProjectKey]);
+    return projectCandidates.find((project) => String(project.id) === String(selectedProjectKey))
+      ?? customerProjectCandidates[0]
+      ?? null;
+  }, [customerProjectCandidates, projectCandidates, selectedProjectKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1029,14 +1054,29 @@ export default function BillingReadinessCenter() {
 
         <div className="billing-readiness-config-grid">
           <label>
-            Project / customer
+            Customer
+            <select
+              value={selectedCustomerName}
+              onChange={(event) => setSelectedCustomerName(event.target.value)}
+              disabled={billingMode === 'monthEnd'}
+            >
+              {customerOptions.length === 0 ? (
+                <option value="">No customers loaded</option>
+              ) : customerOptions.map((customerName) => (
+                <option key={customerName} value={customerName}>{customerName}</option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Project
             <select value={selectedProjectKey} onChange={(event) => setSelectedProjectKey(event.target.value)} disabled={billingMode === 'monthEnd'}>
-              {projectCandidates.length === 0 ? (
-                <option value="">No project candidates loaded</option>
+              {customerProjectCandidates.length === 0 ? (
+                <option value="">No projects for this customer</option>
               ) : (
-                projectCandidates.map((project) => (
+                customerProjectCandidates.map((project) => (
                   <option key={`${project.source}-${project.id}`} value={project.id}>
-                    {project.customerName} · {project.projectCode} · {project.projectName}
+                    {project.projectCode} · {project.projectName}
                   </option>
                 ))
               )}

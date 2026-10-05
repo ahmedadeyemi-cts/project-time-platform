@@ -1,6 +1,6 @@
 // Presentation only. Capabilities and completion results always come from the server.
 export const completionActions = Object.freeze([
-  { id: 'delivery', title: 'Delivery complete', owner: 'Assigned PM / PTC', button: 'Mark delivery complete', confirm: 'I confirm the agreed delivery is complete and want to start closeout.' },
+  { id: 'delivery', title: 'Delivery complete', owner: 'Assigned PM / PTC', button: 'Mark delivery complete', confirm: 'I confirm the agreed delivery is complete. Start closeout and notify Billing, Finance, and Accounting that the project is ready for billing review.' },
   { id: 'acceptance', title: 'Customer acceptance', owner: 'Assigned PM / PTC', button: 'Record customer decision', confirm: 'I have recorded the customer’s actual decision and supporting evidence.' },
   { id: 'sent', title: 'Billing handoff', owner: 'PTC / Billing', button: 'Record manual handoff', confirm: 'I confirm this package was already delivered to the customer or Billing outside Pulse. This action must not send it again.' },
   { id: 'billed', title: 'Fully billed', owner: 'PTC / Billing', button: 'Confirm fully billed', confirm: 'Billing has processed the final charges, including prior partial billing. No remaining authorized charges are awaiting billing for this project.' }

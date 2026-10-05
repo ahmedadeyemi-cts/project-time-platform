@@ -140,3 +140,232 @@ body[data-theme="dark"] .m042-finance-manual-operations > header p,
 body[data-theme="dark"] .m042-finance-manual-operations > header .eyebrow {
   color: #cbd5e1;
 }
+
+/* Finance customer filtering and governed batch invoice generation. */
+.m042-toolbar {
+  grid-template-columns: minmax(260px, 1.4fr) minmax(190px, .8fr) minmax(155px, .6fr) minmax(170px, .65fr) auto;
+}
+
+.m042-billing-automation {
+  display: grid;
+  gap: .9rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 16px;
+  background: var(--surface-color, #fff);
+  color: var(--text-color, #172b4d);
+}
+
+.m042-billing-automation > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.m042-billing-automation > header h2 {
+  margin: .2rem 0 .35rem;
+  font-size: 1.2rem;
+}
+
+.m042-billing-automation > header p {
+  margin: 0;
+  max-width: 78ch;
+  color: var(--text-muted, #60768a);
+  line-height: 1.45;
+}
+
+.m042-automation-scope {
+  display: inline-flex;
+  flex: 0 0 auto;
+  max-width: 260px;
+  padding: .35rem .65rem;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: .78rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.m042-automation-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .7rem;
+}
+
+.m042-automation-metrics article {
+  display: grid;
+  gap: .2rem;
+  padding: .8rem;
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 10px;
+  background: rgba(248, 250, 252, .72);
+}
+
+.m042-automation-metrics span,
+.m042-automation-metrics small {
+  color: var(--text-muted, #60768a);
+}
+
+.m042-automation-metrics span {
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.m042-automation-metrics strong {
+  font-size: 1.35rem;
+}
+
+.m042-automation-review,
+.m042-automation-results {
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 10px;
+  padding: .8rem;
+}
+
+.m042-automation-review > summary,
+.m042-automation-results > summary {
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.m042-automation-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .8rem;
+  margin: .8rem 0;
+}
+
+.m042-automation-columns > div {
+  min-width: 0;
+  padding: .8rem;
+  border-radius: 10px;
+  background: rgba(248, 250, 252, .72);
+}
+
+.m042-automation-columns h3 {
+  margin: 0 0 .55rem;
+  font-size: .95rem;
+}
+
+.m042-automation-columns ul,
+.m042-automation-results ul {
+  display: grid;
+  gap: .45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.m042-automation-columns li,
+.m042-automation-results li {
+  display: grid;
+  gap: .15rem;
+  padding: .55rem .65rem;
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 8px;
+  background: var(--surface-color, #fff);
+}
+
+.m042-automation-columns li span,
+.m042-automation-results li span {
+  color: var(--text-muted, #60768a);
+  overflow-wrap: anywhere;
+}
+
+.m042-automation-confirm {
+  display: flex;
+  align-items: flex-start;
+  gap: .65rem;
+  margin: .8rem 0;
+  padding: .75rem;
+  border-radius: 9px;
+  background: #f0f9ff;
+  color: #0c4a6e;
+  font-weight: 750;
+}
+
+.m042-automation-confirm input {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  margin-top: .1rem;
+}
+
+.m042-automation-results {
+  margin-top: .25rem;
+}
+
+.m042-automation-results ul {
+  margin-top: .7rem;
+}
+
+.m042-automation-results li.success {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
+.m042-automation-results li.held {
+  border-color: #fdba74;
+  background: #fff7ed;
+}
+
+[data-theme="dark"] .m042-billing-automation,
+body[data-theme="dark"] .m042-billing-automation,
+[data-theme="dark"] .m042-automation-columns > div,
+body[data-theme="dark"] .m042-automation-columns > div,
+[data-theme="dark"] .m042-automation-columns li,
+body[data-theme="dark"] .m042-automation-columns li,
+[data-theme="dark"] .m042-automation-results li,
+body[data-theme="dark"] .m042-automation-results li {
+  background: #182c40;
+  color: #edf5ff;
+}
+
+[data-theme="dark"] .m042-billing-automation > header p,
+body[data-theme="dark"] .m042-billing-automation > header p,
+[data-theme="dark"] .m042-automation-metrics span,
+body[data-theme="dark"] .m042-automation-metrics span,
+[data-theme="dark"] .m042-automation-metrics small,
+body[data-theme="dark"] .m042-automation-metrics small,
+[data-theme="dark"] .m042-automation-columns li span,
+body[data-theme="dark"] .m042-automation-columns li span,
+[data-theme="dark"] .m042-automation-results li span,
+body[data-theme="dark"] .m042-automation-results li span {
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .m042-automation-confirm,
+body[data-theme="dark"] .m042-automation-confirm {
+  background: #163047;
+  color: #d8f2ff;
+}
+
+@media (max-width: 1100px) {
+  .m042-toolbar,
+  .m042-automation-metrics,
+  .m042-automation-columns {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .m042-billing-automation > header {
+    flex-direction: column;
+  }
+
+  .m042-toolbar,
+  .m042-automation-metrics,
+  .m042-automation-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .m042-automation-scope {
+    max-width: 100%;
+    white-space: normal;
+  }
+}

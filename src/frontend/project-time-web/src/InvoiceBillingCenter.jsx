@@ -245,9 +245,74 @@ function candidateCellValue(candidate, columnKey, selections) {
   return missingValue;
 }
 
+function candidateBatchPlan(candidate) {
+  const normalizedStatus = text(candidate?.status).toLowerCase();
+  const closed = ['closed', 'completed', 'complete', 'archived', 'cancelled', 'canceled']
+    .some((value) => normalizedStatus.includes(value));
+  const blockers = Array.isArray(candidate?.blockers) ? candidate.blockers.filter(Boolean) : [];
+  const fixedPrice = text(candidate?.contractType).toLowerCase().includes('fixed');
+  const laborLines = Array.isArray(candidate?.lines) ? candidate.lines : [];
+  const evidenceLines = Array.isArray(candidate?.nonLaborLines) ? candidate.nonLaborLines : [];
+  const hasFinalInvoice = (candidate?.invoiceHistory || [])
+    .some((invoice) => text(invoice?.invoiceType).toLowerCase() === 'final');
+
+  if (closed || hasFinalInvoice) {
+    return { ready: false, reason: 'Project is closed or already has a final invoice.' };
+  }
+  if (candidate?.canCreateInvoice !== true || candidate?.currentUserCanCreateInvoices !== true) {
+    return { ready: false, reason: 'Current project or user authority does not allow invoice creation.' };
+  }
+  if (blockers.length) {
+    return { ready: false, reason: blockers[0] };
+  }
+
+  const billingReadinessReviewIds = evidenceLines
+    .map((line) => line.readinessReviewId)
+    .filter(Boolean);
+
+  if (fixedPrice) {
+    if (!billingReadinessReviewIds.length) {
+      return { ready: false, reason: 'Fixed-price billing needs a governed milestone/expense package or Finance-entered project amount.' };
+    }
+    return {
+      ready: true,
+      request: {
+        invoiceType: 'partial',
+        lines: [],
+        billingReadinessReviewIds,
+        notes: ''
+      }
+    };
+  }
+
+  if (laborLines.some((line) => (line.rateOptions || []).length !== 1)) {
+    return { ready: false, reason: 'Finance must resolve a missing or multiple commercial rate selection.' };
+  }
+
+  const lines = laborLines.map((line) => ({
+    timeEntryId: line.timeEntryId,
+    rateLineId: line.rateOptions[0].rateLineId
+  })).filter((line) => line.timeEntryId && line.rateLineId);
+
+  if (!lines.length && !billingReadinessReviewIds.length) {
+    return { ready: false, reason: 'No approved uninvoiced billing sources remain.' };
+  }
+
+  return {
+    ready: true,
+    request: {
+      invoiceType: 'partial',
+      lines,
+      billingReadinessReviewIds,
+      notes: ''
+    }
+  };
+}
+
 export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const [view, setView] = useState('queue');
   const [search, setSearch] = useState('');
+  const [customerFilter, setCustomerFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [model, setModel] = useState('All');
   const [visibleColumns, setVisibleColumns] = useState(() => readColumns(userKey));
@@ -270,6 +335,8 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const [certiniaPreview, setCertiniaPreview] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [manualBasis, setManualBasis] = useState(null);
+  const [batchConfirmed, setBatchConfirmed] = useState(false);
+  const [batchAction, setBatchAction] = useState({ running: false, message: '', results: [] });
 
   async function loadLiveData(preferredProjectId = '') {
     setPayload((current) => ({ ...current, loading: true, error: '' }));
@@ -333,6 +400,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   }, [selected?.projectId, selected?.invoiceHistory?.[0]?.billingInvoiceId]);
   const visibleDefinitions = columns.filter((column) => visibleColumns.includes(column.key));
   const groups = [...new Set(columns.map((column) => column.group))];
+  const customerOptions = [...new Set(candidates.map((candidate) => text(candidate.customerName)).filter(Boolean))].sort();
   const statusOptions = [...new Set(candidates.map((candidate) => candidate.status).filter(Boolean))].sort();
   const modelOptions = [...new Set(candidates.map((candidate) => candidate.contractType).filter(Boolean))].sort();
 
@@ -346,6 +414,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
       if (view === 'closed' && !closed) return false;
       if (view === 'queue' && closed) return false;
+      if (customerFilter !== 'All' && text(candidate.customerName) !== customerFilter) return false;
       if (statusFilter !== 'All' && candidate.status !== statusFilter) return false;
       if (model !== 'All' && candidate.contractType !== model) return false;
       if (!needle) return true;
@@ -364,7 +433,15 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         ...(candidate.assignedEngineers || [])
       ].join(' ').toLowerCase().includes(needle);
     });
-  }, [candidates, model, search, statusFilter, view]);
+  }, [candidates, customerFilter, model, search, statusFilter, view]);
+
+  useEffect(() => {
+    if (view === 'reports' || filtered.length === 0) return;
+    if (!filtered.some((candidate) => candidate.projectId === selectedId)) {
+      setSelectedId(filtered[0].projectId);
+      setAction({ running: false, error: '', success: '' });
+    }
+  }, [filtered, selectedId, view]);
 
   const selectedRows = selectedLineDetails(selected, selections);
   const selectedEvidenceRows = selectedEvidenceDetails(selected, selections);
@@ -388,6 +465,13 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
   const approvedLineCount = candidates.reduce((total, candidate) => total + Number(candidate.approvedLineCount || 0), 0);
   const approvedHours = candidates.reduce((total, candidate) => total + Number(candidate.approvedHours || 0), 0);
   const configuredConnectors = payload.connectorStatuses.filter((connector) => connector.connectionStatus === 'connected').length;
+  const batchPlans = filtered.map((candidate) => ({ candidate, ...candidateBatchPlan(candidate) }));
+  const batchReadyPlans = batchPlans.filter((plan) => plan.ready);
+  const batchHeldPlans = batchPlans.filter((plan) => !plan.ready);
+
+  useEffect(() => {
+    setBatchConfirmed(false);
+  }, [customerFilter, model, search, statusFilter, view]);
 
   function updateSelection(line, patch) {
     if (!selected) return;
@@ -456,6 +540,54 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         success: ''
       });
     }
+  }
+
+  async function generateReadyInvoiceBatch() {
+    if (batchAction.running || !batchConfirmed || batchReadyPlans.length === 0) return;
+
+    setBatchAction({ running: true, message: '', results: [] });
+    const results = [];
+
+    for (const plan of batchReadyPlans) {
+      const candidate = plan.candidate;
+      try {
+        const result = await fetchJson(`/api/billing/projects/${candidate.projectId}/invoices`, {
+          method: 'POST',
+          body: JSON.stringify(plan.request)
+        });
+        results.push({
+          projectId: candidate.projectId,
+          customerName: candidate.customerName,
+          projectCode: candidate.projectCode,
+          projectName: candidate.projectName,
+          success: true,
+          invoiceNumber: result?.invoice?.header?.invoiceNumber || 'Invoice created',
+          message: 'Created from server-validated ready billing sources.'
+        });
+      } catch (error) {
+        results.push({
+          projectId: candidate.projectId,
+          customerName: candidate.customerName,
+          projectCode: candidate.projectCode,
+          projectName: candidate.projectName,
+          success: false,
+          invoiceNumber: '',
+          message: error instanceof Error ? error.message : 'Invoice generation was not completed.'
+        });
+      }
+    }
+
+    const successCount = results.filter((item) => item.success).length;
+    const heldCount = results.length - successCount;
+    setBatchConfirmed(false);
+    setBatchAction({
+      running: false,
+      results,
+      message: heldCount
+        ? `${successCount} invoice(s) created; ${heldCount} project(s) were held by server validation and need Finance review.`
+        : `${successCount} ready invoice(s) were created successfully.`
+    });
+    await loadLiveData(selected?.projectId);
   }
 
   async function loadInvoiceDetail(invoice) {
@@ -705,6 +837,19 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
               />
             </label>
             <label>
+              <span>Customer</span>
+              <select
+                value={customerFilter}
+                onChange={(event) => {
+                  setCustomerFilter(event.target.value);
+                  setBatchConfirmed(false);
+                }}
+              >
+                <option value="All">All customers</option>
+                {customerOptions.map((value) => <option value={value} key={value}>{value}</option>)}
+              </select>
+            </label>
+            <label>
               <span>Status</span>
               <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
                 <option>All</option>
@@ -721,10 +866,100 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             <div className="m042-column-count"><strong>{visibleColumns.length}</strong><small>columns shown</small></div>
           </section>
 
+
+          {view === "queue" ? (
+            <section className="m042-billing-automation" aria-label="Ready billing automation">
+              <header>
+                <div>
+                  <p className="eyebrow">Billing automation</p>
+                  <h2>Generate ready partial invoices in one controlled batch</h2>
+                  <p>The batch uses the same server-side invoice validation as an individual invoice. Final invoices and projects that need an amount, rate, or billing decision remain manual.</p>
+                </div>
+                <span className="m042-automation-scope">{customerFilter === "All" ? "All customers" : customerFilter}</span>
+              </header>
+
+              <div className="m042-automation-metrics">
+                <article><span>Ready to generate</span><strong>{batchReadyPlans.length}</strong><small>Deterministic approved sources and rates</small></article>
+                <article><span>Needs Finance input</span><strong>{batchHeldPlans.length}</strong><small>Amount, rate, evidence, authority, or blocker review</small></article>
+                <article><span>Visible scope</span><strong>{filtered.length}</strong><small>Matches the filters above</small></article>
+              </div>
+
+              <details className="m042-automation-review" open={batchReadyPlans.length > 0}>
+                <summary>Review batch scope before generating invoices</summary>
+                <div className="m042-automation-columns">
+                  <div>
+                    <h3>Ready for partial invoice</h3>
+                    {batchReadyPlans.length ? (
+                      <ul>
+                        {batchReadyPlans.slice(0, 20).map((plan) => (
+                          <li key={plan.candidate.projectId}>
+                            <strong>{text(plan.candidate.customerName, missingValue)}</strong>
+                            <span>{text(plan.candidate.projectCode, missingValue)} · {text(plan.candidate.projectName, "Unnamed project")}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p>No projects in the current scope can be batch-generated yet.</p>}
+                    {batchReadyPlans.length > 20 ? <small>Plus {batchReadyPlans.length - 20} additional ready project(s).</small> : null}
+                  </div>
+                  <div>
+                    <h3>Held for Finance review</h3>
+                    {batchHeldPlans.length ? (
+                      <ul>
+                        {batchHeldPlans.slice(0, 20).map((plan) => (
+                          <li key={plan.candidate.projectId}>
+                            <strong>{text(plan.candidate.customerName, missingValue)} · {text(plan.candidate.projectCode, missingValue)}</strong>
+                            <span>{plan.reason}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : <p>No held projects in the current scope.</p>}
+                    {batchHeldPlans.length > 20 ? <small>Plus {batchHeldPlans.length - 20} additional held project(s).</small> : null}
+                  </div>
+                </div>
+
+                <label className="m042-automation-confirm">
+                  <input
+                    type="checkbox"
+                    checked={batchConfirmed}
+                    disabled={!batchReadyPlans.length || batchAction.running}
+                    onChange={(event) => setBatchConfirmed(event.target.checked)}
+                  />
+                  <span>I reviewed this scope. Create partial invoices only for the projects still passing server validation.</span>
+                </label>
+                <button
+                  type="button"
+                  className="primary-action"
+                  disabled={!batchConfirmed || !batchReadyPlans.length || batchAction.running}
+                  onClick={() => void generateReadyInvoiceBatch()}
+                >
+                  {batchAction.running
+                    ? "Generating ready invoices…"
+                    : "Generate " + batchReadyPlans.length + " ready partial invoice" + (batchReadyPlans.length === 1 ? "" : "s")}
+                </button>
+              </details>
+
+              {batchAction.message ? <div className="m042-notice" role="status">{batchAction.message}</div> : null}
+              {batchAction.results.length ? (
+                <details className="m042-automation-results">
+                  <summary>Batch results ({batchAction.results.length})</summary>
+                  <ul>
+                    {batchAction.results.map((item) => (
+                      <li key={item.projectId} className={item.success ? "success" : "held"}>
+                        <strong>{item.customerName} · {item.projectCode}</strong>
+                        <span>{item.success ? item.invoiceNumber : "Held"} · {item.message}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+            </section>
+          ) : null}
+
           {selected ? <ManualInvoicePanel key={`${userKey}:${selected.projectId}`} projectId={selected.projectId} projectName={selected.projectName} onBasis={setManualBasis}
             onSaved={async () => { await loadLiveData(selected.projectId); }} /> : null}
           {selected ? <ProjectCompletionChecklist projectId={selected.projectId} /> : null}
-          <section className="m042-workspace">
+          <section className="m042-workspace" id="finance-line-invoice">
+
             <div className="m042-card">
               <header className="m042-card-head">
                 <div>
