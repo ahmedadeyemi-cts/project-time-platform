@@ -32,4 +32,11 @@ BEGIN
     END IF;
 END $$;
 
+INSERT INTO schema_migrations(migration_id, description)
+VALUES (
+    '133_finance_billing_handoff_notifications',
+    'Finance billing handoff and closeout notifications routed to active Billing, Finance, and Accounting roles'
+)
+ON CONFLICT DO NOTHING;
+
 COMMIT;

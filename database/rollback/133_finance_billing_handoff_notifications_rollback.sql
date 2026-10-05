@@ -16,4 +16,7 @@ SET recipient_strategy = 'project_team',
     updated_at = NOW()
 WHERE policy_code = 'CLOSEOUT_COMPLETED';
 
+DELETE FROM schema_migrations
+WHERE migration_id = '133_finance_billing_handoff_notifications';
+
 COMMIT;

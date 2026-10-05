@@ -56,3 +56,12 @@ test('closeout policies route to all Finance billing roles', () => {
   for (const role of ['"ACCOUNTING"', '"ACCOUNTING_BILLING"', '"BILLING"', '"FINANCE"']) assert.ok(resolver.includes(role));
   assert.ok(migration.includes('Ready for billing'));
 });
+
+test('protected Test release applies and verifies the Finance notification migration', () => {
+  const deploy = readRepo('.github/workflows/projectpulse-deploy-test.yml');
+  assert.ok(deploy.includes('database/migrations/133_finance_billing_handoff_notifications.sql'));
+  assert.ok(deploy.includes("'133_finance_billing_handoff_notifications'"));
+  assert.ok(deploy.includes('MIGRATIONS_112_113_114_133=APPLIED_AND_VERIFIED'));
+  assert.ok(deploy.includes("policy_code='CLOSEOUT_STARTED'"));
+  assert.ok(deploy.includes("policy_code='CLOSEOUT_COMPLETED'"));
+});

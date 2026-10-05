@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/manual-billing-ci.yml'
+      - '.github/workflows/projectpulse-deploy-test.yml'
       - 'src/backend/ProjectTime.Api/Modules/*Billing*.cs'
       - 'src/backend/ProjectTime.Api/Modules/ManualBillingPolicy.cs'
       - 'src/backend/ProjectTime.Api/Modules/InvoiceArtifactBrandingRenderer.cs'
