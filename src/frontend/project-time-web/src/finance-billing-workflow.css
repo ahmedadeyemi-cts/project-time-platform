@@ -1,0 +1,260 @@
+.finance-billing-workflow {
+  display: grid;
+  gap: 1rem;
+  margin: 1rem 0;
+  padding: 1.1rem;
+  border: 1px solid var(--border-color, #cbd5e1);
+  border-radius: 16px;
+  background: var(--surface-color, #fff);
+  color: var(--text-color, #172b4d);
+}
+
+.finance-billing-workflow > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.finance-billing-workflow > header h2 {
+  margin: .2rem 0 .35rem;
+  font-size: 1.25rem;
+}
+
+.finance-billing-workflow > header p {
+  margin: 0;
+  max-width: 74ch;
+  color: var(--text-muted, #60768a);
+  line-height: 1.5;
+}
+
+.finance-billing-eyebrow {
+  font-size: .75rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.finance-billing-mode {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: .4rem .7rem;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.finance-billing-mode.manual {
+  background: #fff7ed;
+  color: #9a3412;
+  border: 1px solid #fdba74;
+}
+
+.finance-billing-mode.connected {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #86efac;
+}
+
+.finance-billing-steps {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: .55rem;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.finance-billing-steps a {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .55rem;
+  min-height: 100%;
+  padding: .7rem;
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 12px;
+  color: inherit;
+  text-decoration: none;
+  background: var(--surface-color, #fff);
+}
+
+.finance-billing-steps li > a > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-size: .75rem;
+  font-weight: 900;
+}
+
+.finance-billing-steps strong,
+.finance-billing-steps small {
+  display: block;
+}
+
+.finance-billing-steps small {
+  margin-top: .25rem;
+  color: var(--text-muted, #60768a);
+  line-height: 1.3;
+}
+
+.finance-billing-steps li.complete a {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.finance-billing-steps li.current a {
+  border-color: #60a5fa;
+  box-shadow: inset 0 0 0 2px rgba(37, 99, 235, .12);
+}
+
+.finance-billing-steps li.upcoming {
+  opacity: .78;
+}
+
+.finance-billing-operating-model {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.finance-billing-operating-model article {
+  padding: .9rem;
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, .72);
+}
+
+.finance-billing-operating-model span {
+  display: block;
+  color: var(--text-muted, #60768a);
+  font-size: .72rem;
+  font-weight: 900;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.finance-billing-operating-model strong {
+  display: block;
+  margin: .2rem 0 .45rem;
+}
+
+.finance-billing-operating-model ul {
+  margin: .4rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.finance-billing-operating-model li {
+  margin: .28rem 0;
+  line-height: 1.4;
+}
+
+.finance-billing-connectors {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.finance-billing-connectors article {
+  padding: .85rem;
+  border: 1px solid var(--border-color, #dbe5ee);
+  border-radius: 12px;
+}
+
+.finance-billing-connectors article.connected {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.finance-billing-connectors article.registered {
+  background: #eff6ff;
+  border-color: #93c5fd;
+}
+
+.finance-billing-connectors article.manual {
+  background: #fff7ed;
+  border-color: #fdba74;
+}
+
+.finance-billing-connectors article > div {
+  display: flex;
+  justify-content: space-between;
+  gap: .6rem;
+  align-items: flex-start;
+}
+
+.finance-billing-connectors article > div span {
+  font-size: .72rem;
+  font-weight: 900;
+}
+
+.finance-billing-connectors p,
+.finance-billing-connectors small {
+  display: block;
+  margin: .35rem 0 0;
+  color: var(--text-muted, #60768a);
+  line-height: 1.4;
+}
+
+.finance-billing-safety {
+  margin: 0;
+  padding: .8rem;
+  border-left: 4px solid #0ea5e9;
+  border-radius: 8px;
+  background: #f0f9ff;
+  color: #0c4a6e;
+}
+
+[data-theme="dark"] .finance-billing-workflow,
+body[data-theme="dark"] .finance-billing-workflow {
+  background: #132335;
+  color: #edf5ff;
+}
+
+[data-theme="dark"] .finance-billing-operating-model article,
+body[data-theme="dark"] .finance-billing-operating-model article,
+[data-theme="dark"] .finance-billing-steps a,
+body[data-theme="dark"] .finance-billing-steps a {
+  background: #182c40;
+}
+
+[data-theme="dark"] .finance-billing-safety,
+body[data-theme="dark"] .finance-billing-safety {
+  background: #163047;
+  color: #d8f2ff;
+}
+
+@media (max-width: 1180px) {
+  .finance-billing-steps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 800px) {
+  .finance-billing-workflow > header {
+    flex-direction: column;
+  }
+
+  .finance-billing-steps,
+  .finance-billing-operating-model,
+  .finance-billing-connectors {
+    grid-template-columns: 1fr;
+  }
+
+  .finance-billing-mode {
+    white-space: normal;
+  }
+}
+
+.finance-billing-integration-note {
+  margin: 0;
+  padding: .8rem .9rem;
+  border: 1px dashed var(--border-color, #cbd5e1);
+  border-radius: 10px;
+  color: var(--text-muted, #60768a);
+  line-height: 1.45;
+}

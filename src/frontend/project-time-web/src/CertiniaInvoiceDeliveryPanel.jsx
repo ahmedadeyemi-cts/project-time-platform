@@ -208,6 +208,19 @@ export default function CertiniaInvoiceDeliveryPanel({
         <article><span>Certinia reference</span><strong>{text(latest?.externalId, 'Not assigned')}</strong><small>{text(latest?.certiniaStatus, 'No remote status')}</small></article>
       </div>
 
+      {!canTransmit ? (
+        <section className="certinia-delivery__manual-workflow" aria-label="Manual Certinia delivery workflow">
+          <strong>Manual delivery is the production path until Certinia is connected.</strong>
+          <ol>
+            <li>Download the immutable PDF or Excel invoice from Pulse.</li>
+            <li>Complete the approved Finance / Certinia process outside Pulse.</li>
+            <li>Record the actual handoff or Certinia invoice reference in Billing reconciliation below.</li>
+            <li>Use the project completion checklist to confirm fully billed only after final authorized charges are processed.</li>
+          </ol>
+          <p>Do not use a second Pulse invoice to represent the external handoff. The existing Pulse invoice remains the source record.</p>
+        </section>
+      ) : null}
+
       <div className="certinia-delivery__controls">
         <label>
           <span>Delivery document</span>

@@ -1,5 +1,6 @@
 import { safeCsvCell } from './security-output.mjs';
 import { useEffect, useMemo, useState } from 'react';
+import FinanceBillingWorkflow from './FinanceBillingWorkflow.jsx';
 import './billing-readiness-center.css';
 
 const NON_LABOR_DRAFT_EVIDENCE_BLOCKERS = new Set([
@@ -905,7 +906,7 @@ export default function BillingReadinessCenter() {
   const modeDescription = billingModes.find((mode) => mode.key === billingMode)?.description;
 
   return (
-    <section className="billing-readiness-center">
+    <section className="billing-readiness-center" id="billing-readiness-workflow">
       {payload.degradedSources?.length ? <div className="billing-source-warning" role="status"><div><strong>Supporting source status</strong><span>Healthy billing data remains available, but {payload.degradedSources.length} supporting source condition(s) require attention.</span><ul>{payload.degradedSources.slice(0, 6).map((item) => <li key={`${item.source}-${item.message}`}><strong>{item.source}:</strong> {item.message}</li>)}</ul></div><button type="button" onClick={loadBillingReadinessData}>Retry sources</button></div> : null}
       {/* PR467_BILLING_CLOSEOUT_HANDOFFS */}
       <section className="billing-readiness-handoff-panel">
@@ -951,6 +952,8 @@ export default function BillingReadinessCenter() {
           <button type="button" className="primary-action" onClick={exportBillingReadinessCsv}>Export financial report</button>
         </div>
       </div>
+
+      <FinanceBillingWorkflow stage="readiness" />
 
       {statusMessage ? <div className="billing-readiness-alert">{statusMessage}</div> : null}
       {payload.error ? <div className="billing-readiness-error">{payload.error}</div> : null}
