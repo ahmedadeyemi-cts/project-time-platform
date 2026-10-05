@@ -89,4 +89,14 @@ test('protected Test release applies and verifies both Finance notification migr
   assert.ok(deploy.includes("policy_code='CLOSEOUT_COMPLETED'"));
   assert.ok(deploy.includes("policy_code='CUSTOMER_INVOICE_WORKFLOW_ACTION_REQUIRED'"));
   assert.ok(deploy.includes("to_regclass('public.customer_billing_notification_profiles') IS NOT NULL"));
+
+  const scope = readRepo('scripts/release-test/prepare-protected-test-scope-manifests.sh');
+  assert.ok(scope.includes('feat/finance-billing-automation-20261005'));
+  for (const path of [
+    'database/migrations/133_finance_billing_handoff_notifications.sql',
+    'database/migrations/134_customer_billing_notification_profiles.sql',
+    'database/rollback/133_finance_billing_handoff_notifications_rollback.sql',
+    'database/rollback/134_customer_billing_notification_profiles_rollback.sql',
+    'src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs'
+  ]) assert.ok(scope.includes(path), path);
 });
