@@ -997,7 +997,7 @@ jobs:
           echo 'started=true' >> "$GITHUB_OUTPUT"
           az containerapp update -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' \
             --image '${{ steps.build.outputs.api_image }}' \
-            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true \
+            --set-env-vars PROJECTPULSE_SOURCE_COMMIT="$TARGET_RELEASE_COMMIT" PROJECTPULSE_CELAR_AI_CURRENT_PUBLIC_FACTS_ENABLED=true PROJECTPULSE_MODULE025_PREVIEW_ENABLED=true \
             --revision-suffix "rela-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --output none --only-show-errors
           REVISION="$(az containerapp show -g '${{ vars.AZURE_RESOURCE_GROUP }}' -n '${{ vars.AZURE_API_APP }}' --query properties.latestRevisionName -o tsv --only-show-errors)"
