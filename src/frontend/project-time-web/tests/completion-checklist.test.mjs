@@ -36,7 +36,6 @@ test('internal evidence is excluded from printed customer invoices',()=>{
  const css=readFileSync(new URL('../src/project-completion-checklist.css',import.meta.url),'utf8');
  assert.match(css,/@media print\s*\{\s*\.completion-checklist\s*\{\s*display:none !important/);
  const invoice=readFileSync(new URL('../src/InvoiceBillingCenter.jsx',import.meta.url),'utf8');
- assert.ok(invoice.indexOf('id="finance-line-invoice"') < invoice.indexOf('<ProjectCompletionChecklist'));
- assert.ok(invoice.indexOf('id="finance-manual-operations"') < invoice.indexOf('<ProjectCompletionChecklist'));
+ assert.ok(invoice.indexOf('<ProjectCompletionChecklist') < invoice.indexOf('className="m042-workspace"'));
  assert.doesNotMatch(invoice, /fully invoiced/i);
 });

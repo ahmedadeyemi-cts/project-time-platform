@@ -1,6 +1,5 @@
 import ManualInvoicePanel from './ManualInvoicePanel.jsx';
 import ProjectCompletionChecklist from './ProjectCompletionChecklist.jsx';
-import FinanceBillingWorkflow from './FinanceBillingWorkflow.jsx';
 import { useEffect, useMemo, useState } from 'react';
 import CertiniaInvoiceDeliveryPanel from './CertiniaInvoiceDeliveryPanel';
 import './invoice-billing-enhancements.css';
@@ -613,14 +612,12 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
         </div>
       </header>
 
-      <FinanceBillingWorkflow
-        stage="invoice"
-        connectorStatuses={payload.connectorStatuses}
-        hasInvoice={Boolean(selected?.invoiceHistory?.length)}
-        projectLabel={selected ? `${text(selected.projectCode)} · ${text(selected.projectName)}` : ''}
-      />
+      <section className="m042-notice" aria-label="How to generate an invoice">
+        <strong>Create an invoice in three steps</strong>
+        <ol><li>Find and select the customer project below.</li><li>Review approved billing lines, rates, expenses, and external references.</li><li>Use Generate Partial Invoice for eligible work, or Generate Final Invoice for final reconciliation before closing the project. Download the saved invoice from invoice history.</li></ol>
+      </section>
 
-      <p className="m042-live-mode"><strong>Production manual path:</strong> Pulse can create the governed invoice without Certinia, ConnectWise SELL, or Salesforce transmission. Finance downloads the immutable PDF/Excel, completes the approved external process, then records the actual handoff/reference and fully-billed confirmation back in Pulse.</p>
+      <p className="m042-live-mode">Manual invoicing works without Certinia or SELL and does not depend on time-entry billing status. Review prior invoices before charging the remaining amount. Record delivery and completed external billing in the project completion checklist. The same checklist is also available in PM Delivery &amp; closeout and Project Closeout.</p>
       <details className="m042-preview-mode m042-live-mode" aria-label="Module 042 live data status"><summary>Commercial source details</summary>
         <strong>Commercial source guard</strong>
         <span>
@@ -724,7 +721,10 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
             <div className="m042-column-count"><strong>{visibleColumns.length}</strong><small>columns shown</small></div>
           </section>
 
-          <section className="m042-workspace" id="finance-line-invoice">
+          {selected ? <ManualInvoicePanel key={`${userKey}:${selected.projectId}`} projectId={selected.projectId} projectName={selected.projectName} onBasis={setManualBasis}
+            onSaved={async () => { await loadLiveData(selected.projectId); }} /> : null}
+          {selected ? <ProjectCompletionChecklist projectId={selected.projectId} /> : null}
+          <section className="m042-workspace">
             <div className="m042-card">
               <header className="m042-card-head">
                 <div>
@@ -1147,37 +1147,6 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
               )}
             </aside>
           </section>
-
-          {selected ? (
-            <section className="m042-finance-manual-operations" id="finance-manual-operations">
-              <header>
-                <div>
-                  <p className="eyebrow">Manual external operations</p>
-                  <h2>Finish the Finance workflow for {text(selected.projectCode, 'selected project')}</h2>
-                  <p>Use these controls when project-amount billing or an external handoff must be completed manually. Every saved action remains separate from invoice creation, payment, and project closeout.</p>
-                </div>
-                <span className="m042-manual-mode-badge">Audit-controlled</span>
-              </header>
-              <div className="m042-finance-manual-guide">
-                <strong>When integrations are not connected</strong>
-                <ol>
-                  <li>Create or select the immutable Pulse invoice.</li>
-                  <li>Download the customer PDF or Excel package.</li>
-                  <li>Complete the approved Certinia / Finance process outside Pulse.</li>
-                  <li>Record the external invoice or handoff reference below.</li>
-                  <li>Confirm fully billed only after final authorized charges have been processed.</li>
-                </ol>
-              </div>
-              <ManualInvoicePanel
-                key={`${userKey}:${selected.projectId}`}
-                projectId={selected.projectId}
-                projectName={selected.projectName}
-                onBasis={setManualBasis}
-                onSaved={async () => { await loadLiveData(selected.projectId); }}
-              />
-              <ProjectCompletionChecklist projectId={selected.projectId} />
-            </section>
-          ) : null}
         </>
       )}
 
