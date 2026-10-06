@@ -89,3 +89,7 @@ The first bootstrap creates `/etc/celar-ai/gateway/runtime-token` when missing. 
 7. Run `sudo /opt/celar-ai/deploy/health-check.sh`.
 8. Synchronize the Oracle runtime token with the protected GitHub `test` environment secret.
 9. Reconnect Protected Test only after the separate Azure-to-Oracle activation/acceptance workflow passes.
+
+## Protected Test reconciliation marker
+
+Operational reconciliation requested 2026-10-06 after the Pulse Protected UAT API candidate exposed a degraded Celar readiness state. This documentation-only tree change intentionally causes the Oracle pull-based GitOps reconciler to reapply the existing governed package: Ollama/model verification, ClamAV/FreshClam, Tesseract, gateway/Caddy, and the authenticated health acceptance suite. No Production target is part of this package.
