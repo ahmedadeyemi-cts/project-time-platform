@@ -49,7 +49,7 @@ VALUES (
     'ProjectPulse: Customer invoice workflow action required — {{projectCode}}',
     'Invoice {{invoiceNumber}} was generated for {{customerName}} / {{projectCode}} {{projectName}}. This customer has a Customer Directory billing notification profile enabled. Complete the required downstream billing workflow and record the resulting handoff or reconciliation in Pulse.',
     'module_021_042_customer_billing_profile_v1',
-    'native_bridge'
+    'signed_event'
 )
 ON CONFLICT (policy_code) DO UPDATE
 SET policy_name = EXCLUDED.policy_name,

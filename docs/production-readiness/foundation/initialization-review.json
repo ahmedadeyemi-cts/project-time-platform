@@ -2227,7 +2227,7 @@
     },
     {
       "path": "database/migrations/134_customer_billing_notification_profiles.sql",
-      "sha256": "f4aafd6683daec853970bf10057e3550cba3a2b5808de53ddb31be9e4c964e8b",
+      "sha256": "dc206df446cee7de59b1e7b5791e127700ccd2933eb9ade881bec4846945f714",
       "signals": [
         "data_mutation"
       ],
