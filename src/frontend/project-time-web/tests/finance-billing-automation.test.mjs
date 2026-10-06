@@ -70,6 +70,8 @@ test('customer directory owns the per-customer invoice workflow notification pro
   assert.ok(directory.includes('Customer contacts'));
   assert.ok(directory.includes('Not notified'));
   assert.ok(profileModule.includes('CUSTOMER_INVOICE_WORKFLOW_ACTION_REQUIRED'));
+  assert.ok(migration.includes("'signed_event'"), 'customer invoice workflow policy must use a valid Module 065 signed_event source state');
+  assert.ok(!migration.includes("'native_bridge'\n)"), 'native_bridge is an event ingestion source, not a valid policy source_state');
   assert.ok(profileModule.includes('enterprise:customer-invoice-workflow:'));
   assert.ok(profileModule.includes('Customer Directory managers'));
   assert.ok(invoice.includes('CustomerBillingNotificationProfileModule.QueueInvoiceCreatedAsync'));
