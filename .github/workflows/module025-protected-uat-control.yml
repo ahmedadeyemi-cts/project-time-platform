@@ -60,6 +60,7 @@ jobs:
       QUARANTINED_ZERO_JOB_RUN_ID_6: '35461429670'
       QUARANTINED_ZERO_JOB_RUN_ID_7: '35473939797'
       QUARANTINED_ZERO_JOB_RUN_ID_8: '35524946948'
+      QUARANTINED_ZERO_JOB_RUN_ID_9: '37678070160'
 
     steps:
       - name: Check out exact current main controller
@@ -256,6 +257,25 @@ jobs:
                 continue
               fi
             fi
+            # Exact 2026-10-07 current-main startup orphan: the governed
+            # supervisor dispatched this run, GitHub created the run record,
+            # but no job attached during the bounded startup window. It made
+            # no deployment and has no pending environment approvals. A newer
+            # main descendant must be used for any retry.
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_9" && \
+                  "$requested_sha" != '3c95ccf183e45e294359defdec568ce39a144c42' ]] && \
+               git merge-base --is-ancestor '3c95ccf183e45e294359defdec568ce39a144c42' HEAD && \
+               verify_zero_job_quarantine "$run_id" \
+                 '3c95ccf183e45e294359defdec568ce39a144c42' \
+                 'main' \
+                 '2026-10-07T19:54:49Z'; then
+              pending_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/pending_deployments")" \
+                || fail 'Cannot verify pending approvals for the exact 2026-10-07 startup orphan.'
+              if jq -e 'type == "array" and length == 0' <<<"$pending_json" >/dev/null; then
+                quarantined_runs+=("$run_id")
+                continue
+              fi
+            fi
             # PR1139_UAT_RECOVERY_BEGIN
             if [[ "$run_id" == '35645759101' ]]; then
               python3 scripts/release-test/recover-pr1139-uat-orphan.py \
@@ -407,8 +427,8 @@ jobs:
           echo "run_id=$deployment_run_id" >> "$GITHUB_OUTPUT"
           echo "run_url=$deployment_run_url" >> "$GITHUB_OUTPUT"
           job_attached=false
-          startup_deadline_epoch=$(( $(date +%s) + 180 ))
-          for attempt in $(seq 1 90); do
+          startup_deadline_epoch=$(( $(date +%s) + 900 ))
+          for attempt in $(seq 1 450); do
             (( $(date +%s) < startup_deadline_epoch )) || break
             run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${deployment_run_id}")"
             jq -e --arg sha "$RELEASE_SHA" --argjson id "$deployment_run_id" \
@@ -430,7 +450,7 @@ jobs:
             sleep 2
           done
           [[ "$job_attached" == true ]] \
-            || fail "Protected-Test run $deployment_run_id has no attached job after the 180-second startup budget; admissions will reseal. Inspect this exact run before any retry."
+            || fail "Protected-Test run $deployment_run_id has no attached job after the 900-second startup budget; admissions will reseal. Inspect this exact run before any retry."
           echo "MODULE025_PROTECTED_UAT_DEPLOYMENT_JOB_ATTACHED=$deployment_run_id"
 
           disable_deploy_workflow
