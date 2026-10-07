@@ -428,7 +428,7 @@ jobs:
           echo "run_url=$deployment_run_url" >> "$GITHUB_OUTPUT"
           job_attached=false
           startup_deadline_epoch=$(( $(date +%s) + 900 ))
-          for attempt in $(seq 1 450); do
+          for attempt in $(seq 1 90); do
             (( $(date +%s) < startup_deadline_epoch )) || break
             run_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${deployment_run_id}")"
             jq -e --arg sha "$RELEASE_SHA" --argjson id "$deployment_run_id" \
@@ -447,7 +447,7 @@ jobs:
               job_attached=true
               break
             fi
-            sleep 2
+            sleep 10
           done
           [[ "$job_attached" == true ]] \
             || fail "Protected-Test run $deployment_run_id has no attached job after the 900-second startup budget; admissions will reseal. Inspect this exact run before any retry."
