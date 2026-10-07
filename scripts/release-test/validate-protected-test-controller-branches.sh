@@ -772,6 +772,22 @@ elif [[ "$HEAD_BRANCH" == 'fix/celar-internal-trust-evidence-20260903' ]]; then
     diff -u "$CIT/e-celar-internal-trust-evidence-files" "$CIT/diff" >&2 || true
     exit 1
   }
+elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-startup-queue-20261007' ]]; then
+  expected="$CIT/protected-uat-startup-queue-files"
+  printf '%s\n' \
+    '.github/workflows/module025-protected-uat-control.yml' \
+    '.github/workflows/pr1139-uat-recovery-ci.yml' \
+    '.github/workflows/pr1140-uat-recovery-ci.yml' \
+    '.github/workflows/release-supervisor-queue-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'tests/release-supervisor-queue/test_startup_queue_scope.py' \
+    | LC_ALL=C sort -u > "$expected"
+  cmp -s "$CIT/diff" "$expected" || {
+    echo 'Protected UAT startup-queue repair differs from its exact governed file set.' >&2
+    diff -u "$expected" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  BASE_SHA="$CURRENT_BASE_SHA" python3 tests/release-supervisor-queue/test_startup_queue_scope.py
 elif [[ "$HEAD_BRANCH" == fix/shared-project-document-planning-* ]]; then
   test -s "$SHARED_PLANNING_MANIFEST" || fail 'The shared project-document planning release manifest is missing.'
   grep -Ev '^[[:space:]]*(#|$)' "$SHARED_PLANNING_MANIFEST" | LC_ALL=C sort -u > "$CIT/shared-project-document-planning-files"
