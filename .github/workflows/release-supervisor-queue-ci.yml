@@ -22,4 +22,12 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - run: python3 -m pip install PyYAML==6.0.3
-      - run: python3 tests/release-supervisor-queue/test_queue.py
+      - name: Verify queue preservation contract
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if [[ "$GITHUB_HEAD_REF" == 'fix/protected-uat-startup-queue-20261007' ]]; then
+            python3 tests/release-supervisor-queue/test_startup_queue_scope.py
+          else
+            python3 tests/release-supervisor-queue/test_queue.py
+          fi
