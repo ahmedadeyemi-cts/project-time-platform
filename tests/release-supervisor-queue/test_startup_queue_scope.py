@@ -10,6 +10,7 @@ ALLOWED = {
     ".github/workflows/pr1139-uat-recovery-ci.yml",
     ".github/workflows/pr1140-uat-recovery-ci.yml",
     ".github/workflows/release-supervisor-queue-ci.yml",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
     "tests/release-supervisor-queue/test_startup_queue_scope.py",
 }
 
