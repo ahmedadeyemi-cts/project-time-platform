@@ -16,30 +16,43 @@ var request = new ProjectPulseAiGenerationRequest(ProjectPulseAiFeatures.SowGsdP
     { StructuredSowPhase = true, SowPhase = "Plan" };
 var result = await provider.GenerateAsync(request, CancellationToken.None);
 Check(result.IsSuccess && result.Usage?.InputTokens == 12 && result.Usage.OutputTokens == 16
-    && result.Usage.TotalTokens == 28 && result.Usage.ReasoningTokens == 8, "Gemini structured phase preserves usage including reasoning");
+    && result.Usage.TotalTokens == 36 && result.Usage.ReasoningTokens == 8, "Gemini structured phase preserves Interactions usage including thought tokens");
 using (var payload = JsonDocument.Parse(handler.LastBody!))
 {
     var root = payload.RootElement;
     Check(root.GetProperty("model").GetString() == configuration.Provider("gemini").Model, "uses current Module 064 model");
-    Check(root.GetProperty("max_tokens").GetInt32() == 12288, "structured phase receives full bounded output budget");
-    Check(root.GetProperty("reasoning_effort").GetString() == "low", "Gemini uses documented low reasoning effort");
+    Check(root.GetProperty("system_instruction").GetString() == request.SystemPrompt
+        && root.GetProperty("input").GetString() == request.UserPrompt, "Interactions request preserves system and user prompts");
+    Check(!root.GetProperty("store").GetBoolean(), "Gemini interactions are not persisted by Google");
+    var generation = root.GetProperty("generation_config");
+    Check(generation.GetProperty("max_output_tokens").GetInt32() == 12288, "structured phase receives full bounded output budget");
+    Check(generation.GetProperty("thinking_level").GetString() == "high", "structured Gemini generation uses high thinking level");
+    Check(!root.TryGetProperty("thinking_budget", out _) && !root.TryGetProperty("temperature", out _)
+        && !root.TryGetProperty("top_p", out _) && !root.TryGetProperty("top_k", out _)
+        && !root.TryGetProperty("reasoning_effort", out _), "deprecated Gemini sampling and thinking fields are absent");
     var format = root.GetProperty("response_format");
-    Check(format.GetProperty("type").GetString() == "json_schema", "structured JSON output requested");
-    var schema = format.GetProperty("json_schema");
-    Check(schema.GetProperty("strict").GetBoolean(), "strict schema requested");
-    Check(schema.GetProperty("schema").GetProperty("properties").GetProperty("tasks").GetProperty("items")
+    Check(format.GetProperty("type").GetString() == "text"
+        && format.GetProperty("mime_type").GetString() == "application/json", "structured JSON output requested through Interactions response format");
+    var schema = format.GetProperty("schema");
+    Check(schema.GetProperty("properties").GetProperty("tasks").GetProperty("items")
         .GetProperty("properties").GetProperty("phase").GetProperty("enum")[0].GetString() == "Plan", "schema constrained to current server phase");
     Check(!schema.GetRawText().Contains("\"exclusiveMinimum\"") && !schema.GetRawText().Contains("\"pattern\""), "unsupported Gemini schema keywords adapted");
-    Check(schema.GetProperty("schema").GetProperty("properties").GetProperty("tasks").GetProperty("minItems").GetInt32() == 2, "task count constraints preserved");
+    Check(schema.GetProperty("properties").GetProperty("tasks").GetProperty("minItems").GetInt32() == 2, "task count constraints preserved");
 }
-Check(handler.LastUri == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "uses configured Gemini OpenAI-compatible endpoint");
+Check(handler.LastUri == "https://generativelanguage.googleapis.com/v1/interactions", "uses stable Gemini Interactions endpoint");
+Check(handler.LastApiKey == "fixture-api-key-never-return" && !handler.HadAuthorization, "Gemini API key is sent only in x-goog-api-key header");
 var before = handler.Calls;
 Check(!(await provider.GenerateAsync(request with { SowPhase = null }, CancellationToken.None)).IsSuccess && handler.Calls == before, "invalid phase never sent");
 Check(!(await provider.GenerateAsync(request with { SowPhase = "Unknown" }, CancellationToken.None)).IsSuccess && handler.Calls == before, "unknown phase never sent");
 await provider.GenerateAsync(request with { StructuredSowPhase = false }, CancellationToken.None);
 using (var payload = JsonDocument.Parse(handler.LastBody!))
-    Check(payload.RootElement.GetProperty("max_tokens").GetInt32() == configuration.MaxOutputTokens
-        && !payload.RootElement.TryGetProperty("response_format", out _), "generic traffic keeps normal token budget");
+{
+    var root = payload.RootElement;
+    var generation = root.GetProperty("generation_config");
+    Check(generation.GetProperty("max_output_tokens").GetInt32() == configuration.MaxOutputTokens
+        && generation.GetProperty("thinking_level").GetString() == "medium"
+        && !root.TryGetProperty("response_format", out _), "generic traffic keeps normal token budget and medium thinking");
+}
 
 var live = configuration.Provider("gemini");
 var candidate = live with { Model = "gemini-3.1-flash-lite", ApprovedModels = [live.Model, "gemini-3.1-flash-lite"] };
@@ -181,10 +194,12 @@ sealed class Factory(Handler handler) : IHttpClientFactory
 }
 sealed class Handler : HttpMessageHandler
 {
-    public string Body = """{"choices":[{"finish_reason":"stop","message":{"content":"{}"}}],"usage":{"prompt_tokens":12,"completion_tokens":16,"total_tokens":28,"completion_tokens_details":{"reasoning_tokens":8}}}""";
+    public string Body = """{"status":"completed","steps":[{"type":"model_output","content":[{"type":"text","text":"{}"}]}],"usage":{"total_input_tokens":12,"total_output_tokens":16,"total_thought_tokens":8,"total_tokens":36}}""";
     public HttpStatusCode Status = HttpStatusCode.OK;
     public string? LastBody;
     public string? LastUri;
+    public string? LastApiKey;
+    public bool HadAuthorization;
     public string RequestId = "fixture-request-123";
     public RetryConditionHeaderValue? RetryAfter;
     public Exception? Throw;
@@ -194,6 +209,8 @@ sealed class Handler : HttpMessageHandler
         Calls++;
         LastUri = request.RequestUri?.AbsoluteUri;
         LastBody = await request.Content!.ReadAsStringAsync(cancellationToken);
+        LastApiKey = request.Headers.TryGetValues("x-goog-api-key", out var apiKeys) ? apiKeys.SingleOrDefault() : null;
+        HadAuthorization = request.Headers.Authorization is not null;
         if (Throw is not null) throw Throw;
         var response = new HttpResponseMessage(Status) { Content = new StringContent(Body, Encoding.UTF8, "application/json") };
         if (RetryAfter is not null) response.Headers.RetryAfter = RetryAfter;
