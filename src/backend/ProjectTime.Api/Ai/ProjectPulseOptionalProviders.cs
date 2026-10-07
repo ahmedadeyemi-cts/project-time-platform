@@ -8,6 +8,7 @@ namespace ProjectTime.Api.Ai;
 // Disabled until an administrator supplies credentials and explicitly enables them.
 public sealed class ProjectPulseGeminiProvider(IHttpClientFactory clients, ProjectPulseAiConfiguration configuration) : IProjectPulseAiProvider
 {
+    private const string InteractionsEndpoint = "https://generativelanguage.googleapis.com/v1/interactions";
     public string Code => ProjectPulseAiProviders.Gemini;
     public Task<ProjectPulseAiProviderResult> GenerateAsync(ProjectPulseAiGenerationRequest request, CancellationToken cancellationToken) =>
         GenerateAsync(configuration.Provider(Code), request, cancellationToken);
@@ -21,8 +22,8 @@ public sealed class ProjectPulseGeminiProvider(IHttpClientFactory clients, Proje
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(request.StructuredSowPhase
             ? Module025GenerationEngine.ExternalProviderTimeoutSeconds : configuration.RequestTimeoutSeconds));
-        using var message = new HttpRequestMessage(HttpMethod.Post, provider.Endpoint + "/chat/completions");
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", provider.ApiKey);
+        using var message = new HttpRequestMessage(HttpMethod.Post, InteractionsEndpoint);
+        message.Headers.Add("x-goog-api-key", provider.ApiKey);
         message.Content = JsonContent.Create(Payload(provider.Model, request, configuration.MaxOutputTokens));
         try
         {
@@ -52,29 +53,30 @@ public sealed class ProjectPulseGeminiProvider(IHttpClientFactory clients, Proje
 
     internal static Dictionary<string, object?> Payload(string model, ProjectPulseAiGenerationRequest request, int genericTokenLimit)
     {
+        var maxOutputTokens = Math.Min(request.MaxOutputTokens, request.StructuredSowPhase
+            ? Module025GenerationEngine.MaximumExternalOutputTokens : genericTokenLimit);
         var fields = new Dictionary<string, object?>
         {
             ["model"] = model,
-            ["messages"] = new[] { new { role = "system", content = request.SystemPrompt }, new { role = "user", content = request.UserPrompt } },
-            ["max_tokens"] = Math.Min(request.MaxOutputTokens, request.StructuredSowPhase
-                ? Module025GenerationEngine.MaximumExternalOutputTokens : genericTokenLimit)
+            ["system_instruction"] = request.SystemPrompt,
+            ["input"] = request.UserPrompt,
+            ["store"] = false,
+            ["generation_config"] = new
+            {
+                max_output_tokens = maxOutputTokens,
+                thinking_level = request.StructuredSowPhase ? "high" : "medium"
+            }
         };
-        // Google maps low effort for Gemini 2.5 and 3 to their supported
-        // thinking controls. Other/new model families keep their defaults.
-        // https://ai.google.dev/gemini-api/docs/openai#thinking
-        if (model.StartsWith("gemini-2.5-", StringComparison.OrdinalIgnoreCase)
-            || model.StartsWith("gemini-3", StringComparison.OrdinalIgnoreCase))
-            fields["reasoning_effort"] = "low";
+        // Gemini 3.8+ Interactions requests intentionally omit thinking_budget,
+        // temperature, top_p and top_k. Google now rejects those deprecated
+        // controls on upcoming Gemini models; thinking_level is the supported
+        // reasoning control for this transport.
         if (request.StructuredSowPhase)
             fields["response_format"] = new
             {
-                type = "json_schema",
-                json_schema = new
-                {
-                    name = Module025PhaseOutputContract.Name,
-                    strict = true,
-                    schema = Module025GeminiPhaseContract.Schema(request.SowPhase!)
-                }
+                type = "text",
+                mime_type = "application/json",
+                schema = Module025GeminiPhaseContract.Schema(request.SowPhase!)
             };
         return fields;
     }
@@ -85,34 +87,86 @@ public sealed class ProjectPulseGeminiProvider(IHttpClientFactory clients, Proje
         {
             using var json = JsonDocument.Parse(body);
             var root = json.RootElement;
-            if (root.ValueKind != JsonValueKind.Object || !root.TryGetProperty("choices", out var choices)
-                || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
-                return Failure("gemini_empty_response", 200);
-            var choice = choices[0];
-            if (choice.ValueKind != JsonValueKind.Object || !choice.TryGetProperty("message", out var message)
-                || message.ValueKind != JsonValueKind.Object) return Failure("gemini_invalid_response", 200);
-            var finish = Text(choice, "finish_reason");
-            var content = Text(message, "content");
+            if (root.ValueKind != JsonValueKind.Object) return Failure("gemini_invalid_response", 200);
+
+            // Keep old OpenAI-compatible response parsing during the UAT
+            // transition so rollback/in-flight responses remain understandable.
+            if (root.TryGetProperty("choices", out _))
+                return ParseOpenAiCompatible(root, structuredSowPhase);
+
+            var status = Text(root, "status");
             ProjectPulseAiUsage? usage = null;
             if (root.TryGetProperty("usage", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
-                usage = new(Read(tokens, "prompt_tokens"), Read(tokens, "completion_tokens"), Read(tokens, "total_tokens"),
-                    tokens.TryGetProperty("completion_tokens_details", out var details) ? Read(details, "reasoning_tokens") : null);
+                usage = new(Read(tokens, "total_input_tokens"), Read(tokens, "total_output_tokens"), Read(tokens, "total_tokens"),
+                    Read(tokens, "total_thought_tokens"));
+
+            var content = InteractionText(root);
             var diagnostics = structuredSowPhase ? new Module025ProviderDiagnostics(
-                StopReason: finish is "stop" or "length" or "content_filter" or "SAFETY" or "RECITATION" or "tool_calls" ? finish : finish is null ? "missing" : "other",
+                StopReason: status is "completed" or "incomplete" or "failed" or "cancelled" or "requires_action" ? status : status is null ? "missing" : "other",
                 OutputTextCharacters: content?.Length ?? 0) : null;
-            if (finish is "content_filter" or "SAFETY" or "RECITATION" || !string.IsNullOrWhiteSpace(Text(message, "refusal")))
-                return new(ProjectPulseAiProviders.Gemini, ProjectPulseAiOutcomes.Refusal, null, "gemini_safety_refusal",
-                    "Gemini declined the request.", null, usage, 200) { SowDiagnostics = diagnostics };
-            if (finish == "length") return Failure("gemini_output_truncated", 200) with { Usage = usage, SowDiagnostics = diagnostics };
-            if (structuredSowPhase && finish != "stop")
+
+            if (status == "incomplete")
+                return Failure("gemini_output_truncated", 200) with { Usage = usage, SowDiagnostics = diagnostics };
+            if (status is "failed" or "cancelled")
+                return Failure("gemini_interaction_failed", 200) with { Usage = usage, SowDiagnostics = diagnostics };
+            if (structuredSowPhase && status != "completed")
                 return Failure("structured_sow_response_incomplete", 200) with { Usage = usage, SowDiagnostics = diagnostics };
+            if (status != "completed")
+                return Failure("gemini_invalid_response", 200) with { Usage = usage, SowDiagnostics = diagnostics };
             return string.IsNullOrWhiteSpace(content) ? Failure("gemini_empty_response", 200) with { Usage = usage, SowDiagnostics = diagnostics }
-                : new(ProjectPulseAiProviders.Gemini, ProjectPulseAiOutcomes.Success, content, "generation_succeeded", null, null, usage, 200) { SowDiagnostics = diagnostics };
+                : new(ProjectPulseAiProviders.Gemini, ProjectPulseAiOutcomes.Success, content, "generation_succeeded", null, null, usage, 200)
+                { SowDiagnostics = diagnostics };
         }
         catch (JsonException)
         {
             return Failure("gemini_invalid_response", 200);
         }
+    }
+
+    private static ProjectPulseAiProviderResult ParseOpenAiCompatible(JsonElement root, bool structuredSowPhase)
+    {
+        if (!root.TryGetProperty("choices", out var choices)
+            || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
+            return Failure("gemini_empty_response", 200);
+        var choice = choices[0];
+        if (choice.ValueKind != JsonValueKind.Object || !choice.TryGetProperty("message", out var message)
+            || message.ValueKind != JsonValueKind.Object) return Failure("gemini_invalid_response", 200);
+        var finish = Text(choice, "finish_reason");
+        var content = Text(message, "content");
+        ProjectPulseAiUsage? usage = null;
+        if (root.TryGetProperty("usage", out var tokens) && tokens.ValueKind == JsonValueKind.Object)
+            usage = new(Read(tokens, "prompt_tokens"), Read(tokens, "completion_tokens"), Read(tokens, "total_tokens"),
+                tokens.TryGetProperty("completion_tokens_details", out var details) ? Read(details, "reasoning_tokens") : null);
+        var diagnostics = structuredSowPhase ? new Module025ProviderDiagnostics(
+            StopReason: finish is "stop" or "length" or "content_filter" or "SAFETY" or "RECITATION" or "tool_calls" ? finish : finish is null ? "missing" : "other",
+            OutputTextCharacters: content?.Length ?? 0) : null;
+        if (finish is "content_filter" or "SAFETY" or "RECITATION" || !string.IsNullOrWhiteSpace(Text(message, "refusal")))
+            return new(ProjectPulseAiProviders.Gemini, ProjectPulseAiOutcomes.Refusal, null, "gemini_safety_refusal",
+                "Gemini declined the request.", null, usage, 200) { SowDiagnostics = diagnostics };
+        if (finish == "length") return Failure("gemini_output_truncated", 200) with { Usage = usage, SowDiagnostics = diagnostics };
+        if (structuredSowPhase && finish != "stop")
+            return Failure("structured_sow_response_incomplete", 200) with { Usage = usage, SowDiagnostics = diagnostics };
+        return string.IsNullOrWhiteSpace(content) ? Failure("gemini_empty_response", 200) with { Usage = usage, SowDiagnostics = diagnostics }
+            : new(ProjectPulseAiProviders.Gemini, ProjectPulseAiOutcomes.Success, content, "generation_succeeded", null, null, usage, 200)
+            { SowDiagnostics = diagnostics };
+    }
+
+    private static string? InteractionText(JsonElement root)
+    {
+        if (!root.TryGetProperty("steps", out var steps) || steps.ValueKind != JsonValueKind.Array) return null;
+        string? text = null;
+        foreach (var step in steps.EnumerateArray())
+        {
+            if (step.ValueKind != JsonValueKind.Object || Text(step, "type") != "model_output"
+                || !step.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array) continue;
+            foreach (var item in content.EnumerateArray())
+                if (item.ValueKind == JsonValueKind.Object && Text(item, "type") == "text")
+                {
+                    var value = Text(item, "text");
+                    if (!string.IsNullOrWhiteSpace(value)) text = value;
+                }
+        }
+        return text;
     }
 
     private static async Task<string?> ReadBoundedBodyAsync(HttpResponseMessage response, CancellationToken cancellationToken)

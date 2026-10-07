@@ -32,7 +32,7 @@ var gemini = new ProjectPulseGeminiProvider(new Factory(handler), configuration)
 var request = new ProjectPulseAiGenerationRequest(ProjectPulseAiFeatures.HelpAssistant, "Safe generic instruction", "Public test", 64, 0);
 var result = await gemini.GenerateAsync(request, CancellationToken.None);
 Check(result.IsSuccess && result.Usage?.TotalTokens == 16, "Gemini content and usage");
-Check(handler.LastUri == "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "Gemini fixed endpoint");
+Check(handler.LastUri == "https://generativelanguage.googleapis.com/v1/interactions", "Gemini fixed endpoint");
 handler.Body = """{"choices":[{"finish_reason":"content_filter","message":{"refusal":"declined"}}]}""";
 Check((await gemini.GenerateAsync(request, CancellationToken.None)).IsRefusal, "Gemini refusal terminal");
 handler.Body = """{"choices":[{"finish_reason":"length","message":{"content":"partial"}}]}""";

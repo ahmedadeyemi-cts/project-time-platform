@@ -233,7 +233,7 @@ public sealed class ProjectPulseAiModelCatalog(
     private static bool IsSupportedEndpoint(string endpoint) => Uri.TryCreate(endpoint, UriKind.Absolute, out var uri)
         && uri.Scheme == Uri.UriSchemeHttps && uri.Host == "generativelanguage.googleapis.com" && uri.Port == 443
         && string.IsNullOrEmpty(uri.UserInfo) && string.IsNullOrEmpty(uri.Query) && string.IsNullOrEmpty(uri.Fragment)
-        && uri.AbsolutePath.TrimEnd('/') == "/v1beta/openai";
+        && uri.AbsolutePath.TrimEnd('/') is "/v1" or "/v1beta" or "/v1beta/openai";
 
     private static string? String(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
