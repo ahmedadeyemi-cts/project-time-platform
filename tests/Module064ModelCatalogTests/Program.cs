@@ -102,7 +102,10 @@ try
 
     var endpointMethod = typeof(ProjectPulseAiModelCatalog).GetMethod("IsSupportedEndpoint", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
     bool EndpointPermitted(string endpoint) => (bool)endpointMethod.Invoke(null, [endpoint])!;
-    Check(EndpointPermitted("https://generativelanguage.googleapis.com/v1beta/openai"), "Discovery accepts the Gemini compatibility endpoint.");
+    Check(EndpointPermitted("https://generativelanguage.googleapis.com/v1")
+        && EndpointPermitted("https://generativelanguage.googleapis.com/v1beta")
+        && EndpointPermitted("https://generativelanguage.googleapis.com/v1beta/openai"),
+        "Discovery accepts stable Interactions and legacy Gemini endpoint bases.");
     Check(new[] { "http://generativelanguage.googleapis.com/v1beta/openai", "https://untrusted.invalid/v1beta/openai",
         "https://generativelanguage.googleapis.com:444/v1beta/openai", "https://user:secret@generativelanguage.googleapis.com/v1beta/openai",
         "https://generativelanguage.googleapis.com/v1beta/openai?key=unsafe", "https://generativelanguage.googleapis.com/v1beta/openai#fragment" }
