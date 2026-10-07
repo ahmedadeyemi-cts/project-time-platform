@@ -93,3 +93,5 @@ The first bootstrap creates `/etc/celar-ai/gateway/runtime-token` when missing. 
 ## Protected Test reconciliation marker
 
 Operational reconciliation requested 2026-10-06 after the Pulse Protected UAT API candidate exposed a degraded Celar readiness state. This documentation-only tree change intentionally causes the Oracle pull-based GitOps reconciler to reapply the existing governed package: Ollama/model verification, ClamAV/FreshClam, Tesseract, gateway/Caddy, and the authenticated health acceptance suite. No Production target is part of this package.
+
+A second reconciliation was requested after the authenticated Protected UAT recovery gate reached `celarai.onenecklab.com` at the governed DNS address but received HTTP 502 from the Oracle runtime. This marker does not change runtime policy, credentials, ports, models, or Production configuration; it only advances the governed Oracle desired-state tree so the existing five-minute GitOps reconciler reapplies and revalidates the current package.
