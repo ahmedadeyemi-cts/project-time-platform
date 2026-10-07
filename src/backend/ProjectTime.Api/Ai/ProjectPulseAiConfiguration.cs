@@ -35,7 +35,7 @@ public sealed class ProjectPulseAiConfiguration
         _deepSeek = BuildDeepSeek();
         _claude = BuildClaude();
         _openAi = BuildOpenAi();
-        _optional[ProjectPulseAiProviders.Gemini] = BuildOptional(ProjectPulseAiProviders.Gemini, "Gemini", "GEMINI", "gemini-3.8-flash", "https://generativelanguage.googleapis.com/v1beta/openai");
+        _optional[ProjectPulseAiProviders.Gemini] = BuildOptional(ProjectPulseAiProviders.Gemini, "Gemini", "GEMINI", "gemini-3.8-flash", "https://generativelanguage.googleapis.com/v1");
         _optional[ProjectPulseAiProviders.Copilot] = BuildOptional(ProjectPulseAiProviders.Copilot, "Microsoft Copilot Studio", "COPILOT_STUDIO", "published-agent", "https://directline.botframework.com/v3/directline");
         FeatureRoutes = ProjectPulseAiFeatures.All.ToDictionary(
             feature => feature,
@@ -240,7 +240,7 @@ public sealed class ProjectPulseAiConfiguration
         var key = FirstValue($"PROJECTPULSE_{prefix}_API_KEY");
         var model = Value($"PROJECTPULSE_{prefix}_MODEL", defaultModel);
         return new(code, label, Boolean($"PROJECTPULSE_AI_{prefix}_ENABLED", false), key, model, endpoint,
-            code == ProjectPulseAiProviders.Gemini ? "chat-completions-v1" : "directline-v3",
+            code == ProjectPulseAiProviders.Gemini ? "interactions-v1" : "directline-v3",
             ApprovedModels($"PROJECTPULSE_{prefix}_APPROVED_MODELS", model, [defaultModel]), null, null, SecretMetadata(prefix, key));
     }
 
