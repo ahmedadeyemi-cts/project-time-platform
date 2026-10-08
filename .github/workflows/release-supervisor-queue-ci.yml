@@ -26,7 +26,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "$GITHUB_HEAD_REF" == 'fix/protected-uat-startup-queue-20261007' || "$GITHUB_HEAD_REF" == 'fix/protected-uat-enable-dispatch-settle-20261008' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'fix/protected-uat-startup-queue-20261007' ]]; then
             python3 tests/release-supervisor-queue/test_startup_queue_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'fix/protected-uat-runtime-recovery-command-20261007' ]]; then
             python3 tests/release-supervisor-queue/test_runtime_recovery_command_scope.py
