@@ -9,7 +9,9 @@ if [[ "$HEAD_BRANCH" == 'fix/protected-uat-enable-dispatch-settle-20261008' ]]; 
   expected="$CIT/protected-uat-enable-dispatch-settle-files"
   printf '%s\n' \
     '.github/workflows/module025-protected-uat-control.yml' \
+    '.github/workflows/release-supervisor-queue-ci.yml' \
     'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'tests/release-supervisor-queue/test_startup_queue_scope.py' \
     | LC_ALL=C sort -u > "$expected"
   cmp -s "$CIT/diff" "$expected" || {
     echo 'Protected UAT enable/dispatch settle repair differs from its exact governed file set.' >&2
