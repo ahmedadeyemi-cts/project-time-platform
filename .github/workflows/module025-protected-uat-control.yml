@@ -43,7 +43,8 @@ jobs:
       (github.event_name == 'issue_comment' &&
        github.event.issue.pull_request &&
        github.actor == 'ahmedadeyemi-cts' &&
-       startsWith(github.event.comment.body, 'DEPLOY MODULE025 PROTECTED UAT SHA '))
+       (startsWith(github.event.comment.body, 'DEPLOY MODULE025 PROTECTED UAT SHA ') ||
+        startsWith(github.event.comment.body, 'RECOVER MODULE025 PROTECTED UAT SHA ')))
     runs-on: ubuntu-24.04
     timeout-minutes: 230
     env:
@@ -85,12 +86,16 @@ jobs:
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
 
+          recover_private_runtime=false
           if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
             requested_sha="$GITHUB_SHA"
-          else
-            [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]] \
-              || fail 'The Module 025 deployment command is not exact.'
+          elif [[ "$REQUEST_COMMENT" =~ ^DEPLOY\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]]; then
             requested_sha="${BASH_REMATCH[1]}"
+          elif [[ "$REQUEST_COMMENT" =~ ^RECOVER\ MODULE025\ PROTECTED\ UAT\ SHA\ ([0-9a-f]{40})$ ]]; then
+            requested_sha="${BASH_REMATCH[1]}"
+            recover_private_runtime=true
+          else
+            fail 'The Module 025 deployment command is not exact.'
           fi
           actual_main="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
           [[ "$requested_sha" == "$actual_main" && "$GITHUB_SHA" == "$actual_main" ]] \
@@ -344,7 +349,9 @@ jobs:
           esac
 
           echo "release_sha=$requested_sha" >> "$GITHUB_OUTPUT"
+          echo "recover_private_runtime=$recover_private_runtime" >> "$GITHUB_OUTPUT"
           echo "MODULE025_PROTECTED_UAT_RELEASE_AUTHORIZED=$requested_sha"
+          echo "MODULE025_PROTECTED_UAT_PRIVATE_RUNTIME_RECOVERY=$recover_private_runtime"
           echo 'PRODUCTION_MUTATION=NONE'
 
       - name: Dispatch exact governed Protected-Test deployment and reseal admissions
@@ -352,9 +359,11 @@ jobs:
         shell: bash
         env:
           RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
+          RECOVER_PRIVATE_RUNTIME: ${{ steps.authorize.outputs.recover_private_runtime }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
+          RECOVER_PRIVATE_RUNTIME="${RECOVER_PRIVATE_RUNTIME:-false}"
           disable_deploy_workflow() {
             local state
             state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state' 2>/dev/null || true)"
@@ -379,16 +388,19 @@ jobs:
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'active' ]] \
             || fail 'Protected-Test deployment workflow did not enable for the bounded dispatch.'
 
+          [[ "$RECOVER_PRIVATE_RUNTIME" == true || "$RECOVER_PRIVATE_RUNTIME" == false ]] \
+            || fail 'Protected-Test runtime recovery mode must be explicit.'
           jq -n \
             --arg ref 'main' \
             --arg release_sha "$RELEASE_SHA" \
             --arg release_branch 'main' \
+            --arg recover_private_runtime "$RECOVER_PRIVATE_RUNTIME" \
             '{ref:$ref,inputs:{
               release_sha:$release_sha,
               release_branch:$release_branch,
               acceptance_scope:"full",
               qualification_provider:"none",
-              recover_private_runtime:"false",
+              recover_private_runtime:$recover_private_runtime,
               admission_controller_sha:""
             }}' \
             > "$RUNNER_TEMP/module025-protected-uat-dispatch.json"

@@ -772,6 +772,20 @@ elif [[ "$HEAD_BRANCH" == 'fix/celar-internal-trust-evidence-20260903' ]]; then
     diff -u "$CIT/e-celar-internal-trust-evidence-files" "$CIT/diff" >&2 || true
     exit 1
   }
+elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-runtime-recovery-command-20261007' ]]; then
+  expected="$CIT/protected-uat-runtime-recovery-command-files"
+  printf '%s\n' \
+    '.github/workflows/module025-protected-uat-control.yml' \
+    '.github/workflows/release-supervisor-queue-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'tests/release-supervisor-queue/test_runtime_recovery_command_scope.py' \
+    | LC_ALL=C sort -u > "$expected"
+  cmp -s "$CIT/diff" "$expected" || {
+    echo 'Protected UAT runtime-recovery command repair differs from its exact governed file set.' >&2
+    diff -u "$expected" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  BASE_SHA="$CURRENT_BASE_SHA" python3 tests/release-supervisor-queue/test_runtime_recovery_command_scope.py
 elif [[ "$HEAD_BRANCH" == 'fix/protected-uat-startup-queue-20261007' ]]; then
   expected="$CIT/protected-uat-startup-queue-files"
   printf '%s\n' \
