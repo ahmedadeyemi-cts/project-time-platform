@@ -1,0 +1,95 @@
+name: Verify Module 025 in-app preview (signed-in SA)
+
+# Handoff verification for the dark-launched Stage 3 SOW/GSD preview slice. Drives
+# the LIVE Protected Test app as the real Solution Architect and asserts the
+# preview surface renders (DRAFT/Confirmed badge, SOW document, the full
+# 12-worksheet GSD tab set and a populated cell grid). Manually dispatched.
+
+on:
+  workflow_dispatch:
+    inputs:
+      generate_confirmed:
+        description: 'Also generate + confirm a synthetic record to verify the Confirmed badge deterministically (slow; uses the real provider).'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Share the protected-Test supervisor lock so this never interrupts an active
+# deployment; queue behind one instead (matches the sibling verify workflows).
+concurrency:
+  group: module025-protected-uat-control
+  queue: max
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment:
+      name: test
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Require the Solution Architect test credential
+        shell: bash
+        env:
+          SA_EMAIL: ${{ secrets.PROJECTPULSE_M025_SA_EMAIL }}
+          SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          [[ -n "$SA_EMAIL" && ${#SA_PASSWORD} -ge 12 ]] || {
+            echo 'ERROR: PROJECTPULSE_M025_SA_EMAIL / _PASSWORD are required in the test environment.' >&2
+            exit 1
+          }
+          unset SA_EMAIL SA_PASSWORD
+          echo 'SOLUTION_ARCHITECT_CREDENTIAL=AVAILABLE'
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Install isolated browser dependencies
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m venv "$RUNNER_TEMP/module025-preview-browser"
+          "$RUNNER_TEMP/module025-preview-browser/bin/pip" install --disable-pip-version-check playwright==1.57.0
+          "$RUNNER_TEMP/module025-preview-browser/bin/playwright" install --with-deps chromium
+
+      - name: Drive the signed-in SA preview on the live app
+        shell: bash
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/module025-preview-evidence
+          TARGET_RELEASE_COMMIT: ${{ github.sha }}
+          MODULE025_PREVIEW_GENERATE_CONFIRMED: ${{ inputs.generate_confirmed }}
+          PROJECTPULSE_M025_SA_EMAIL: ${{ secrets.PROJECTPULSE_M025_SA_EMAIL }}
+          PROJECTPULSE_M025_SA_PASSWORD: ${{ secrets.PROJECTPULSE_M025_SA_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          "$RUNNER_TEMP/module025-preview-browser/bin/python" scripts/release-test/run-module025-preview-sa-uat.py
+
+      - name: Upload preview acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: module025-preview-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/module025-preview-evidence/*.json
+          retention-days: 3
+          if-no-files-found: warn
+
+      - name: Describe the bounded result
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "Module 025 in-app preview verification: ${{ job.status }}"
+            echo 'Scope: signed-in SA, one run-scoped synthetic record (archived), read-only preview browser.'
+            echo 'Draft path requests no AI generation. Confirmed-badge check is deterministic only when generate_confirmed=true.'
+          } >> "$GITHUB_STEP_SUMMARY"
