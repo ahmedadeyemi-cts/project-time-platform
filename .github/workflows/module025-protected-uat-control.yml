@@ -388,6 +388,24 @@ jobs:
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'active' ]] \
             || fail 'Protected-Test deployment workflow did not enable for the bounded dispatch.'
 
+          # GitHub can acknowledge workflow enablement before the scheduler is
+          # ready to materialize a workflow_dispatch job. Require stable active
+          # observations and a short bounded settle before dispatch.
+          enable_stable_count=0
+          for attempt in $(seq 1 10); do
+            workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+            if [[ "$workflow_state" == 'active' ]]; then
+              enable_stable_count=$((enable_stable_count + 1))
+              (( enable_stable_count >= 3 )) && break
+            else
+              enable_stable_count=0
+            fi
+            sleep 2
+          done
+          (( enable_stable_count >= 3 )) \
+            || fail 'Protected-Test deployment workflow did not remain stably active before dispatch.'
+          sleep 5
+
           [[ "$RECOVER_PRIVATE_RUNTIME" == true || "$RECOVER_PRIVATE_RUNTIME" == false ]] \
             || fail 'Protected-Test runtime recovery mode must be explicit.'
           jq -n \
