@@ -18,6 +18,7 @@
   ".github/workflows/projectpulse-deploy-test.yml",
   ".github/workflows/projectpulse-release-test-control-ci.yml",
   ".github/workflows/pulse-core-offline-readonly-ci.yml",
+  ".github/workflows/release-supervisor-queue-ci.yml",
   ".github/workflows/security-posture-ci.yml",
   ".github/workflows/shared-project-document-planning-ci.yml",
   ".github/workflows/systemwide-enterprise-reliability-ci.yml",

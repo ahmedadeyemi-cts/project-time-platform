@@ -2432,6 +2432,7 @@ jobs:
           AZURE_API_APP: ${{ vars.AZURE_API_APP }}
           AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
           CORE_EVIDENCE_FILE: ${{ runner.temp }}/core-test-release-summary.json
         run: bash scripts/resilience/core-test-release-controller.sh
 

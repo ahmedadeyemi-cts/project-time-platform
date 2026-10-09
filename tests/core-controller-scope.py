@@ -19,5 +19,6 @@ spec=importlib.util.spec_from_file_location('projection',ROOT/'tests/core_test_c
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 projected=m.normalize((ROOT/'.github/workflows/projectpulse-deploy-test.yml').read_bytes())
 assert projected==subprocess.check_output(['git','show',args.base+':.github/workflows/projectpulse-deploy-test.yml'],cwd=ROOT),'Existing release behavior changed'
+assert m.normalize_supervisor((ROOT/'.github/workflows/module025-protected-uat-control.yml').read_bytes())==subprocess.check_output(['git','show',args.base+':.github/workflows/module025-protected-uat-control.yml'],cwd=ROOT),'Existing supervisor protections changed'
 subprocess.run(['git','diff','--check',args.base+'...HEAD'],cwd=ROOT,check=True)
 print('CORE_EXACT_SCOPE_AND_IMMUTABLE_PREDECESSOR=PASS')

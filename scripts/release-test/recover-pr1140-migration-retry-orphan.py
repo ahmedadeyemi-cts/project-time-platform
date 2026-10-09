@@ -44,7 +44,7 @@ STALE_SOW_MAINTENANCE_DEPLOYMENT_BLOB = "a50b87bcfdeb19dd60e2c82d29edd98035dda6e
 # Exact Finance billing automation controller; prior reviewed controllers remain valid history.
 FINANCE_BILLING_DEPLOYMENT_BLOB = "954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602"
 # Exact registered core-only controller; historical release protections retained.
-CORE_ONLY_DEPLOYMENT_BLOB = "e227611223244c3b3ac75163f8525325bc6cd085"
+CORE_ONLY_DEPLOYMENT_BLOB = "bc47803c9c41ebc365d7f68d2b73bc0a90579d30"
 ROOT = Path(__file__).resolve().parents[2]
 
 

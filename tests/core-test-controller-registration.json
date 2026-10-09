@@ -1,8 +1,8 @@
 {
   "parentSha256": "9f96b44aeabff2055c2630071b4c63d7ce9d2eb61e630a237634f251700ab122",
-  "controllerSha256": "8b4be3b343d8cd4ffa99b1a12515520e4a84cb69b448ed168df40f8edbc1dd86",
+  "controllerSha256": "61ee7279be5a2947df3478a1fb51be32973be6702229f2fe79e5ac5dae123ea5",
   "inputBlock": "      core_only:\n        description: 'Deploy core API resilience without Oracle; Celar SOW acceptance remains pending'\n        required: false\n        default: false\n        type: boolean\n",
-  "coreBlock": "\n\n      - name: Admit exact merged main core release\n        if: inputs.core_only\n        working-directory: release\n        env:\n          RELEASE_SHA: ${{ inputs.release_sha }}\n          RELEASE_BRANCH: ${{ inputs.release_branch }}\n          RECOVER_ORACLE: ${{ inputs.recover_private_runtime }}\n          QUALIFICATION: ${{ inputs.qualification_provider }}\n          CLEANUP: ${{ inputs.stale_sow_cleanup_mode }}\n          ADMISSION_CONTROLLER: ${{ inputs.admission_controller_sha }}\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -Eeuo pipefail\n          [[ \"$RELEASE_BRANCH\" == main && \"$RECOVER_ORACLE\" != true && \"$QUALIFICATION\" == none && \"$CLEANUP\" == none && -z \"$ADMISSION_CONTROLLER\" ]]\n          bash scripts/resilience/admit-core-main.sh\n\n      - name: Sign in for admitted core Test release\n        if: inputs.core_only\n        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5\n        with:\n          client-id: ${{ vars.AZURE_CLIENT_ID }}\n          tenant-id: ${{ vars.AZURE_TENANT_ID }}\n          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}\n\n      - name: Stage, authenticate, validate recovery, and deploy core Test API\n        if: inputs.core_only\n        working-directory: release\n        env:\n          RELEASE_SHA: ${{ inputs.release_sha }}\n          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}\n          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}\n          AZURE_API_APP: ${{ vars.AZURE_API_APP }}\n          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}\n          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}\n          CORE_EVIDENCE_FILE: ${{ runner.temp }}/core-test-release-summary.json\n        run: bash scripts/resilience/core-test-release-controller.sh\n\n      - name: Publish redacted core Test release evidence\n        if: ${{ always() && inputs.core_only }}\n        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: core-test-release-${{ github.run_id }}-${{ github.run_attempt }}\n          path: ${{ runner.temp }}/core-test-release-summary.json\n          if-no-files-found: warn\n          retention-days: 7\n",
+  "coreBlock": "\n\n      - name: Admit exact merged main core release\n        if: inputs.core_only\n        working-directory: release\n        env:\n          RELEASE_SHA: ${{ inputs.release_sha }}\n          RELEASE_BRANCH: ${{ inputs.release_branch }}\n          RECOVER_ORACLE: ${{ inputs.recover_private_runtime }}\n          QUALIFICATION: ${{ inputs.qualification_provider }}\n          CLEANUP: ${{ inputs.stale_sow_cleanup_mode }}\n          ADMISSION_CONTROLLER: ${{ inputs.admission_controller_sha }}\n          GH_TOKEN: ${{ github.token }}\n        run: |\n          set -Eeuo pipefail\n          [[ \"$RELEASE_BRANCH\" == main && \"$RECOVER_ORACLE\" != true && \"$QUALIFICATION\" == none && \"$CLEANUP\" == none && -z \"$ADMISSION_CONTROLLER\" ]]\n          bash scripts/resilience/admit-core-main.sh\n\n      - name: Sign in for admitted core Test release\n        if: inputs.core_only\n        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5\n        with:\n          client-id: ${{ vars.AZURE_CLIENT_ID }}\n          tenant-id: ${{ vars.AZURE_TENANT_ID }}\n          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}\n\n      - name: Stage, authenticate, validate recovery, and deploy core Test API\n        if: inputs.core_only\n        working-directory: release\n        env:\n          RELEASE_SHA: ${{ inputs.release_sha }}\n          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}\n          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}\n          AZURE_API_APP: ${{ vars.AZURE_API_APP }}\n          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}\n          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}\n          GH_TOKEN: ${{ github.token }}\n          CORE_EVIDENCE_FILE: ${{ runner.temp }}/core-test-release-summary.json\n        run: bash scripts/resilience/core-test-release-controller.sh\n\n      - name: Publish redacted core Test release evidence\n        if: ${{ always() && inputs.core_only }}\n        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02\n        with:\n          name: core-test-release-${{ github.run_id }}-${{ github.run_attempt }}\n          path: ${{ runner.temp }}/core-test-release-summary.json\n          if-no-files-found: warn\n          retention-days: 7\n",
   "replacements": [
     [
       "        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908')) }}",
@@ -225,12 +225,12 @@
       "        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always()) }}"
     ]
   ],
-  "controllerBlob": "e227611223244c3b3ac75163f8525325bc6cd085",
+  "controllerBlob": "bc47803c9c41ebc365d7f68d2b73bc0a90579d30",
   "patches": {
     "scripts/release-test/recover-pr1139-uat-orphan.py": [
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"",
-        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"e227611223244c3b3ac75163f8525325bc6cd085\""
+        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\""
       ],
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB),",
@@ -240,7 +240,7 @@
     "scripts/release-test/recover-pr1140-uat-orphan.py": [
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"",
-        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"e227611223244c3b3ac75163f8525325bc6cd085\""
+        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\""
       ],
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB),",
@@ -250,7 +250,7 @@
     "scripts/release-test/recover-pr1140-migration-retry-orphan.py": [
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"",
-        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"e227611223244c3b3ac75163f8525325bc6cd085\""
+        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\""
       ],
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB),",
@@ -260,7 +260,7 @@
     "scripts/release-test/verify-pr1151-uat-supersession.py": [
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"",
-        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"e227611223244c3b3ac75163f8525325bc6cd085\""
+        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\""
       ],
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB),",
@@ -270,7 +270,7 @@
     "scripts/release-test/verify-pr1204-uat-supersession.py": [
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"",
-        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"e227611223244c3b3ac75163f8525325bc6cd085\""
+        "FINANCE_BILLING_DEPLOYMENT_BLOB = \"954ae0b4714e3a30b27cfdb8f15a3c3e06c9c602\"\n# Exact registered core-only controller; historical release protections retained.\nCORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\""
       ],
       [
         "FINANCE_BILLING_DEPLOYMENT_BLOB),",
@@ -280,12 +280,23 @@
     "scripts/release-test/verify-module025-quarantine-controller.py": [
       [
         "import hashlib\n",
-        "import hashlib\nCORE_CONTROLLER_SHA256='8b4be3b343d8cd4ffa99b1a12515520e4a84cb69b448ed168df40f8edbc1dd86'\n"
+        "import hashlib\nCORE_CONTROLLER_SHA256='61ee7279be5a2947df3478a1fb51be32973be6702229f2fe79e5ac5dae123ea5'\n"
       ],
       [
         "def permitted(original, current):\n",
         "def permitted(original, current):\n    if hashlib.sha256(current).hexdigest() == CORE_CONTROLLER_SHA256:\n        import importlib.util\n        from pathlib import Path\n        spec=importlib.util.spec_from_file_location('core_projection',Path(__file__).resolve().parents[2]/'tests/core_test_controller_projection.py')\n        projection=importlib.util.module_from_spec(spec);spec.loader.exec_module(projection)\n        current=projection.normalize(current)\n"
       ]
+    ]
+  },
+  "supervisor": {
+    "sha256": "9158b50e8fd81053c1bf7898b2f8a440414794f5431ab66bb2cc35a286bbf65a",
+    "parentSha256": "943bb5f851cc09808f8a191411de0dd053428a95a4fb1d7919b048b13a81f601",
+    "blocks": [
+      "      - name: Select exact merged core resilience scope\n        id: core_scope\n        shell: bash\n        run: python3 scripts/resilience/select_core_release.py\n\n",
+      "          CORE_ONLY: ${{ steps.core_scope.outputs.core_only }}\n",
+      "          [[ \"$CORE_ONLY\" == true || \"$CORE_ONLY\" == false ]] || fail 'Core release selection is not explicit.'\n          [[ \"$CORE_ONLY\" != true || \"$RECOVER_PRIVATE_RUNTIME\" == false ]] || fail 'Core release cannot recover Oracle.'\n",
+      "            --arg core_only \"$CORE_ONLY\" \\\n",
+      "              core_only:$core_only,\n"
     ]
   }
 }

@@ -16,3 +16,12 @@ def normalize(data):
         raw=current.encode();assert data.count(raw)>=1,'Legacy step guard changed';data=data.replace(raw,prior.encode(),1)
     assert hashlib.sha256(data).hexdigest()==REG['parentSha256'],'Legacy release controller changed'
     return data
+
+
+def normalize_supervisor(data):
+    reg=REG['supervisor']
+    assert hashlib.sha256(data).hexdigest()==reg['sha256'],'Unregistered supervisor content'
+    for block in reg['blocks']:
+        raw=block.encode();assert data.count(raw)==1;data=data.replace(raw,b'',1)
+    assert hashlib.sha256(data).hexdigest()==reg['parentSha256'],'Legacy supervisor changed'
+    return data

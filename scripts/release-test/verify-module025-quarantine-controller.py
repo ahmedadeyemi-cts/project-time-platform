@@ -1,7 +1,7 @@
 """Recognize exact reviewed controllers for the known zero-job orphan."""
 import subprocess
 import hashlib
-CORE_CONTROLLER_SHA256='8b4be3b343d8cd4ffa99b1a12515520e4a84cb69b448ed168df40f8edbc1dd86'
+CORE_CONTROLLER_SHA256='61ee7279be5a2947df3478a1fb51be32973be6702229f2fe79e5ac5dae123ea5'
 import argparse
 
 BASE = "245b0915d895d83f1ceaed32460ad95a4a3d79be"
