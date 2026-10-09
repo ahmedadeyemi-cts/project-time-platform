@@ -373,12 +373,18 @@ jobs:
           echo "MODULE025_PROTECTED_UAT_PRIVATE_RUNTIME_RECOVERY=$recover_private_runtime"
           echo 'PRODUCTION_MUTATION=NONE'
 
+      - name: Select exact merged core resilience scope
+        id: core_scope
+        shell: bash
+        run: python3 scripts/resilience/select_core_release.py
+
       - name: Dispatch exact governed Protected-Test deployment and reseal admissions
         id: dispatch
         shell: bash
         env:
           RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
           RECOVER_PRIVATE_RUNTIME: ${{ steps.authorize.outputs.recover_private_runtime }}
+          CORE_ONLY: ${{ steps.core_scope.outputs.core_only }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -427,17 +433,21 @@ jobs:
 
           [[ "$RECOVER_PRIVATE_RUNTIME" == true || "$RECOVER_PRIVATE_RUNTIME" == false ]] \
             || fail 'Protected-Test runtime recovery mode must be explicit.'
+          [[ "$CORE_ONLY" == true || "$CORE_ONLY" == false ]] || fail 'Core release selection is not explicit.'
+          [[ "$CORE_ONLY" != true || "$RECOVER_PRIVATE_RUNTIME" == false ]] || fail 'Core release cannot recover Oracle.'
           jq -n \
             --arg ref 'main' \
             --arg release_sha "$RELEASE_SHA" \
             --arg release_branch 'main' \
             --arg recover_private_runtime "$RECOVER_PRIVATE_RUNTIME" \
+            --arg core_only "$CORE_ONLY" \
             '{ref:$ref,inputs:{
               release_sha:$release_sha,
               release_branch:$release_branch,
               acceptance_scope:"full",
               qualification_provider:"none",
               recover_private_runtime:$recover_private_runtime,
+              core_only:$core_only,
               admission_controller_sha:""
             }}' \
             > "$RUNNER_TEMP/module025-protected-uat-dispatch.json"

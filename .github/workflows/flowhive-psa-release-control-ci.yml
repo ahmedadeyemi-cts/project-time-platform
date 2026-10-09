@@ -1068,7 +1068,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - name: Preload immutable PostgreSQL for standalone regressions
-        run: bash scripts/resilience/preload-ci-postgres.sh
+        run: bash control/scripts/resilience/preload-ci-postgres.sh
       - name: Read the pinned candidate SHA
         id: candidate
         working-directory: control

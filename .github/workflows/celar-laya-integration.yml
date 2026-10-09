@@ -122,8 +122,6 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci --ignore-scripts
-      - name: Preload immutable PostgreSQL for standalone regressions
-        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Build the actual frontend with the locked repository toolchain
         run: npm run build
       - name: Verify the Laya workflow is included in the production bundle
