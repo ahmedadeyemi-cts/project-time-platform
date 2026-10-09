@@ -1,0 +1,39 @@
+name: Pulse core release admission read-only preflight
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Exact current main SHA to verify; no deployment performed'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Verify current main SHA independently and deny mutations
+        env:
+          REQUESTED_SHA: ${{ inputs.release_sha }}
+          REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/resilience/test-core-only-release-admission.py
+          CURRENT_MAIN_SHA="$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')"
+          test "$EVENT_SHA" = "$CURRENT_MAIN_SHA"
+          python3 scripts/resilience/verify-core-only-release-admission.py \
+            --release-sha "$REQUESTED_SHA" \
+            --main-sha "$CURRENT_MAIN_SHA" \
+            --ref "$REF" \
+            --environment test \
+            --oracle-acceptance NOT_EXECUTED
+          echo 'CORE_RELEASE_PREFLIGHT_ONLY=PASS'
+          echo 'AZURE_MUTATION=NONE'
