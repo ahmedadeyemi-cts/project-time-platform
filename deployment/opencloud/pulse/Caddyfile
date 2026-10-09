@@ -1,0 +1,18 @@
+{
+    admin off
+    auto_https off
+}
+https://{$PULSE_HOSTNAME}:8443 {
+    tls /run/secrets/tls-certificate /run/secrets/tls-key
+    encode gzip zstd
+    reverse_proxy web:8080 {
+        header_up X-Forwarded-Proto https
+        header_up X-Forwarded-Host {host}
+        header_up -Forwarded
+    }
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Strict-Transport-Security max-age=31536000
+    }
+}

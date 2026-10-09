@@ -1,0 +1,19 @@
+{
+  "schema": "pulse-opencloud-handoff-v1",
+  "status": "configuration-and-build-candidate",
+  "installableRelease": false,
+  "sourceBaseline": "8947f0294c75c7012a626b5b0cf49dc8497e36f3",
+  "development": {"pulse": "https://pulse-dev.ussignal.cloud", "celar": "https://celarai-dev.ussignal.cloud", "browserVpnRequired": false, "ssh": "approved VPN or management path"},
+  "futureProduction": {"pulse": "https://pulse.ussignal.cloud", "celar": "https://celarai.ussignal.cloud", "redundancyQualified": false},
+  "sourceMirror": {"source": "ahmedadeyemi-cts/project-time-platform", "destination": "US-Signal-Technical-Operations-Center/ProjectPulse", "changesMade": false},
+  "requiredBeforeInstallationAcceptance": [
+    {"id": "database-baseline", "status": "pending", "reason": "An approved current schema baseline, migration ledger, role mapping and reviewed forward-only plan are required. Empty-database lexical replay is not supported."},
+    {"id": "laya-worker", "status": "pending", "reason": "Installed Oracle worker source, exact dependency lock and checkpoint assets are not in this repository. Supply and qualify a worker image implementing the current socket contract at revision 1c5edc17a7acd8701df6fc341c0d179f1c62c982."},
+    {"id": "celar-hostname-authorization", "status": "pending", "reason": "PulseAiExternalHttpsRuntimePolicy and LayaDecisionTransport still authorize the Oracle hostname. A reviewed explicit OpenCloud development policy is required; no DNS/TLS/SSRF bypass is included."},
+    {"id": "container-maintenance", "status": "pending", "reason": "Oracle schedule/reconcile/update/backup services use systemd and host paths. Container-aware, least-privilege maintenance and restore must be implemented. The candidate returns 503 for maintenance requests rather than claiming a schedule was applied."},
+    {"id": "secret-portability", "status": "pending", "reason": "Inventory active secret providers, preserve existing encryption keys and authorize an OpenCloud secret provider where required. Do not change a database-derived integration key accidentally."},
+    {"id": "images-and-architecture", "status": "pending", "reason": "Select the target architecture and approved image registry, complete scans, publish immutable image digests, and provision the approved model assets. CI image builds do not publish images."},
+    {"id": "corporate-deployment-authority", "status": "pending", "reason": "Corporate SSO authorization, scoped runner, environment protections and image access must be configured. Mirror code is unchanged; no new writer to corporate main or live deployment trigger is installed."},
+    {"id": "environment-acceptance", "status": "pending", "reason": "DNS/certificates/SSO callbacks, outbound queue isolation, persistence/restore, role workflows, live AI and target-host capacity require verification."}
+  ]
+}
