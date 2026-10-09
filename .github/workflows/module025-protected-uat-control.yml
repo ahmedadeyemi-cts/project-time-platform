@@ -62,6 +62,7 @@ jobs:
       QUARANTINED_ZERO_JOB_RUN_ID_7: '35473939797'
       QUARANTINED_ZERO_JOB_RUN_ID_8: '35524946948'
       QUARANTINED_ZERO_JOB_RUN_ID_9: '37678070160'
+      QUARANTINED_ZERO_JOB_RUN_ID_10: '37841753338'
 
     steps:
       - name: Check out exact current main controller
@@ -281,6 +282,24 @@ jobs:
                 continue
               fi
             fi
+            # Exact 2026-10-08 recovery startup orphan: GitHub created
+            # the governed workflow_dispatch run for exact main but never
+            # attached a job during the full 900-second startup budget. It
+            # performed no deployment and has no pending environment approval.
+            if [[ "$run_id" == "$QUARANTINED_ZERO_JOB_RUN_ID_10" && \
+                  "$requested_sha" != 'b66855400bf0974f3cce6fd187c5db37fddb88f8' ]] && \
+               git merge-base --is-ancestor 'b66855400bf0974f3cce6fd187c5db37fddb88f8' HEAD && \
+               verify_zero_job_quarantine "$run_id" \
+                 'b66855400bf0974f3cce6fd187c5db37fddb88f8' \
+                 'main' \
+                 '2026-10-08T20:44:54Z'; then
+              pending_json="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/pending_deployments")" \
+                || fail 'Cannot verify pending approvals for the exact 2026-10-08 recovery startup orphan.'
+              if jq -e 'type == "array" and length == 0' <<<"$pending_json" >/dev/null; then
+                quarantined_runs+=("$run_id")
+                continue
+              fi
+            fi
             # PR1139_UAT_RECOVERY_BEGIN
             if [[ "$run_id" == '35645759101' ]]; then
               python3 scripts/release-test/recover-pr1139-uat-orphan.py \
@@ -387,6 +406,24 @@ jobs:
           gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}/enable" >/dev/null
           [[ "$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')" == 'active' ]] \
             || fail 'Protected-Test deployment workflow did not enable for the bounded dispatch.'
+
+          # GitHub can acknowledge workflow enablement before the scheduler is
+          # ready to materialize a workflow_dispatch job. Require stable active
+          # observations and a short bounded settle before dispatch.
+          enable_stable_count=0
+          for attempt in $(seq 1 10); do
+            workflow_state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${DEPLOY_WORKFLOW_ID}" --jq '.state')"
+            if [[ "$workflow_state" == 'active' ]]; then
+              enable_stable_count=$((enable_stable_count + 1))
+              (( enable_stable_count >= 3 )) && break
+            else
+              enable_stable_count=0
+            fi
+            sleep 2
+          done
+          (( enable_stable_count >= 3 )) \
+            || fail 'Protected-Test deployment workflow did not remain stably active before dispatch.'
+          sleep 5
 
           [[ "$RECOVER_PRIVATE_RUNTIME" == true || "$RECOVER_PRIVATE_RUNTIME" == false ]] \
             || fail 'Protected-Test runtime recovery mode must be explicit.'

@@ -3,6 +3,48 @@
 # Sourced by the protected Test control workflow. Keep branch-specific
 # validation explicit; the workflow owns the trusted-main context and
 # this file owns only the existing dispatch table.
+# 2026-10-08 exact Protected UAT enable/dispatch scheduler stabilization.
+# Only the supervisor and this explicit branch-scope registration may change.
+if [[ "$HEAD_BRANCH" == 'fix/protected-uat-enable-dispatch-settle-20261008' ]]; then
+  expected="$CIT/protected-uat-enable-dispatch-settle-files"
+  printf '%s\n' \
+    '.github/workflows/module025-protected-uat-control.yml' \
+    '.github/workflows/release-supervisor-queue-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'tests/release-supervisor-queue/test_startup_queue_scope.py' \
+    | LC_ALL=C sort -u > "$expected"
+  cmp -s "$CIT/diff" "$expected" || {
+    echo 'Protected UAT enable/dispatch settle repair differs from its exact governed file set.' >&2
+    diff -u "$expected" "$CIT/diff" >&2 || true
+    exit 1
+  }
+
+  supervisor='.github/workflows/module025-protected-uat-control.yml'
+  grep -Fq 'enable_stable_count=0' "$supervisor" \
+    || fail 'Stable enablement counter is missing.'
+  grep -Fq '(( enable_stable_count >= 3 ))' "$supervisor" \
+    || fail 'Stable enablement threshold is missing.'
+  grep -Fq 'Protected-Test deployment workflow did not remain stably active before dispatch.' "$supervisor" \
+    || fail 'Stable enablement fail-closed gate is missing.'
+  grep -Fq 'startup_deadline_epoch=$(( $(date +%s) + 900 ))' "$supervisor" \
+    || fail 'Existing bounded post-dispatch startup window changed unexpectedly.'
+  grep -Fq 'disable_deploy_workflow' "$supervisor" \
+    || fail 'Automatic Protected-Test resealing is missing.'
+
+  git diff --exit-code "$CURRENT_BASE_SHA" HEAD -- \
+    .github/workflows/projectpulse-deploy-test.yml \
+    .github/workflows/projectpulse-deploy-production.yml
+  git diff --check "$CURRENT_BASE_SHA"...HEAD
+
+  python3 tests/test-pr1139-uat-recovery.py
+  python3 tests/test-pr1140-uat-recovery.py
+  python3 tests/test-pr1140-migration-retry-recovery.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  echo 'PROTECTED_UAT_ENABLE_DISPATCH_SETTLE_SCOPE=PASS'
+  echo 'PRODUCTION_MUTATION=NONE'
+  return
+fi
+
 # Queue-only repair: exact source, existing controller identity and all safety regressions.
 if [[ "$HEAD_BRANCH" == 'fix/protected-uat-supervisor-queue-20260930' ]]; then
   python3 tests/release-supervisor-queue/scope.py
