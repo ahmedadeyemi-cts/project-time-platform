@@ -41,7 +41,9 @@ def main():
         source = body.get('sourceCommit') or body.get('source') or body.get('commit')
         if EXPECTED_SOURCE and source != EXPECTED_SOURCE:
             raise ValueError('source_commit_unverified')
-        print('/api/version', 'PASS' if code == 200 else 'FAIL', 'source_identity=' + ('present' if source else 'not_exposed'))
+        if code != 200 or not isinstance(body, dict) or body.get('component') != 'ProjectTime.Api':
+            raise ValueError('version_contract_invalid')
+        print('/api/version', 'PASS', 'source_identity=' + ('present' if source else 'not_exposed'))
     except Exception as exc:
         failures.append('/api/version')
         print('/api/version', 'FAIL', str(exc))
