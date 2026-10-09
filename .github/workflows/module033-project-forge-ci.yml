@@ -149,6 +149,15 @@ jobs:
             grep -Fxq 'deployment/rocky-linux/apply-remaining-psa-module-api-patch.sh' <<<"$CHANGED"
             echo 'MODULE_033_SYSTEMWIDE_RECONCILIATION_BOUNDARY=PASSED'
           fi
+          if [[ "$HEAD_BRANCH" == 'fix/pulse-resilience-20261009' ]]; then
+            # Only permit the reviewed Nginx health-subpath proxy file, never
+            # web Dockerfiles or any other deployment surface.
+            python3 tests/resilience/test-optional-ai-startup-boundary.py
+            test "$(grep -Ec '^deployment/' <<<"$PROTECTED_DEPLOYMENT" || true)" -eq 1
+            grep -Fxq 'deployment/containers/web/default.conf.template' <<<"$PROTECTED_DEPLOYMENT"
+            grep -Fq 'location ^~ /health/ {' deployment/containers/web/default.conf.template
+            PROTECTED_DEPLOYMENT=''
+          fi
           if [[ "$HEAD_BRANCH" == fix/module025-protected-uat-generation-verification-* ]]; then
             PROTECTED_DEPLOYMENT="$(grep -Fvx \
               'deployment/containers/web/default.conf.template' \

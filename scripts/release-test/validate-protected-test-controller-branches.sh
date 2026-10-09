@@ -989,6 +989,25 @@ elif [[ "$PR_NUMBER" == '777' ]]; then
     diff -u "$CIT/e-777-workspace" "$CIT/diff" >&2 || true
     exit 1
   }
+elif [[ "$HEAD_BRANCH" == 'fix/pulse-resilience-20261009' ]]; then
+  # Reviewed six-file application-only resilience scope. Production controllers,
+  # release workflows, secrets, and database changes are never authorized here.
+  printf '%s\n' \
+    'deployment/containers/web/default.conf.template' \
+    'docs/operations/PULSE-RESILIENCE-UAT-2026-10-09.md' \
+    'src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs' \
+    'src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs' \
+    'src/backend/ProjectTime.Api/Program.cs' \
+    'tests/resilience/test-optional-ai-startup-boundary.py' \
+    | LC_ALL=C sort > "$CIT/expected-resilience-files"
+  cmp -s "$CIT/diff" "$CIT/expected-resilience-files" || {
+    echo 'Pulse resilience PR differs from the reviewed exact six-file scope.' >&2
+    diff -u "$CIT/expected-resilience-files" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  python3 tests/resilience/test-optional-ai-startup-boundary.py
+  git diff --check "$CURRENT_BASE_SHA"...HEAD
+  echo 'PULSE_RESILIENCE_EXACT_SCOPE=PASS'
 elif cmp -s "$CIT/diff" "$CIT/e-runtime-repair-files"; then
 :
 elif cmp -s "$CIT/diff" "$CIT/e-assigned-work-repair-files"; then
