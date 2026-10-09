@@ -48,7 +48,7 @@ def check(base, source=None):
             raise RuntimeError('canary_transport_or_json '+path) from None
 
     try:
-        for path, status in [('/health','healthy'),('/health/live','alive'),('/health/ready','ready')]:
+        for path, status in [('/health','healthy')]: # Existing public portal routes only /health; private candidate verifies all probes.
             result=request(path)
             if not isinstance(result,dict) or result.get('status') != status:
                 raise RuntimeError('health_contract '+path)
@@ -57,10 +57,7 @@ def check(base, source=None):
         if version.get('component') != 'ProjectTime.Api':
             raise RuntimeError('immutable_source_identity_unverified')
         passed.append('/api/version')
-        identity=request('/health/source') if source else {}
-        if source and (identity.get('component')!='ProjectTime.Api' or identity.get('sourceCommit')!=source):
-            raise RuntimeError('immutable_source_identity_unverified')
-        if source:passed.append('/health/source')
+        identity={}
         try:
             request('/api/security/context')
         except RuntimeError as denied:
@@ -77,6 +74,11 @@ def check(base, source=None):
         if not context.get('userId'):
             raise RuntimeError('authenticated_identity_missing')
         passed.append('/api/security/context')
+        if source:
+            identity=request('/api/core-release/source',authenticated=True)
+            if identity.get('component')!='ProjectTime.Api' or identity.get('sourceCommit')!=source:
+                raise RuntimeError('immutable_source_identity_unverified')
+            passed.append('/api/core-release/source')
         for module,path in [('001','/api/assignments/available-tasks?weekStart=2026-08-16'),
                             ('001','/api/timesheet/work-queue?weekStart=2026-08-16'),
                             ('001A','/api/engineer-task-closeout/overview'),

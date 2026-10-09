@@ -289,14 +289,15 @@
     ]
   },
   "supervisor": {
-    "sha256": "9158b50e8fd81053c1bf7898b2f8a440414794f5431ab66bb2cc35a286bbf65a",
+    "sha256": "9908b69aa8fb4e4068e1dbcab6d7139f913b71972e078cb5c6f094095daa03f4",
     "parentSha256": "943bb5f851cc09808f8a191411de0dd053428a95a4fb1d7919b048b13a81f601",
     "blocks": [
       "      - name: Select exact merged core resilience scope\n        id: core_scope\n        shell: bash\n        run: python3 scripts/resilience/select_core_release.py\n\n",
       "          CORE_ONLY: ${{ steps.core_scope.outputs.core_only }}\n",
       "          [[ \"$CORE_ONLY\" == true || \"$CORE_ONLY\" == false ]] || fail 'Core release selection is not explicit.'\n          [[ \"$CORE_ONLY\" != true || \"$RECOVER_PRIVATE_RUNTIME\" == false ]] || fail 'Core release cannot recover Oracle.'\n",
       "            --arg core_only \"$CORE_ONLY\" \\\n",
-      "              core_only:$core_only,\n"
+      "              core_only:$core_only,\n",
+      "      - 'scripts/resilience/**'\n"
     ]
   }
 }

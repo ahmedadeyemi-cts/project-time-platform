@@ -77,18 +77,20 @@ class Tests(unittest.TestCase):
             recipe.parent.mkdir(parents=True)
             original=(Path(__file__).parents[2]/'deployment/containers/api/Dockerfile').read_text()
             recipe.write_text(original);core.bind_build_source(context,SHA)
-            self.assertEqual(recipe.read_text(),original.replace('/p:UseAppHost=false','/p:UseAppHost=false /p:ProjectPulseSourceRevision='+SHA))
+            self.assertIn('/p:UseAppHost=false /p:ProjectPulseSourceRevision='+SHA,recipe.read_text())
+            self.assertIn('dotnet publish scripts/resilience/CoreCanary/Pulse.CoreCanary.csproj',recipe.read_text())
+            self.assertIn('COPY --from=build /app/core-canary/ /app/core-canary/',recipe.read_text())
             with self.assertRaises(RuntimeError):core.bind_build_source(context,'invalid')
 
     def test_end_to_end_canary_recovery_before_promotion(self):
         cloud=Cloud();checks=[]
-        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'az',cloud),patch.object(core,'run',git),patch.object(core,'check',side_effect=lambda base,source=None: checks.append((base,source)) or {'result':'PASS'}):
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',cloud),patch.object(core,'run',git),patch.object(core,'check',side_effect=lambda base,source=None: checks.append((base,source)) or {'result':'PASS'}):
             c=core.Controller(Path(temp)/'safe.json');c.execute()
             self.assertTrue(c.finished);self.assertEqual(c.summary['rollback'],'PASS')
             self.assertEqual(c.summary['result'],'PASS')
             self.assertEqual(cloud.state['properties']['configuration']['activeRevisionsMode'],'Single')
             self.assertEqual(cloud.state['properties']['template']['containers'][0]['image'],NEW_IMAGE)
-            self.assertEqual(checks[2],(core.ORIGIN,None)) # live restored-baseline check
+            self.assertEqual(checks[1],(core.ORIGIN,None)) # live restored-baseline check
             self.assertEqual(checks[-1],(core.ORIGIN,SHA))
             self.assertNotIn('secretRef',(Path(temp)/'safe.json').read_text())
     def test_canary_failure_leaves_baseline_and_recovery_restores_template(self):
@@ -96,13 +98,32 @@ class Tests(unittest.TestCase):
         def check(base,source=None):
             if source:raise RuntimeError('failed_canary')
             return {'result':'PASS'}
-        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'az',cloud),patch.object(core,'run',git),patch.object(core,'check',side_effect=check):
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',cloud),patch.object(core,'run',git),patch.object(core,'check',side_effect=check):
             c=core.Controller(Path(temp)/'safe.json')
-            with self.assertRaises(RuntimeError):c.execute()
+            with patch.object(core,'check_revision',side_effect=RuntimeError('failed_canary')):
+                with self.assertRaises(RuntimeError):c.execute()
             self.assertEqual(cloud.state['properties']['configuration']['ingress']['traffic'][0]['revisionName'],OLD)
             c.recover()
             self.assertEqual(core.template(cloud.state['properties']['template']),core.template(BASE['properties']['template']))
             self.assertEqual(c.summary['rollback'],'PASS')
+    def test_azure_app_defaults_do_not_require_cross_api_template_equality(self):
+        cloud=Cloud()
+        def serialized(*args,**kwargs):
+            value=cloud(*args,**kwargs)
+            if args[:2]==('containerapp','show'):
+                container=value['properties']['template']['containers'][0]
+                container['imageType']='ContainerImage'
+                container['resources']={'ephemeralStorage':'2Gi'}
+            return value
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',serialized),patch.object(core,'run',git),patch.object(core,'check',return_value={'result':'PASS'}):
+            c=core.Controller(Path(temp)/'safe.json');c.execute()
+            self.assertTrue(c.finished);self.assertEqual(c.summary['rollback'],'PASS')
+            self.assertNotEqual(core.template(c.before['properties']['template']),core.template(c.baseline['properties']['template']))
+    def test_unready_latest_template_is_denied_without_mutation(self):
+        cloud=Cloud();cloud.state['properties']['latestRevisionName']=core.APP+'--unready'
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',cloud),patch.object(core,'run',git):
+            with self.assertRaisesRegex(RuntimeError,'baseline_not_current_template'):core.Controller(Path(temp)/'safe.json').admit()
+            self.assertFalse(any('copy' in x for x in cloud.commands))
     def test_production_admission_never_mutates(self):
         cloud=Cloud()
         with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,{**ENV,'AZURE_API_APP':'production'},clear=True),patch.object(core,'az',cloud):
