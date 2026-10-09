@@ -37,11 +37,13 @@ public static class CelarAiRuntimeVersionModule
     public static IEndpointRouteBuilder MapCelarAiRuntimeVersionEndpoints(this IEndpointRouteBuilder endpoints)
     {
         // Immutable build identity is passive and never contacts an AI provider.
-        endpoints.MapGet("/health/source", () => Results.Ok(new
+        static IResult SourceIdentity() => Results.Ok(new
         {
             component = "ProjectTime.Api",
             sourceCommit = ProjectPulseAiReleaseRuntimePolicy.Snapshot().EmbeddedSourceCommit
-        }));
+        });
+        endpoints.MapGet("/health/source", SourceIdentity);
+        endpoints.MapGet("/api/core-release/source", SourceIdentity);
 
         endpoints.MapGet(StatusRoute,
             (Func<HttpContext, CancellationToken, Task<IResult>>)GetStatusAsync);

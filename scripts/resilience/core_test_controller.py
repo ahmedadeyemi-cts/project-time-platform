@@ -13,6 +13,7 @@ import tarfile
 import tempfile
 import time
 from core_test_canary import check
+from private_core_canary import check_revision
 
 SUB='cd32baeb-7b71-4bc0-8ea3-9f23a50903fe'
 RG='rg-project-health-dashboard-test-app-westus3'
@@ -39,7 +40,13 @@ def bind_build_source(context, sha):
     if text.count(anchor)!=1:raise RuntimeError('build_recipe_source_binding_denied')
     # Bind the existing assembly metadata property in the disposable build recipe.
     # The committed recipe, source files, and release protections stay byte-identical.
-    recipe.write_text(text.replace(anchor,anchor+' /p:ProjectPulseSourceRevision='+sha,1))
+    text=text.replace(anchor,anchor+' /p:ProjectPulseSourceRevision='+sha,1)
+    runtime='FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime'
+    assert text.count(runtime)==1
+    text=text.replace(runtime,'COPY scripts/resilience/CoreCanary/ scripts/resilience/CoreCanary/\nRUN dotnet publish scripts/resilience/CoreCanary/Pulse.CoreCanary.csproj --configuration Release --output /app/core-canary /p:UseAppHost=false\n\n'+runtime,1)
+    copy='COPY --from=build /app/publish/ ./'
+    assert text.count(copy)==1
+    recipe.write_text(text.replace(copy,copy+'\nCOPY --from=build /app/core-canary/ /app/core-canary/',1))
 
 
 def policy(name):
@@ -194,7 +201,7 @@ class Controller:
         if fqdn!=self.candidate+'.'+domain:raise RuntimeError('candidate_fqdn_unverified')
         self.summary.update(candidateRevision=self.candidate,candidateImage=image)
         self.summary['phase']='candidate_canary'
-        self.summary['candidateCanary']=check('https://'+fqdn,sha)
+        self.summary['candidateCanary']=check_revision(self.candidate,rev['properties']['template']['containers'][0]['name'],sha)
         # Prove recovery while candidate remains zero traffic; do not call this a failure drill.
         self.recover()
         self.summary['rollbackValidation']='LIVE_TEMPLATE_RESTORE_AND_AUTHENTICATED_CORE_READS'
@@ -210,7 +217,7 @@ class Controller:
            '--set-env-vars','PROJECTPULSE_SOURCE_COMMIT='+sha,'--revision-suffix',suffix)
         self.traffic(self.recovery,promotion)
         rev=self.wait(promotion,image)
-        self.summary['promotionCanary']=check('https://'+rev['properties']['fqdn'],sha)
+        self.summary['promotionCanary']=check_revision(promotion,rev['properties']['template']['containers'][0]['name'],sha)
         self.traffic(promotion)
         if self.old_mode=='Single':az('containerapp','revision','set-mode','-g',RG,'-n',APP,'--mode','single')
         state=self.app()
