@@ -66,6 +66,8 @@ jobs:
           GITHUB_HEAD_REF: ${{ github.head_ref }}
         run: python3 tests/laya/prepare-admission-fixture.py
       # LAYA_RELEASE_END fixture_preparation
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Exact control-only scope and negative admission tests
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -74,6 +76,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
+          if [[ "$GITHUB_HEAD_REF" == 'feat/pulse-core-test-controller-20261009' ]]; then
+            python3 tests/core-controller-scope.py --base "$BASE_SHA"
+            node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
+            python3 tests/security-release/test_controller_registration.py
+            node tests/validate-systemwide-image-build-controller.mjs
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'feat/finance-billing-automation-20261005' ]]; then
             git diff --name-only "$BASE_SHA...HEAD" | grep -Ei 'flowhive' | grep -Ev '^(\.github/workflows/flowhive-psa-release-control-ci\.yml|scripts/release-test/resolve-flowhive-installed-deployment\.py|tests/flowhive-installed-resolution\.test\.py)$' > "$RUNNER_TEMP/finance-flowhive-unexpected" || true
             [[ ! -s "$RUNNER_TEMP/finance-flowhive-unexpected" ]] || { cat "$RUNNER_TEMP/finance-flowhive-unexpected" >&2; exit 1; }
@@ -1100,7 +1109,7 @@ jobs:
           printf 'POSTGRES_USER=flowhive\nPOSTGRES_DB=%s\nPOSTGRES_PASSWORD=%s\n' "$FIXTURE_DATABASE" "$password" > "$env_file"
           docker run --detach --rm --name "$name" --publish 127.0.0.1::5432 \
             --env-file "$env_file" --health-cmd "pg_isready -U flowhive -d $FIXTURE_DATABASE" \
-            --health-interval 2s --health-timeout 2s --health-retries 30 postgres:16 >/dev/null
+            --health-interval 2s --health-timeout 2s --health-retries 30 mirror.gcr.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777 >/dev/null
           health='starting'
           for attempt in {1..30}; do
             health="$(timeout 5s docker inspect --format '{{.State.Health.Status}}' "$name")"

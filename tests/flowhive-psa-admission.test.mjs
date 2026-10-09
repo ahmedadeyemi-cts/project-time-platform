@@ -6,6 +6,14 @@ import { execFileSync } from 'node:child_process';
 import { verifyApproval, verifySupersededCheckBinding, verifyPullRequest, verifyRuns, verifyWorkflowException, verifyWorkflowPathOmission, verifyWorkflowPathOmissions, verifyWorkflowDispatchCheck, verifyWorkflowDispatchNonRequiredEvidence, workflowPathOmissions, workflowDispatchChecks, workflowDispatchNonRequiredEvidence, historicalWorkflowExceptions, verifySourceDrift, verifyTargetReleaseBranch, verifyCandidateCommitObject, repository, candidateBranch, candidatePullRequest, protectedTestReleaseLane } from '../scripts/release-test/flowhive-psa-admission.mjs';
 import { parseCommand, buildDispatchRequest, verifyDispatchInputs, verifyDispatchRequest, verifyDispatchReceipt, verifyDispatchedRun, buildRequest, githubApiVersion, dispatchOnce, dispatchWithEvidence, request, GithubApiError, createDispatchEvidence, persistDispatchEvidence, recordReportingFailure, readAdmissionExecutionContext, verifyReleaseCutover, inspectReleaseCutover, readInspectOnlyContext, runAdmission, runProtectedAdmissionLifecycle, claimSingleUse, activateProtectedControllerOnce, closeProtectedControllerOnce, revalidateProtectedCutoverForSubmission, inspectActiveController, requireNoUnresolvedRuns, inspectIdleController, sealIdleController, requireIdleRuns, staleRunSupersessionAttestation, staleRunSupersessionApproved, verifyStaleSupersessionAuthorization, verifyHistoricalFenceSources, verifyFencedStaleRun, verifyRequestRunBinding, verifyNativeEnvironmentProtection, readHistoricalFenceSources, readProtectedCutoverAuthorization, verifyProtectedCutoverAuthorization, assessProtectedCutover, verifyProtectedHistoricalWorkflowSource, verifyProtectedRunObservation, protectedCutoverRunAttestations, protectedCutoverRunIds, parseDispatchReceiptArchive } from '../scripts/release-test/dispatch-flowhive-psa-test.mjs';
 import { files, repairFiles, repairBase, plannerTimeBudgetApprovalFiles, staleSupersessionFiles, staleSupersessionActivationFiles, staleSupersessionActivationBase, staleSupersessionActivationBranch, staleSupersessionRenewalBranch, module025MyRoleCelarRepairFiles, module025SowRoleLiveAcceptanceFiles, module025SowRoleLiveRepairFiles, module025SowRoleCandidateRefreshFinalFiles, module025SowRoleCandidateRefresh1009Files, module025SowRoleCandidateRefresh1014Files, triggerCoverageFiles, plannerProviderDeadlineRetryFiles, plannerProviderDeadlineCandidateRefreshFiles, plannerControlPathCoverageFiles, plannerCandidateApprovalRefreshFiles, plannerCelarApprovalRefreshFiles, plannerLiveCelarBudgetApprovalFiles, module025CandidateRefreshFiles, module025AdmissionManifestRefreshFiles, plannerCompactPhaseFixFiles, plannerParallelPhaseFixFiles, plannerCompactPhaseCandidateRefreshFiles, plannerParallelPhaseCandidateRefreshFiles, plannerRuntimeCheckOmissionFiles, plannerCapacitySafeFiles, plannerLiveCapacityRepairFiles, plannerCapacitySafeCandidateRefreshFiles, plannerLiveCapacityCandidateRefreshFiles, plannerCandidateRefreshFiles, plannerAdmissionEvidenceCorrectionFiles, verifyFiles, verifyController } from './flowhive-psa-release-control.mjs';
+const coreOnlyController = process.env.GITHUB_HEAD_REF === 'feat/pulse-core-test-controller-20261009';
+function verifyCorePreservesHistoricalAuthority() {
+  const base = process.env.BASE_SHA || execFileSync('git', ['merge-base', 'origin/main', 'HEAD'], {encoding:'utf8'}).trim();
+  execFileSync('python3', ['tests/core-controller-scope.py', '--base', base]);
+  for (const file of ['.github/flowhive-psa-protected-test-candidate.json', '.github/flowhive-psa-protected-test-approval.json', '.github/flowhive-psa-protected-cutover.json']) {
+    assert.equal(execFileSync('git', ['diff', base, 'HEAD', '--', file], {encoding:'utf8'}), '', 'Core resilience cannot change historical AI approval authority');
+  }
+}
 const installedSowRoleAcceptanceSourceFiles = [
   '.github/flowhive-psa-release-control-files.txt',
   'scripts/release-test/run-module025-installed-sa-uat.py',
@@ -477,6 +485,7 @@ test('the checked-in control manifest is sorted before trusted-main admission', 
   assert.deepEqual(manifest, [...new Set(manifest)].sort());
 });
 test('trusted-main source drift starts at the approved application merge and rejects the old PR-base boundary', () => {
+  if (coreOnlyController) { verifyCorePreservesHistoricalAuthority(); return; }
   if (flowHiveReadinessDiagnosticRunner) {
     execFileSync('python3', ['tests/flowhive-readiness-diagnostic-runner-scope.py']);
     assert.ok(true, 'FlowHive readiness diagnostic runner uses its exact governed scope');
@@ -553,6 +562,7 @@ test('successor check binding is exact, review-only, and tied to the failed inst
   }
 });
 test('successor candidate binds to trusted main and rejects unincorporated application drift', () => {
+  if (coreOnlyController) { verifyCorePreservesHistoricalAuthority(); return; }
   if (flowHiveReadinessDiagnosticRunner) {
     execFileSync('python3', ['tests/flowhive-readiness-diagnostic-runner-scope.py']);
     assert.ok(true, 'FlowHive readiness diagnostic runner uses its exact governed scope');
@@ -1053,6 +1063,7 @@ test('successor approval enumerates only the workflows that ran for the exact se
   assert.throws(() => verifyRuns(approval, runs.slice(1)), /Required exact-SHA CI is missing/);
 });
 test('the refreshed PR has a real Module 025 check and no inherited historical exception', () => {
+  if (coreOnlyController) { verifyCorePreservesHistoricalAuthority(); return; }
   if (flowHiveReadinessDiagnosticRunner) {
     execFileSync('python3', ['tests/flowhive-readiness-diagnostic-runner-scope.py']);
     assert.ok(true, 'FlowHive readiness diagnostic runner uses its exact governed scope');

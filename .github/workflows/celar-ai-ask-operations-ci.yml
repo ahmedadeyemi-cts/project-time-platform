@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 180
     services:
       postgres:
-        image: postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: projectpulse
@@ -72,6 +72,8 @@ jobs:
           cache: npm
           cache-dependency-path: src/frontend/project-time-web/package-lock.json
 
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Validate consolidated source and privacy contracts
         shell: bash
         run: |

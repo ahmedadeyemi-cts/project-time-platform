@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 25
     services:
       postgres:
-        image: postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-scope-tests
         ports: ['5432/tcp']

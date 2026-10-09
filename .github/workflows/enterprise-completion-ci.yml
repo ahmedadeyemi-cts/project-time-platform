@@ -31,6 +31,8 @@ jobs:
         run: dotnet run --project tests/EnterpriseCompletionTests --configuration Release
       - name: Autosave and API error behavior
         run: node --test tests/api-error-status.test.mjs tests/timesheet-draft-writer.test.mjs tests/timesheet-autosave-integration.test.mjs
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Start isolated PostgreSQL fixture
         shell: bash
         run: |
@@ -47,7 +49,7 @@ jobs:
           printf 'POSTGRES_USER=postgres\nPOSTGRES_DB=enterprise_completion_test\nPOSTGRES_PASSWORD=%s\n' "$password" > "$env_file"
           docker run --detach --rm --name "$name" --publish 127.0.0.1::5432 \
             --env-file "$env_file" --health-cmd 'pg_isready -U postgres -d enterprise_completion_test' \
-            --health-interval 2s --health-timeout 2s --health-retries 30 postgres:16 >/dev/null
+            --health-interval 2s --health-timeout 2s --health-retries 30 mirror.gcr.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777 >/dev/null
           health='starting'
           for attempt in {1..30}; do
             health="$(timeout 5s docker inspect --format '{{.State.Health.Status}}' "$name")"

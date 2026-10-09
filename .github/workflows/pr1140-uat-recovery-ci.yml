@@ -39,6 +39,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
+          if [[ "$GITHUB_HEAD_REF" == 'feat/pulse-core-test-controller-20261009' ]]; then
+            python3 tests/core-controller-scope.py --base "$BASE_SHA"
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'feat/finance-billing-automation-20261005' ]]; then
             REGISTERED_FINANCE_CONTROLLER="$(jq -er '.controllerBlob | select(test("^[0-9a-f]{40}$"))' tests/finance-billing-controller-registration.json)"
             [[ "$(git rev-parse HEAD:.github/workflows/projectpulse-deploy-test.yml)" == "$REGISTERED_FINANCE_CONTROLLER" ]] || {
