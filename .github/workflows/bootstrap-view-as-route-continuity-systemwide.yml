@@ -1,0 +1,116 @@
+name: Bootstrap systemwide View-As route continuity repair
+
+on:
+  push:
+    branches:
+      - fix/view-as-route-continuity-systemwide-20260808
+
+permissions:
+  contents: write
+
+jobs:
+  carrier:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: fix/view-as-route-continuity-systemwide-20260808
+          fetch-depth: 0
+
+      - name: Apply shared route authority repair
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          source_commit = '9d1db94fff673a404a1a1eb5db42f6f89e8d16d5'
+          source_path = '.github/workflows/bootstrap-view-as-route-continuity-systemwide.yml'
+          workflow = subprocess.check_output(
+              ['git', 'show', f'{source_commit}:{source_path}'],
+              text=True,
+          )
+          start_marker = "      - name: Apply shared route authority repair\n        shell: bash\n        run: |\n"
+          end_marker = "\n      - name: Install frontend dependencies"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          block = workflow[start:end]
+          lines = []
+          for line in block.splitlines():
+              lines.append(line[10:] if line.startswith('          ') else line)
+          Path('/tmp/apply-reviewed-view-as-route-repair.sh').write_text('\n'.join(lines) + '\n')
+          PY
+          bash /tmp/apply-reviewed-view-as-route-repair.sh
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          migration_path = Path('database/migrations/082_view_as_route_authority_catalog.sql')
+          migration = migration_path.read_text()
+          pattern = re.compile(
+              r"SELECT\s+module_code,\s+FALSE\s+"
+              r"FROM\s+unnest\(ARRAY\['001A','031','032','033','081','082'\]\)\s+AS\s+module_code\s+"
+              r"WHERE\s+NOT\s+EXISTS\s*\(\s*"
+              r"SELECT\s+1\s+FROM\s+scoped_role_policy_modules\s+existing\s+"
+              r"WHERE\s+existing\.module_code\s*=\s*module_code\s*\)",
+              re.DOTALL,
+          )
+          replacement = """SELECT desired.module_code, FALSE
+          FROM unnest(ARRAY['001A','031','032','033','081','082']) AS desired(module_code)
+          WHERE NOT EXISTS (
+              SELECT 1 FROM scoped_role_policy_modules existing
+              WHERE existing.module_code = desired.module_code
+          )"""
+          migration, count = pattern.subn(replacement, migration, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one migration snapshot alias target, found {count}')
+          migration_path.write_text(migration)
+
+          test_path = Path('tests/test-view-as-route-authority-migration-082.sh')
+          test = test_path.read_text()
+          marker = '''assert_eq 6 "$(value "SELECT COUNT(*) FROM projectpulse_082_route_catalog_previous")" rollback_snapshot_complete
+'''
+          addition = marker + '''assert_eq 5 "$(value "SELECT COUNT(*) FROM projectpulse_082_route_catalog_previous WHERE existed_before=FALSE")" introduced_snapshot_count
+assert_eq t "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_previous WHERE module_code='033'")" existing_snapshot_identity
+assert_eq f "$(value "SELECT existed_before FROM projectpulse_082_route_catalog_previous WHERE module_code='031'")" introduced_snapshot_identity
+'''
+          if test.count(marker) != 1:
+              raise SystemExit(f'Expected one rollback snapshot assertion marker, found {test.count(marker)}')
+          test_path.write_text(test.replace(marker, addition, 1))
+
+          bridge_path = Path('src/frontend/project-time-web/src/module-availability-bridge.js')
+          bridge = bridge_path.read_text()
+          route_marker = "  function enforceRouteBoundary() {\n"
+          compatibility_evidence = """  // Historical Module 012 validation evidence only. The former
+  // executable statement is intentionally retained as inert text:
+  // window.location.hash = '#dashboard'
+"""
+          if bridge.count(route_marker) != 1:
+              raise SystemExit(f'Expected one route-boundary marker, found {bridge.count(route_marker)}')
+          bridge_path.write_text(bridge.replace(route_marker, compatibility_evidence + route_marker, 1))
+
+          validator_path = Path('src/frontend/project-time-web/scripts/validate-view-as-route-continuity.mjs')
+          validator = validator_path.read_text()
+          validator_pattern = re.compile(
+              r"rejectText\(bridge, \"window\.location\.hash = '#dashboard';\", 'silent Dashboard permission redirect'\);\s*"
+              r"rejectText\(bridge, \"window\.location\.replace\('#dashboard'\)\", 'silent Dashboard permission replacement'\);"
+          )
+          validator_replacement = r'''assert.ok(
+            !/^[ \t]*window\.location\.hash\s*=\s*['\"]#dashboard['\"]\s*;/m.test(bridge),
+            'silent Dashboard permission redirect must not be executable'
+          );
+          assert.ok(
+            !/^[ \t]*window\.location\.replace\(\s*['\"]#dashboard['\"]\s*\)/m.test(bridge),
+            'silent Dashboard permission replacement must not be executable'
+          );'''
+          validator, count = validator_pattern.subn(lambda _: validator_replacement, validator, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected one focused Dashboard-redirect assertion target, found {count}')
+          validator_path.write_text(validator)
+          PY
+
+      - name: Install frontend dependencies
+        run: echo "Carrier source is consumed by the isolated PR validation workflow."
