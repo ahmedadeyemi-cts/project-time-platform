@@ -1,0 +1,249 @@
+name: PR 737 finalize permanent private migration jobs
+
+on:
+  push:
+    branches:
+      - ops/pr737-protected-uat-observer-20260823
+    paths:
+      - .github/workflows/pr737-finalize-private-migration-jobs.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: pr737-finalize-private-migration-jobs
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      TARGET_BRANCH: fix/shared-project-document-planning-20260819
+      API_ROOT: https://api.github.com/repos/${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Resolve exact current PR head
+        id: target
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          pr="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$API_ROOT/pulls/737")"
+          jq -e --arg branch "$TARGET_BRANCH" '
+            .state == "open" and .draft == false and .head.ref == $branch and
+            .head.repo.full_name == .base.repo.full_name
+          ' <<<"$pr" >/dev/null
+          sha="$(jq -r '.head.sha' <<<"$pr")"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Check out exact candidate
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ steps.target.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Finalize migration compatibility and immutable build contexts
+        id: patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          changed = []
+
+          migration = Path('database/migrations/095_project_planning_collaboration_access.sql')
+          source = migration.read_text(encoding='utf-8')
+          helper_name = 'projectpulse095_user_record_is_active'
+          helper = r'''
+-- app_users account-state fields are optional across supported installations.
+-- Convert the row to JSON so migration 095 never binds to a missing physical
+-- status column while still honoring recognized account-state fields.
+CREATE OR REPLACE FUNCTION projectpulse095_user_record_is_active(user_record JSONB)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+PARALLEL SAFE
+AS $projectpulse095_user_record_is_active_body$
+SELECT CASE
+    WHEN user_record IS NULL THEN FALSE
+    WHEN user_record ? 'is_active' THEN LOWER(COALESCE(user_record->>'is_active','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'account_enabled' THEN LOWER(COALESCE(user_record->>'account_enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'is_enabled' THEN LOWER(COALESCE(user_record->>'is_enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'enabled' THEN LOWER(COALESCE(user_record->>'enabled','')) IN ('true','t','1','yes','on')
+    WHEN user_record ? 'status' THEN LOWER(TRIM(COALESCE(user_record->>'status',''))) IN ('active','enabled','current')
+    WHEN user_record ? 'disabled_at' OR user_record ? 'deleted_at' THEN
+        NULLIF(TRIM(COALESCE(user_record->>'disabled_at','')), '') IS NULL
+        AND NULLIF(TRIM(COALESCE(user_record->>'deleted_at','')), '') IS NULL
+    ELSE TRUE
+END;
+$projectpulse095_user_record_is_active_body$;
+'''.strip()
+          original = source
+          if helper_name not in source:
+              begin = source.find('BEGIN;')
+              if begin < 0:
+                  raise SystemExit('Migration 095 BEGIN boundary is missing.')
+              begin += len('BEGIN;')
+              source = source[:begin] + '\n\n' + helper + source[begin:]
+          source = re.sub(r'\bu\.is_active\b', 'projectpulse095_user_record_is_active(to_jsonb(u))', source)
+          if re.search(r'\bu\.is_active\b', source):
+              raise SystemExit('Direct u.is_active reference remains in Migration 095.')
+          if source != original:
+              migration.write_text(source, encoding='utf-8')
+              changed.append(str(migration))
+
+          migration_test = Path('tests/test-project-planning-collaboration-migration-095.sh')
+          test_source = migration_test.read_text(encoding='utf-8')
+          marker = 'migration_095_optional_user_status_schema=true'
+          if marker not in test_source:
+              gate = r'''
+
+if grep -Fq 'u.is_active' "$ROOT/database/migrations/095_project_planning_collaboration_access.sql"; then
+  echo 'ASSERTION_FAILED migration_095_direct_optional_user_status_reference=true' >&2
+  exit 1
+fi
+grep -Fq 'projectpulse095_user_record_is_active(to_jsonb(u))' \
+  "$ROOT/database/migrations/095_project_planning_collaboration_access.sql" \
+  || { echo 'ASSERTION_FAILED migration_095_schema_compatibility_helper_missing=true' >&2; exit 1; }
+echo 'ASSERTION_PASSED migration_095_optional_user_status_schema=true'
+'''
+              migration_test.write_text(test_source.rstrip() + gate + '\n', encoding='utf-8')
+              changed.append(str(migration_test))
+
+          scripts = [
+              Path('scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh'),
+              Path('scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh'),
+              Path('scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh'),
+          ]
+          old_blocks = [
+              '''  if az acr build \\
+      --registry "$ACR_NAME" \\
+      --image "$IMAGE" \\
+      --file "$DOCKERFILE" \\
+      --timeout 1800 \\
+      "$CONTEXT"; then''',
+              '''  if az acr build \\
+      --registry "$ACR_NAME" \\
+      --image "$IMAGE" \\
+      --file Dockerfile \\
+      --timeout 1800 \\
+      "$CONTEXT"; then''',
+          ]
+          new_block = '''  if (\n      cd "$CONTEXT"\n      az acr build \\
+        --registry "$ACR_NAME" \\
+        --image "$IMAGE" \\
+        --file Dockerfile \\
+        --timeout 1800 \\
+        .\n    ); then'''
+
+          for script in scripts:
+              text = script.read_text(encoding='utf-8')
+              before = text
+              if 'cd "$CONTEXT"\n      az acr build' not in text:
+                  matches = [block for block in old_blocks if block in text]
+                  if len(matches) != 1:
+                      raise SystemExit(f'Could not identify one immutable ACR build block in {script}.')
+                  text = text.replace(matches[0], new_block, 1)
+              if '--file "$DOCKERFILE"' in text:
+                  raise SystemExit(f'Absolute Dockerfile argument remains in {script}.')
+              if 'cd "$CONTEXT"' not in text or '--file Dockerfile' not in text:
+                  raise SystemExit(f'Context-owned Dockerfile contract is incomplete in {script}.')
+              if text != before:
+                  script.write_text(text, encoding='utf-8')
+                  changed.append(str(script))
+
+          validator = Path('tests/validate-systemwide-image-build-controller.mjs')
+          validator_source = validator.read_text(encoding='utf-8')
+          validator_before = validator_source
+          validator_source = validator_source.replace('--file "$DOCKERFILE"', '--file Dockerfile')
+          validator_source = validator_source.replace("'--file \\\"$DOCKERFILE\\\"'", "'--file Dockerfile'")
+          if 'MIGRATION_CONTEXT_OWNED_DOCKERFILE' not in validator_source:
+              addition = r'''
+
+const migrationContextScripts = [
+  'scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh',
+  'scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh',
+  'scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh',
+];
+for (const relativePath of migrationContextScripts) {
+  const content = fs.readFileSync(path.join(root, relativePath), 'utf8');
+  if (!content.includes('cd "$CONTEXT"') || !content.includes('--file Dockerfile') || content.includes('--file "$DOCKERFILE"')) {
+    throw new Error(`MIGRATION_CONTEXT_OWNED_DOCKERFILE failed for ${relativePath}`);
+  }
+}
+console.log('MIGRATION_CONTEXT_OWNED_DOCKERFILE=PASSED');
+'''
+              validator_source = validator_source.rstrip() + addition + '\n'
+          if validator_source != validator_before:
+              validator.write_text(validator_source, encoding='utf-8')
+              changed.append(str(validator))
+
+          Path('/tmp/pr737-finalize-changed').write_text('\n'.join(dict.fromkeys(changed)))
+          print(f'PR737_FINALIZE_CHANGED_FILES={len(dict.fromkeys(changed))}')
+          PY
+          git diff --check
+          if [[ -s /tmp/pr737-finalize-changed ]]; then
+            echo 'state=changed' >> "$GITHUB_OUTPUT"
+            cat /tmp/pr737-finalize-changed
+          else
+            echo 'state=unchanged' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run database, shell, and release-controller regressions
+        if: steps.patch.outputs.state == 'changed'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash tests/test-project-planning-collaboration-migration-095.sh
+          bash tests/test-project-planning-document-authority-migration-096.sh
+          node tests/validate-project-planning-collaboration.mjs
+          node tests/validate-project-planning-collaboration-access.mjs
+          node tests/validate-shared-project-document-planning.mjs
+          node tests/validate-systemwide-image-build-controller.mjs
+          for script in \
+            scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \
+            scripts/release-test/build-and-run-project-planning-collaboration-migration-job.sh \
+            scripts/release-test/build-and-run-project-planning-document-authority-migration-job.sh; do
+            bash -n "$script"
+          done
+          git diff --check
+
+      - name: Publish exact permanent candidate
+        if: steps.patch.outputs.state == 'changed'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ steps.target.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          remote_head="$(git ls-remote origin "refs/heads/$TARGET_BRANCH" | awk '{print $1}')"
+          [[ "$remote_head" == "$EXPECTED_HEAD" ]] || {
+            echo "ERROR: Candidate moved during final validation: $remote_head" >&2
+            exit 1
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          mapfile -t changed < /tmp/pr737-finalize-changed
+          git add -- "${changed[@]}"
+          git diff --cached --check
+          git commit -m 'Finalize protected Test planning migration jobs'
+          git push --force-with-lease="refs/heads/$TARGET_BRANCH:$EXPECTED_HEAD" \
+            origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "PR737_FINAL_PERMANENT_CANDIDATE=$(git rev-parse HEAD)"
+          echo 'PRODUCTION_MUTATION=NONE'
+
+      - name: Confirm permanent source already finalized
+        if: steps.patch.outputs.state == 'unchanged'
+        shell: bash
+        run: |
+          echo 'PR737_PRIVATE_MIGRATION_JOBS=ALREADY_FINALIZED'
+          echo 'PRODUCTION_MUTATION=NONE'
