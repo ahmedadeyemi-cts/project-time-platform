@@ -36,12 +36,14 @@ def check_revision(revision, container, source):
                     # Remote terminal echo is disabled before readiness. Never use CLI/env args.
                     os.write(master,(json.dumps({'password':password,'sourceCommit':source})+'\n').encode())
                     sent=True
-                match=re.search(rb'PULSE_CANARY_RESULT=([A-Za-z0-9+/=]+)\r?\n',buffer)
+                match=re.search(rb'PULSE_CANARY_RESULT=([A-Za-z0-9+/=]+)\r*\n',buffer)
                 if match:
                     result=json.loads(base64.b64decode(match[1],validate=True))
                     if result.get('result')!='PASS':raise RuntimeError('private_canary_'+result.get('failureReason','failed'))
                     if result.get('sourceCommit')!=source:raise RuntimeError('private_canary_source_identity')
-                    return result
+                    expected=['/health','/health/live','/health/ready','/health/source','anonymous_session_denied','/api/security/context','/api/assignments/available-tasks?weekStart=2026-08-16','/api/timesheet/work-queue?weekStart=2026-08-16','/api/engineer-task-closeout/overview','/api/project-workspace/overview']
+                    if result.get('checks')!=expected:raise RuntimeError('private_canary_checks_incomplete')
+                    return {'result':'PASS','checks':expected,'sourceCommit':source,'celarSowAcceptance':'PENDING_NOT_EXECUTED'}
             if process.poll() is not None:break
         raise RuntimeError('private_canary_terminal_failed')
     finally:

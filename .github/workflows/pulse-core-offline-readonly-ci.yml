@@ -29,6 +29,7 @@ jobs:
           python3 scripts/resilience/test-core-candidate-traffic.py
           python3 scripts/resilience/test-core-test-revision-snapshot.py
           python3 scripts/resilience/test_core_controller.py
+          python3 scripts/resilience/test_private_core_canary.py
           python3 tests/security-release/test_controller_registration.py
   live_readonly:
     if: github.event_name == 'workflow_dispatch'
