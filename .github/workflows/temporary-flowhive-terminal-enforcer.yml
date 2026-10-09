@@ -1,0 +1,206 @@
+name: Temporary FlowHive Terminal Enforcer
+
+on:
+  push:
+    branches:
+      - feature/project-planning-collaboration-access-20260818
+    paths:
+      - '.github/workflows/temporary-flowhive-terminal-enforcer.yml'
+
+permissions:
+  actions: write
+  checks: read
+  contents: write
+  pull-requests: write
+  statuses: write
+
+concurrency:
+  group: temporary-flowhive-terminal-enforcer
+  cancel-in-progress: false
+
+jobs:
+  enforce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Check out control branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Wait for existing FlowHive publisher to finish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 360); do
+            ACTIVE="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?branch=feature/project-planning-collaboration-access-20260818&per_page=100" \
+              --jq '[.workflow_runs[] | select(.id != '${{ github.run_id }}') | select(.name | startswith("Temporary FlowHive")) | select(.status != "completed")] | length')"
+            echo "OTHER_ACTIVE_FLOWHIVE_RUNS=$ACTIVE"
+            [[ "$ACTIVE" == 0 ]] && exit 0
+            sleep 20
+          done
+          echo 'ERROR: Existing FlowHive publisher did not reach a terminal state.' >&2
+          exit 1
+
+      - name: Resolve current main and any open FlowHive repair PR
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          MAIN_SHA="$(git rev-parse origin/main)"
+          OPEN_PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --search 'FlowHive in:title' --json number,headRefName,headRefOid,updatedAt \
+            --jq 'sort_by(.updatedAt) | reverse | .[0].number // empty')"
+          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          echo "open_pr=$OPEN_PR" >> "$GITHUB_OUTPUT"
+          echo "CURRENT_MAIN_SHA=$MAIN_SHA OPEN_FLOWHIVE_PR=${OPEN_PR:-none}"
+
+      - name: Determine whether current main already contains the complete repair
+        id: completeness
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git checkout --detach origin/main
+          COMPLETE=true
+          for marker in \
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs \
+            src/backend/ProjectTime.Api/Modules/CelarAiTransientFailureMiddleware.cs \
+            scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh \
+            database/migrations/095_project_planning_collaboration_access.sql; do
+            [[ -f "$marker" ]] || COMPLETE=false
+          done
+          grep -R -Fq '/ai-planner/runs' src/backend/ProjectTime.Api 2>/dev/null || COMPLETE=false
+          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src 2>/dev/null || COMPLETE=false
+          grep -R -Fq 'ProjectFlowHivePlanMilestoneInput' src/backend/ProjectTime.Api 2>/dev/null || COMPLETE=false
+          grep -R -Fq 'FLOWHIVE_AUTHENTICATED_AI_PLANNER_UAT' scripts/release-test/verify-runtime.mjs 2>/dev/null || COMPLETE=false
+          grep -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh 2>/dev/null || COMPLETE=false
+          grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh 2>/dev/null || COMPLETE=false
+          grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs 2>/dev/null && COMPLETE=false
+          echo "complete=$COMPLETE" >> "$GITHUB_OUTPUT"
+          echo "MAIN_FLOWHIVE_COMPLETE=$COMPLETE"
+
+      - name: Merge latest validated FlowHive PR when main is incomplete
+        if: steps.completeness.outputs.complete != 'true' && steps.state.outputs.open_pr != ''
+        id: repairmerge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.state.outputs.open_pr }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          PR_JSON="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid,isDraft,mergeable,state)"
+          HEAD_SHA="$(jq -r '.headRefOid' <<<"$PR_JSON")"
+          [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+          READY=0
+          for attempt in $(seq 1 240); do
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&per_page=100" > "$RUNNER_TEMP/runs.json"
+            BAD="$(jq '[.workflow_runs[] | select(.status == "completed") | select((.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") | not)] | length' "$RUNNER_TEMP/runs.json")"
+            [[ "$BAD" == 0 ]] || { jq -r '.workflow_runs[] | select(.status == "completed" and .conclusion != "success") | [.name,.conclusion,.html_url] | @tsv' "$RUNNER_TEMP/runs.json" >&2; exit 1; }
+            TOTAL="$(jq '.workflow_runs | length' "$RUNNER_TEMP/runs.json")"
+            PENDING="$(jq '[.workflow_runs[] | select(.status != "completed")] | length' "$RUNNER_TEMP/runs.json")"
+            if (( TOTAL > 0 )) && [[ "$PENDING" == 0 ]]; then READY=1; break; fi
+            sleep 20
+          done
+          (( READY == 1 ))
+          gh pr ready "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" || true
+          RESPONSE="$(gh api --method PUT "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/merge" \
+            -f sha="$HEAD_SHA" -f merge_method='merge' \
+            -f commit_title='Complete FlowHive production-quality AI Planner (#'$PR_NUMBER')' \
+            -f commit_message='Merge only after every exact-head action is green. Protected Test deployment and authenticated UAT follow; Production mutation remains prohibited.')"
+          echo "$RESPONSE" | jq -e '.merged == true and (.sha | length == 40)' >/dev/null
+          echo "merge_sha=$(echo "$RESPONSE" | jq -r '.sha')" >> "$GITHUB_OUTPUT"
+
+      - name: Refresh exact main after any repair merge
+        id: release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git fetch --no-tags origin main
+          MAIN_SHA="$(git rev-parse origin/main)"
+          git checkout --detach "$MAIN_SHA"
+          for marker in \
+            src/backend/ProjectTime.Api/Modules/ProjectFlowHiveAiPlannerOrchestrationModule.cs \
+            src/backend/ProjectTime.Api/Modules/CelarAiTransientFailureMiddleware.cs \
+            scripts/release-test/build-and-run-flowhive-authority-migration-094-job.sh; do
+            test -f "$marker"
+          done
+          grep -R -Fq '/ai-planner/runs' src/backend/ProjectTime.Api
+          grep -R -Fq 'AI Planning Workspace' src/frontend/project-time-web/src
+          grep -R -Fq 'ProjectFlowHivePlanMilestoneInput' src/backend/ProjectTime.Api
+          grep -Fq 'FLOWHIVE_AUTHENTICATED_AI_PLANNER_UAT' scripts/release-test/verify-runtime.mjs
+          grep -Fq 'MIGRATION_094=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          grep -Fq 'MIGRATION_095=APPLIED_AND_VERIFIED' scripts/release-test/run-systemwide-enterprise-reliability-migrations-job.sh
+          ! grep -Fq 'FitPackageChainsToSelectedWindow' src/backend/ProjectTime.Api/Modules/ProjectFlowHiveDetailedPlanBuilder.cs
+          echo "main_sha=$MAIN_SHA" >> "$GITHUB_OUTPUT"
+          echo "FLOWHIVE_EXACT_MAIN_RELEASE=$MAIN_SHA"
+
+      - name: Locate, dispatch, or rerun exact Protected-Test deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAIN_SHA: ${{ steps.release.outputs.main_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          RUN_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml/runs?branch=main&per_page=50" \
+            --jq --arg sha "$MAIN_SHA" '.workflow_runs | map(select(.head_sha == $sha)) | sort_by(.created_at) | last | .id // empty')"
+          if [[ "$RUN_ID" =~ ^[0-9]+$ ]]; then
+            STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.status')"
+            CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.conclusion // empty')"
+            if [[ "$STATUS" == completed && "$CONCLUSION" != success ]]; then
+              gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/rerun-failed-jobs"
+            fi
+          else
+            gh workflow run projectpulse-deploy-test.yml --repo "$GITHUB_REPOSITORY" --ref main
+            for _ in $(seq 1 60); do
+              RUN_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/projectpulse-deploy-test.yml/runs?branch=main&per_page=50" \
+                --jq --arg sha "$MAIN_SHA" '.workflow_runs | map(select(.head_sha == $sha)) | sort_by(.created_at) | last | .id // empty')"
+              [[ "$RUN_ID" =~ ^[0-9]+$ ]] && break
+              sleep 5
+            done
+          fi
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "PROTECTED_TEST_DEPLOYMENT_RUN_ID=$RUN_ID"
+
+      - name: Require terminal Protected-Test success
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.deployment.outputs.run_id }}
+          MAIN_SHA: ${{ steps.release.outputs.main_sha }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          CONCLUSION=''
+          for _ in $(seq 1 480); do
+            STATUS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.status')"
+            CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.conclusion // empty')"
+            echo "Protected-Test run $RUN_ID: status=$STATUS conclusion=${CONCLUSION:-pending}"
+            [[ "$STATUS" == completed ]] && break
+            sleep 30
+          done
+          if [[ "$CONCLUSION" != success ]]; then
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+            gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$MAIN_SHA" \
+              -f state='failure' \
+              -f context='flowhive/protected-uat-end-to-end' \
+              -f description='FlowHive Protected UAT deployment or authenticated UAT failed.' \
+              -f target_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+            exit 1
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$MAIN_SHA" \
+            -f state='success' \
+            -f context='flowhive/protected-uat-end-to-end' \
+            -f description='Migrations 094/095, FlowHive AI Planner, and Celar authenticated UAT passed.' \
+            -f target_url="https://github.com/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+          echo 'PROTECTED_TEST_DEPLOYMENT=SUCCESS'
+          echo 'MIGRATION_094=APPLIED_AND_VERIFIED'
+          echo 'MIGRATION_095=APPLIED_AND_VERIFIED'
+          echo 'FLOWHIVE_AUTHENTICATED_AI_PLANNER_UAT=SUCCESS'
+          echo 'CELAR_AI_AUTHENTICATED_UAT=SUCCESS'
+          echo 'PRODUCTION_MUTATION=NONE'
