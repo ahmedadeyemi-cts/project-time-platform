@@ -30,7 +30,7 @@ def main():
     for path, expected in checks:
         try:
             code, body = get(path)
-            if code != 200 or body.get('status') != expected:
+            if code != 200 or not isinstance(body, dict) or body.get('status') != expected:
                 raise ValueError('unexpected_response_contract')
             print(path, 'PASS')
         except Exception as exc:
@@ -38,6 +38,8 @@ def main():
             print(path, 'FAIL', str(exc))
     try:
         code, body = get('/api/version')
+        if not isinstance(body, dict):
+            raise ValueError('version_contract_invalid')
         source = body.get('sourceCommit') or body.get('source') or body.get('commit')
         if EXPECTED_SOURCE and source != EXPECTED_SOURCE:
             raise ValueError('source_commit_unverified')
