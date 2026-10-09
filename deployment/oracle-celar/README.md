@@ -51,6 +51,20 @@ There is no training route and no external-escalation route. Raw prompt/document
 
 Ollama model blobs and ClamAV signatures are reproducible and are not treated as irreplaceable backup data. Staged recovery trees are excluded from later backups.
 
+## Emergency recovery when public HTTPS is unreachable
+
+If DNS still resolves to the governed Oracle VM but `https://celarai.onenecklab.com/health` times out before any HTTP response, repository-only GitOps cannot repair the host because the pull reconciler executes on that same VM. Use OCI serial console or the already-authorized administrative SSH path to run the governed emergency recovery entry point:
+
+```bash
+sudo rm -rf /tmp/project-time-platform-recovery
+git clone --depth 1 https://github.com/ahmedadeyemi-cts/project-time-platform.git /tmp/project-time-platform-recovery
+sudo bash /tmp/project-time-platform-recovery/deployment/oracle-celar/emergency-recover.sh
+```
+
+The emergency entry point does not accept or print credentials. It records safe service/listener diagnostics, invokes the canonical `bootstrap.sh`, verifies Caddy and the localhost-only Celar services, requires the local unauthenticated HTTPS boundary to return `401`, and runs the canonical full `health-check.sh`. A successful recovery ends with `CELAR_EMERGENCY_RECOVERY=PASS`.
+
+After that marker is present, rerun the exact-current-main Protected UAT recovery command. Do not reconnect Protected Test while the Oracle health/authentication suite is failing.
+
 ## One-time bootstrap after VM replacement
 
 After DNS/NSG are attached to a fresh Ubuntu 24.04 ARM64 VM:

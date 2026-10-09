@@ -31,9 +31,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          for script in deployment/oracle-celar/{bootstrap,deploy,gitops,health-check,backup,restore,ollama-update}.sh; do
+          for script in deployment/oracle-celar/{bootstrap,deploy,gitops,health-check,backup,restore,ollama-update,emergency-recover}.sh; do
             bash -n "$script"
           done
+          EMERGENCY=deployment/oracle-celar/emergency-recover.sh
+          grep -Fq 'deployment/oracle-celar/bootstrap.sh' "$EMERGENCY"
+          grep -Fq '/opt/celar-ai/deploy/health-check.sh' "$EMERGENCY"
+          grep -Fq 'LOCAL_HTTPS_STATUS=' "$EMERGENCY"
+          grep -Fq "CELAR_EMERGENCY_RECOVERY=PASS" "$EMERGENCY"
+          grep -Fq "PRODUCTION_MUTATION=NONE" "$EMERGENCY"
+          ! grep -Eq '(runtime-token|maintenance-token).*(cat|head|tail|printf|echo)' "$EMERGENCY"
           python3 -m py_compile deployment/oracle-celar/gateway/gateway.py deployment/oracle-celar/gateway/wsgi.py
           python3 tests/test-celar-sow-runtime-deadlines.py
           python3 tests/test-ollama-memory-policy.py
