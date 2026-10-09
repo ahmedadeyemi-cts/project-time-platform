@@ -40,7 +40,7 @@ class Tests(unittest.TestCase):
         with patch.object(canary,'ready_replica',return_value=args[0]+'-abc-xyz'),patch.object(canary.time,'sleep'),patch.object(canary,'terminal_check',side_effect=[RuntimeError('private_canary_attach_not_ready'),{'result':'PASS'}]) as call:
             self.assertEqual(canary.check_revision(*args),{'result':'PASS'})
             self.assertEqual(call.call_count,2)
-        for reason,attempts in [('private_canary_attach_not_ready',3),('private_canary_terminal_failed',1),('private_canary_local_login',1)]:
+        for reason,attempts in [('private_canary_attach_not_ready',3),('private_canary_terminal_failed',1),('private_canary_local_login',1),('private_canary_executable_missing',1)]:
             with patch.object(canary,'ready_replica',return_value=args[0]+'-abc-xyz'),patch.object(canary.time,'sleep'),patch.object(canary,'terminal_check',side_effect=RuntimeError(reason)) as call:
                 with self.assertRaisesRegex(RuntimeError,reason):canary.check_revision(*args)
                 self.assertEqual(call.call_count,attempts)

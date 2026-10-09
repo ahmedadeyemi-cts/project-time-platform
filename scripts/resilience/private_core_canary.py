@@ -91,6 +91,8 @@ def terminal_check(revision, container, source, replica, deadline):
                     if result.get('checks')!=expected:raise RuntimeError('private_canary_checks_incomplete')
                     return {'result':'PASS','checks':expected,'sourceCommit':source,'celarSowAcceptance':'PENDING_NOT_EXECUTED'}
             if process.poll() is not None:break
+        if not sent and (b'does not exist' in buffer or b'No such file or directory' in buffer):
+            raise RuntimeError('private_canary_executable_missing')
         raise RuntimeError('private_canary_terminal_failed' if sent else 'private_canary_attach_not_ready')
     finally:
         if process.poll() is None:process.terminate()

@@ -181,7 +181,7 @@ class Controller:
             with tarfile.open(archive) as handle:handle.extractall(context,filter='data')
             bind_build_source(context,sha)
             az('acr','build','--registry',ACR,'--image','project-health-dashboard-api:'+tag,
-               '--file','deployment/containers/api/Dockerfile','--timeout','3600',str(context))
+               '--file',str(context/'deployment/containers/api/Dockerfile'),'--timeout','3600',str(context))
         digest=az('acr','repository','show','-n',ACR,'--image','project-health-dashboard-api:'+tag,json_result=True)['digest']
         if not re.fullmatch('sha256:[0-9a-f]{64}',digest):raise RuntimeError('immutable_image_denied')
         image=ACR+'.azurecr.io/project-health-dashboard-api@'+digest
