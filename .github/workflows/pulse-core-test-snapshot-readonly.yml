@@ -1,0 +1,35 @@
+name: Pulse core Protected Test snapshot audit
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  audit:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: test
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Validate snapshot contract tests
+        run: python3 scripts/resilience/test-core-test-revision-snapshot.py
+      - name: Authenticate to existing Protected Test subscription (read-only)
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Retrieve and validate live Test API snapshot without mutations
+        env:
+          EXPECTED_SUBSCRIPTION: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          set -Eeuo pipefail
+          actual="$(az account show --query id -o tsv --only-show-errors)"
+          test "$actual" = "$EXPECTED_SUBSCRIPTION"
+          az containerapp show --only-show-errors --resource-group rg-project-health-dashboard-test-app-westus3 --name ca-phd-test-api-westus3 --output json \
+            | python3 scripts/resilience/verify-core-test-revision-snapshot.py
+          echo 'PULSE_CORE_TEST_SNAPSHOT_AUDIT=PASS'
+          echo 'AZURE_MUTATION=NONE'
