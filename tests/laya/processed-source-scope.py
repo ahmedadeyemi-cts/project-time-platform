@@ -13,6 +13,12 @@ def current_branch():
     return os.environ.get('GITHUB_HEAD_REF') or subprocess.check_output(
         ['git','-C',str(ROOT),'rev-parse','--abbrev-ref','HEAD'], text=True).strip()
 
+if current_branch() == 'feat/pulse-core-test-controller-20261009':
+    base = subprocess.check_output(['git','-C',str(ROOT),'merge-base','origin/main','HEAD'], text=True).strip()
+    subprocess.run([sys.executable,str(ROOT/'tests/core-controller-scope.py'),'--base',base],cwd=ROOT,check=True)
+    print('LAYA_CORE_RESILIENCE_SCOPE=PASS; Laya source and schema unchanged')
+    raise SystemExit(0)
+
 if current_branch() == 'feat/finance-billing-automation-20261005':
     base = subprocess.check_output(['git','-C',str(ROOT),'merge-base','origin/main','HEAD'], text=True).strip()
     inherited = [

@@ -15,8 +15,16 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Check static offline acceptance contract
-        run: python3 scripts/resilience/test-core-uat-contract.py
+        run: |
+          set -Eeuo pipefail
+          python3 scripts/resilience/test-core-uat-contract.py
+          python3 scripts/resilience/test-core-only-release-admission.py
+          python3 scripts/resilience/test-core-candidate-traffic.py
+          python3 scripts/resilience/test-core-test-revision-snapshot.py
+          python3 scripts/resilience/test_core_controller.py
+          python3 tests/security-release/test_controller_registration.py
   live_readonly:
     if: github.event_name == 'workflow_dispatch'
     needs: contract

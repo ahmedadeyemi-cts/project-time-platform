@@ -2,6 +2,7 @@
 All existing UAT remains mandatory and runs against the activated services.
 """
 import hashlib
+CORE_ONLY_SHA256='61ee7279be5a2947df3478a1fb51be32973be6702229f2fe79e5ac5dae123ea5'
 BASE_SHA256='6c587203f890a5525e041c750fc5076b688db81aa5c51345d0a659706a7449ff'
 LEGACY_SHA256='11a5cbc14270c720518a37a5bcd539bac650d8c49b374f6fb155b901147c74d3'
 CURRENT_SHA256='6c7d701fc02599626f5fcfb638f4f5d4809e27102dbeb2085ac5c7f81532ca62'
@@ -37,6 +38,13 @@ STALE_SOW_EXECUTION=b'      - name: Evaluate or clean stale Work Register SOWs\n
 def normalize(data):
     if isinstance(data,str):data=data.encode()
     digest=hashlib.sha256(data).hexdigest()
+    if digest==CORE_ONLY_SHA256:
+        import importlib.util
+        from pathlib import Path
+        spec=importlib.util.spec_from_file_location('core_projection',Path(__file__).resolve().parents[1]/'core_test_controller_projection.py')
+        module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+        data=module.normalize(data)
+        digest=hashlib.sha256(data).hexdigest()
     if digest==BASE_SHA256:return data
     if digest==FINANCE_BILLING_SHA256:
         for finance_current, finance_prior in FINANCE_BILLING_REPLACEMENTS:

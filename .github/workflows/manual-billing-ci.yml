@@ -55,6 +55,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Start disposable database
         shell: bash
         run: |
@@ -64,7 +66,7 @@ jobs:
           echo "PGPASSWORD=$PGPASSWORD" >> "$GITHUB_ENV"
           echo 'PGPORT=55432' >> "$GITHUB_ENV"
           export POSTGRES_PASSWORD="$PGPASSWORD"
-          docker run --detach --name manual-billing-db -e POSTGRES_PASSWORD -p 127.0.0.1:55432:5432 postgres:16
+          docker run --detach --name manual-billing-db -e POSTGRES_PASSWORD -p 127.0.0.1:55432:5432 mirror.gcr.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
           for attempt in $(seq 1 30); do
             if docker exec manual-billing-db pg_isready -U postgres; then exit 0; fi
             sleep 2

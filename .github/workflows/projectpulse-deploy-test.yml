@@ -5,6 +5,11 @@ run-name: Protected Test ${{ github.event_name == 'workflow_dispatch' && inputs.
 on:
   workflow_dispatch:
     inputs:
+      core_only:
+        description: 'Deploy core API resilience without Oracle; Celar SOW acceptance remains pending'
+        required: false
+        default: false
+        type: boolean
       qualification_provider:
         description: 'none deploys normally; claude/openai qualifies one Plan phase WITHOUT application deployment'
         required: false
@@ -95,7 +100,7 @@ jobs:
 
     steps:
       - name: Check out trusted main control plane for the PSA candidate
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908')) }}
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.sha }}
@@ -112,6 +117,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate stale SOW maintenance request
+        if: ${{ !inputs.core_only }}
         shell: bash
         env:
           STALE_SOW_MODE: ${{ inputs.stale_sow_cleanup_mode || 'none' }}
@@ -132,6 +138,7 @@ jobs:
           fi
 
       - name: Validate qualification-only selection
+        if: ${{ !inputs.core_only }}
         working-directory: release
         shell: bash
         env:
@@ -153,6 +160,7 @@ jobs:
           [[ "$(git rev-parse HEAD)" == "$GITHUB_SHA" && "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]]
 
       - name: Verify admitted controller identity before deployment mutations
+        if: ${{ !inputs.core_only }}
         shell: bash
         env:
           EXPECTED_CONTROLLER_SHA: ${{ inputs.admission_controller_sha }}
@@ -190,7 +198,7 @@ jobs:
           echo "PROTECTED_TEST_CONTROLLER_IDENTITY=$GITHUB_SHA"
 
       - name: Require protected Test login credential
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         shell: bash
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
@@ -204,7 +212,7 @@ jobs:
           echo 'PROTECTED_TEST_LOGIN_SECRET=AVAILABLE'
 
       - name: Set up Node 22
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
@@ -212,12 +220,13 @@ jobs:
           cache-dependency-path: release/src/frontend/project-time-web/package-lock.json
 
       - name: Set up .NET 10
+        if: ${{ !inputs.core_only }}
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
 
       - name: Compile the isolated one-phase runner
-        if: inputs.qualification_provider == 'claude' || inputs.qualification_provider == 'openai'
+        if: ${{ !inputs.core_only && (inputs.qualification_provider == 'claude' || inputs.qualification_provider == 'openai') }}
         working-directory: release
         run: |
           dotnet publish tests/FlowHiveDetailedPlannerTests --configuration Release --output "$RUNNER_TEMP/module025-qualification-image"
@@ -225,7 +234,7 @@ jobs:
 
       - name: Admit the exact reviewed PSA candidate using trusted main controls
         id: psa_admission
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.event_name == 'workflow_dispatch' && inputs.release_branch == 'release/flowhive-sow-successor-20260908')) }}
         working-directory: control
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -234,7 +243,7 @@ jobs:
 
       - name: Verify existing PM and uploaded SOW before deployment
         id: psa_acceptance_preflight
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true')) }}
         shell: bash
         working-directory: control
         env:
@@ -245,7 +254,7 @@ jobs:
         run: python3 scripts/release-test/check-flowhive-acceptance-inputs.py --read-only
 
       - name: Install isolated live-browser acceptance dependencies
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true' || inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true' || inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')) }}
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -254,7 +263,7 @@ jobs:
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" -m playwright install --with-deps chromium
 
       - name: Guard exact source and validate release
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         id: release
         shell: bash
         working-directory: release
@@ -403,6 +412,7 @@ jobs:
           echo 'PRODUCTION_MUTATION=NONE'
 
       - name: Sign in to protected Test subscription
+        if: ${{ !inputs.core_only }}
         uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
@@ -410,7 +420,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Qualify one phase in the Test private network
-        if: inputs.qualification_provider == 'claude' || inputs.qualification_provider == 'openai'
+        if: ${{ !inputs.core_only && (inputs.qualification_provider == 'claude' || inputs.qualification_provider == 'openai') }}
         working-directory: release
         timeout-minutes: 25
         env:
@@ -422,7 +432,7 @@ jobs:
         run: python3 scripts/release-test/run-module025-provider-qualification.py
 
       - name: Upload bounded provider qualification evidence
-        if: always() && (inputs.qualification_provider == 'claude' || inputs.qualification_provider == 'openai')
+        if: ${{ !inputs.core_only && (always() && (inputs.qualification_provider == 'claude' || inputs.qualification_provider == 'openai')) }}
         uses: actions/upload-artifact@v4
         with:
           name: module025-provider-qualification-${{ github.run_id }}-${{ github.run_attempt }}
@@ -431,7 +441,7 @@ jobs:
           retention-days: 7
 
       - name: Guard exact source, manual Test scope, and no-migration boundary
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         shell: bash
         env:
           DISPATCH_CONFIRMATION: ${{ inputs.recover_private_runtime }}
@@ -457,7 +467,7 @@ jobs:
           echo 'ORACLE_INFRASTRUCTURE_MUTATION=NONE'
 
       - name: Prove authenticated Oracle HTTPS services before Azure mutation
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         shell: bash
         env:
           RUNTIME_TOKEN: ${{ secrets.PROJECTPULSE_TEST_CELAR_AI_ORACLE_RUNTIME_TOKEN }}
@@ -553,7 +563,7 @@ jobs:
           unset RUNTIME_TOKEN
 
       - name: Snapshot the protected Test API
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         id: recovery_snapshot
         shell: bash
         env:
@@ -588,7 +598,7 @@ jobs:
           echo "api_app=$API_APP" >> "$GITHUB_OUTPUT"
 
       - name: Preserve the currently deployed immutable API image
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         id: recovery_build
         shell: bash
         working-directory: release
@@ -599,7 +609,7 @@ jobs:
           echo "api_image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Configure the protected token and deploy the Test API revision
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         id: recovery_deploy_api
         shell: bash
         env:
@@ -661,7 +671,7 @@ jobs:
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Snapshot protected Test and preserve rollback contract
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         id: contract
         shell: bash
         run: |
@@ -732,7 +742,7 @@ jobs:
           jq -n --arg base "$BASE" --arg oldSource "$OLD_SOURCE" --arg oldApiImage "$OLD_API_IMAGE" --arg oldWebImage "$OLD_WEB_IMAGE" '{base:$base,oldSource:$oldSource,oldApiImage:$oldApiImage,oldWebImage:$oldWebImage,preDeploymentHealthValidated:true,runtimeContractCaptured:true}' > "$EVIDENCE_DIR/test-contract.json"
 
       - name: Verify the matching Oracle SOW runtime before API rollout
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         shell: bash
         working-directory: release
         env:
@@ -740,7 +750,7 @@ jobs:
         run: python3 scripts/release-test/verify-oracle-sow-runtime.py
 
       - name: Build immutable API, web, and migration images
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         id: build
         shell: bash
         working-directory: release
@@ -976,7 +986,7 @@ jobs:
 
       # Compatibility contract: Apply and verify governed system-wide migrations plus Module 025 project-name migration 109 inside Test private network.
       - name: Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         id: migration
         shell: bash
         working-directory: release
@@ -1011,7 +1021,7 @@ jobs:
           jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["080_celar_ai_internal_data_intelligence","081_celar_ai_private_runtime_activation","086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name","115_module_066_task_notifications","121_flowhive_sequential_phase_checkpoints","122_flowhive_automatic_first_draft","123_module064_external_generation_approval","124_module025_service_scope","125_automatic_document_admission_laya","127_flowhive_pm_automatic_planning_defaults","133_finance_billing_handoff_notifications","134_customer_billing_notification_profiles"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         id: deploy_api
         shell: bash
         working-directory: release
@@ -1049,7 +1059,7 @@ jobs:
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Prove Pulse-to-Oracle inference and runtime readiness
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         id: recovery_verify
         shell: bash
         env:
@@ -1080,7 +1090,7 @@ jobs:
           jq -e '.readiness.clamAvConfigured == true and .readiness.malwareScannerEndpointPrivate == true and .readiness.ocrConfigured == true and .readiness.ocrEndpointPrivate == true and .readiness.embeddingConfigured == true and .readiness.embeddingEndpointPrivate == true' <<<"$RUNTIME" >/dev/null
 
       - name: Publish sanitized deployment evidence
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (success() && github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (success() && github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         shell: bash
         working-directory: release
         run: |
@@ -1091,7 +1101,7 @@ jobs:
             > evidence/celar-ai-oracle-test-runtime.json
 
       - name: Upload sanitized deployment evidence
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (success() && github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (success() && github.ref == 'refs/heads/main' && inputs.recover_private_runtime == true)) }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: celar-ai-oracle-test-runtime-${{ github.run_id }}-${{ github.run_attempt }}
@@ -1099,7 +1109,7 @@ jobs:
           retention-days: 30
 
       - name: Deploy immutable Test web image
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         id: deploy_web
         shell: bash
         working-directory: release
@@ -1115,7 +1125,7 @@ jobs:
           echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
 
       - name: Seal server-confirmed deployment identity
-        if: (inputs.qualification_provider == '' || inputs.qualification_provider == 'none')
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
         id: deployment_identity
         shell: bash
         run: |
@@ -1141,7 +1151,7 @@ jobs:
 
       - name: Verify PSA candidate health and the live SOW-to-WBS lifecycle
         id: psa_live_uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized == 'true')) }}
         timeout-minutes: 20
         shell: bash
         working-directory: control
@@ -1179,7 +1189,7 @@ jobs:
 
       - name: Verify Module 025 scoped deployment identity and lifecycle
         id: sow_role_uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && ((inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && ((inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports'))) }}
         timeout-minutes: 50
         shell: bash
         working-directory: release
@@ -1241,7 +1251,7 @@ jobs:
 
       - name: Build private Pulse service images
         id: pulse_service_images
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full') }}
         shell: bash
         working-directory: release
         env:
@@ -1250,7 +1260,7 @@ jobs:
         run: python3 deployment/pulse-services/service_images.py build
 
       - name: Scan private Pulse documents image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full') }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           version: v0.74.0
@@ -1262,7 +1272,7 @@ jobs:
           exit-code: '1'
 
       - name: Scan private Pulse scanner image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full') }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           version: v0.74.0
@@ -1274,7 +1284,7 @@ jobs:
           exit-code: '1'
 
       - name: Scan private Pulse laya-gateway image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full') }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           version: v0.74.0
@@ -1286,7 +1296,7 @@ jobs:
           exit-code: '1'
 
       - name: Scan private Pulse laya image
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full') }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
         with:
           version: v0.74.0
@@ -1298,7 +1308,7 @@ jobs:
           exit-code: '1'
 
       - name: Publish scanned private Pulse service images
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full') }}
         shell: bash
         working-directory: release
         env:
@@ -1308,7 +1318,7 @@ jobs:
 
       - name: Activate and verify private Pulse document and Laya services
         id: pulse_private_services
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full') }}
         timeout-minutes: 75
         shell: bash
         working-directory: release
@@ -1326,7 +1336,7 @@ jobs:
 
       - name: Run protected-Test authenticated functional UAT
         id: uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role' && inputs.acceptance_scope != 'sow_exports') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (steps.psa_admission.outputs.authorized != 'true' && inputs.acceptance_scope != 'sow_role' && inputs.acceptance_scope != 'sow_exports')) }}
         shell: bash
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
@@ -2080,7 +2090,7 @@ jobs:
 
       - name: Run protected-Test assigned-work visibility UAT
         id: assigned_work_uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true')) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true'))) }}
         shell: bash
         working-directory: release
         env:
@@ -2094,7 +2104,7 @@ jobs:
 
       - name: Run protected-Test utilization role-scoping UAT
         id: utilization_uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true')) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && (steps.uat.outcome == 'success' || steps.psa_live_uat.outputs.deployment_health_verified == 'true'))) }}
         shell: bash
         working-directory: release
         env:
@@ -2107,7 +2117,7 @@ jobs:
 
       - name: Enable exact-run Module 025 protected-Test authorization fixture
         id: module025_fixture
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && inputs.acceptance_scope != 'sow_exports' && steps.psa_admission.outputs.authorized != 'true' && (steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success')) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && inputs.acceptance_scope != 'sow_exports' && steps.psa_admission.outputs.authorized != 'true' && (steps.uat.outcome == 'success' || steps.sow_role_uat.outcome == 'success'))) }}
         shell: bash
         working-directory: release
         run: |
@@ -2143,7 +2153,7 @@ jobs:
 
       - name: Run protected-Test Module 025 SOW/GSD generation lifecycle UAT
         id: module025_uat
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (!cancelled() && steps.psa_admission.outputs.authorized != 'true' && steps.module025_fixture.outcome == 'success')) }}
         shell: bash
         working-directory: release
         env:
@@ -2158,7 +2168,7 @@ jobs:
 
       - name: Disable exact-run Module 025 protected-Test authorization fixture
         id: module025_fixture_disabled
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always() && steps.module025_fixture.outputs.started == 'true') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always() && steps.module025_fixture.outputs.started == 'true')) }}
         shell: bash
         working-directory: release
         run: |
@@ -2186,7 +2196,7 @@ jobs:
 
       - name: Verify normal Solution Architect browser and retained register
         id: module025_normal_sa_browser
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && ((inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.psa_admission.outputs.authorized != 'true' && steps.module025_uat.outcome == 'success' && steps.module025_fixture_disabled.outcome == 'success') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && ((inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.psa_admission.outputs.authorized != 'true' && steps.module025_uat.outcome == 'success' && steps.module025_fixture_disabled.outcome == 'success')) }}
         timeout-minutes: 50
         shell: bash
         working-directory: release
@@ -2215,7 +2225,7 @@ jobs:
 
       - name: Finalize private Pulse activation after full application acceptance
         id: pulse_private_services_final
-        if: ${{ always() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.pulse_service_images.outcome == 'success' }}
+        if: ${{ !inputs.core_only && (always() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && steps.pulse_service_images.outcome == 'success') }}
         shell: bash
         working-directory: release
         env:
@@ -2232,7 +2242,7 @@ jobs:
 
       - name: Evaluate or clean stale Work Register SOWs
         id: stale_sow_maintenance
-        if: ${{ success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && (inputs.stale_sow_cleanup_mode || 'none') != 'none' && steps.pulse_private_services_final.outcome == 'success' }}
+        if: ${{ !inputs.core_only && (success() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && (inputs.stale_sow_cleanup_mode || 'none') != 'none' && steps.pulse_private_services_final.outcome == 'success') }}
         shell: bash
         working-directory: release
         env:
@@ -2246,7 +2256,7 @@ jobs:
           jq '{environment,origin,mode,summary,projects}' "$PROJECTPULSE_STALE_SOW_REPORT"
 
       - name: Upload stale SOW maintenance evidence
-        if: ${{ always() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && (inputs.stale_sow_cleanup_mode || 'none') != 'none' }}
+        if: ${{ !inputs.core_only && (always() && inputs.release_branch == 'main' && inputs.acceptance_scope == 'full' && (inputs.stale_sow_cleanup_mode || 'none') != 'none') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: protected-test-stale-sow-maintenance-${{ github.run_id }}-${{ github.run_attempt }}
@@ -2255,7 +2265,7 @@ jobs:
           retention-days: 30
 
       - name: Publish private Pulse service activation receipt
-        if: ${{ always() && steps.pulse_service_images.outcome == 'success' }}
+        if: ${{ !inputs.core_only && (always() && steps.pulse_service_images.outcome == 'success') }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: pulse-private-services-${{ github.run_id }}-${{ github.run_attempt }}
@@ -2264,7 +2274,7 @@ jobs:
           if-no-files-found: error
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && ((steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true') || steps.pulse_private_services_final.outcome == 'failure')) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && ((steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true') || steps.pulse_private_services_final.outcome == 'failure'))) }}
         shell: bash
         working-directory: release
         run: |
@@ -2284,7 +2294,7 @@ jobs:
           jq -n --arg apiImage '${{ steps.contract.outputs.old_api_image }}' --arg webImage '${{ steps.contract.outputs.old_web_image }}' --arg source '${{ steps.contract.outputs.old_source }}' '{rollbackCompleted:true,apiImage:$apiImage,webImage:$webImage,sourceCommit:$source,migrationsRemainApplied:true,productionMutation:false}' > "$EVIDENCE_DIR/rollback.json"
 
       - name: Rollback protected Test API configuration on failure
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && steps.recovery_deploy_api.outputs.started == 'true' && (steps.recovery_verify.outcome != 'success' || steps.uat.outputs.deployment_health_verified != 'true')) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && steps.recovery_deploy_api.outputs.started == 'true' && (steps.recovery_verify.outcome != 'success' || steps.uat.outputs.deployment_health_verified != 'true'))) }}
         shell: bash
         working-directory: release
         run: |
@@ -2324,13 +2334,13 @@ jobs:
 
       - name: Prepare content-free protected-Test evidence
         id: safe_uat_evidence
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always()) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always())) }}
         working-directory: ${{ inputs.release_branch == 'main' && 'release' || 'control' }}
         shell: bash
         run: python3 scripts/security/publish-safe-uat-evidence.py "$EVIDENCE_DIR" "$RUNNER_TEMP/publish-safe-uat"
 
       - name: Upload protected-Test deployment evidence
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always() && steps.safe_uat_evidence.outcome == 'success') }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always() && steps.safe_uat_evidence.outcome == 'success')) }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: systemwide-enterprise-reliability-test-evidence-${{ github.run_id }}-${{ github.run_attempt }}
@@ -2339,7 +2349,7 @@ jobs:
           retention-days: 3
 
       - name: Publish protected-Test release summary
-        if: ${{ (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always()) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (always())) }}
         shell: bash
         run: |
           {
@@ -2386,3 +2396,51 @@ jobs:
             echo '- Production mutation: none'
             echo '- Oracle/private AI runtime mutation: none'
           } >> "$GITHUB_STEP_SUMMARY"
+
+
+      - name: Admit exact merged main core release
+        if: inputs.core_only
+        working-directory: release
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          RECOVER_ORACLE: ${{ inputs.recover_private_runtime }}
+          QUALIFICATION: ${{ inputs.qualification_provider }}
+          CLEANUP: ${{ inputs.stale_sow_cleanup_mode }}
+          ADMISSION_CONTROLLER: ${{ inputs.admission_controller_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE_BRANCH" == main && "$RECOVER_ORACLE" != true && "$QUALIFICATION" == none && "$CLEANUP" == none && -z "$ADMISSION_CONTROLLER" ]]
+          bash scripts/resilience/admit-core-main.sh
+
+      - name: Sign in for admitted core Test release
+        if: inputs.core_only
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Stage, authenticate, validate recovery, and deploy core Test API
+        if: inputs.core_only
+        working-directory: release
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+          AZURE_API_APP: ${{ vars.AZURE_API_APP }}
+          AZURE_ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          GH_TOKEN: ${{ github.token }}
+          CORE_EVIDENCE_FILE: ${{ runner.temp }}/core-test-release-summary.json
+        run: bash scripts/resilience/core-test-release-controller.sh
+
+      - name: Publish redacted core Test release evidence
+        if: ${{ always() && inputs.core_only }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: core-test-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/core-test-release-summary.json
+          if-no-files-found: warn
+          retention-days: 7

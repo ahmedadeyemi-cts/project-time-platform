@@ -17,7 +17,7 @@ jobs:
     timeout-minutes: 25
     services:
       postgres:
-        image: postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
         env:
           POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-canonical-tests
         ports: ['5432/tcp']
@@ -31,6 +31,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Build API
         run: dotnet build src/backend/ProjectTime.Api --configuration Release
       - name: Verify canonical reference contract, neutralization, and PostgreSQL migration

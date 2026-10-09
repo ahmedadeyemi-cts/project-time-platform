@@ -29,10 +29,15 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Verify exact additive release scope
         run: |
           set -Eeuo pipefail
-          if [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'feat/pulse-core-test-controller-20261009' ]]; then
+            BASE="$(git merge-base origin/main HEAD)"
+            python3 tests/core-controller-scope.py --base "$BASE"
+          elif [[ "$GITHUB_HEAD_REF" == 'codex/approval-routing-bulk-review' ]]; then
             python3 tests/combined-release/scope.py
             python3 tests/combined-release/test_scope.py
           elif [[ "$GITHUB_HEAD_REF" == 'control/pr1153-source-registration-20260923' ]]; then
@@ -64,6 +69,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Start isolated database with an ephemeral credential
         shell: bash
         run: |
@@ -76,7 +83,7 @@ jobs:
           export POSTGRES_PASSWORD="$PASSWORD"
           docker run -d --name "laya-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" \
             --publish 127.0.0.1:5432:5432 --env POSTGRES_PASSWORD \
-            --env POSTGRES_USER=postgres --env POSTGRES_DB=laya_ci postgres:16
+            --env POSTGRES_USER=postgres --env POSTGRES_DB=laya_ci mirror.gcr.io/library/postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
           for attempt in {1..30}; do
             if docker exec "laya-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" pg_isready -h 127.0.0.1 -U postgres -d laya_ci >/dev/null; then
               exit 0

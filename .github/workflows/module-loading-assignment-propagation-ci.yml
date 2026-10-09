@@ -63,6 +63,8 @@ jobs:
       - name: Validate focused source contracts
         run: node src/frontend/project-time-web/scripts/validate-module-loading-assignment-propagation.mjs
 
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Execute Migrations 093 and 100 owner-catalog regression
         shell: bash
         run: bash tests/test-module-catalog-owner-repair-migration-093.sh

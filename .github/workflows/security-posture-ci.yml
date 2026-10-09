@@ -73,6 +73,9 @@ jobs:
           node tests/security-completion/approval-scope.test.mjs
           node tests/security-completion/flowhive-portfolio.test.mjs
 
+      - name: Preload digest-pinned isolated PostgreSQL without Docker Hub quota
+        run: bash scripts/resilience/preload-ci-postgres.sh
+
       - name: Start isolated authorization database
         shell: bash
         run: |
