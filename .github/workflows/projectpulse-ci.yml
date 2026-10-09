@@ -41,6 +41,9 @@ jobs:
       - name: Validate repository security posture
         run: python3 scripts/security/validate-repository-security-posture.py
 
+      - name: Preload digest-pinned isolated PostgreSQL without Docker Hub quota
+        run: bash scripts/resilience/preload-ci-postgres.sh
+
       - name: Restore API dependencies
         run: dotnet restore src/backend/ProjectTime.Api/ProjectTime.Api.csproj
 
