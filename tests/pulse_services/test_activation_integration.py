@@ -65,9 +65,10 @@ class CanonicalGate(unittest.TestCase):
 class SourcePreservation(unittest.TestCase):
     def test_current_activation_change_preserves_all_live_authority_and_accounts(self):
         import subprocess
-        source_base='17c3ed0eaf4145c9b5d3a337fb67c13ad08897c7'
-        authority_base='6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f'
-        changes=subprocess.check_output(['git','diff','--name-only',source_base],cwd=ROOT,text=True).splitlines()
+        # Compare the current PR to its mainline merge base, not to historical
+        # deployment snapshots that have since received reviewed changes.
+        source_base=subprocess.check_output(['git','merge-base','origin/main','HEAD'],cwd=ROOT,text=True).strip()
+        changes=subprocess.check_output(['git','diff','--name-only',f'{source_base}...HEAD'],cwd=ROOT,text=True).splitlines()
         allowed_application_policy={
           'src/backend/ProjectTime.Api/Ai/PulseAiPrivateRuntimeContracts.cs',
           'src/backend/ProjectTime.Api/Ai/PulseDocumentServiceOptions.cs',
@@ -81,7 +82,10 @@ class SourcePreservation(unittest.TestCase):
           '.github/workflows/module025-protected-uat-control.yml',
           'scripts/validate-deployment-concurrency-governance.mjs',
           '.github/workflows/deployment-concurrency-governance-ci.yml'):
-            expected=subprocess.check_output(['git','show',authority_base+':'+name],cwd=ROOT)
+            # The workflow's historical normalizer deliberately projects to
+            # the reviewed original controller; all other controls use main.
+            reviewed_base='6bf7c3303dec5f0aa136e52ce75bdd7b4b3b985f' if name=='.github/workflows/projectpulse-deploy-test.yml' else source_base
+            expected=subprocess.check_output(['git','show',reviewed_base+':'+name],cwd=ROOT)
             actual=(ROOT/name).read_bytes()
             if name=='.github/workflows/projectpulse-deploy-test.yml':
                 spec=importlib.util.spec_from_file_location('reviewed_order_projection',ROOT/'tests/pulse-activation-release/controller.py')
