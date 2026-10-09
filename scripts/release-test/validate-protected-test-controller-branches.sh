@@ -5,6 +5,24 @@
 # this file owns only the existing dispatch table.
 # 2026-10-08 exact Protected UAT enable/dispatch scheduler stabilization.
 # Only the supervisor and this explicit branch-scope registration may change.
+if [[ "$HEAD_BRANCH" == 'control/pulse-resilience-scope-20261009' ]]; then
+  printf '%s\n' \
+    '.github/workflows/module033-project-forge-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'tests/pulse_services/test_activation_integration.py' \
+    | LC_ALL=C sort > "$CIT/pulse-governance-exact-files"
+  cmp -s "$CIT/diff" "$CIT/pulse-governance-exact-files" || {
+    echo 'Pulse governance repair includes files outside exact reviewed controls.' >&2
+    diff -u "$CIT/pulse-governance-exact-files" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  git diff --check "$CURRENT_BASE_SHA"...HEAD
+  git diff --exit-code "$CURRENT_BASE_SHA" HEAD -- \
+    .github/workflows/projectpulse-deploy-test.yml \
+    .github/workflows/projectpulse-deploy-production.yml
+  echo 'PULSE_GOVERNANCE_EXACT_SCOPE=PASS'
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'fix/protected-uat-enable-dispatch-settle-20261008' ]]; then
   expected="$CIT/protected-uat-enable-dispatch-settle-files"
   printf '%s\n' \
@@ -989,6 +1007,25 @@ elif [[ "$PR_NUMBER" == '777' ]]; then
     diff -u "$CIT/e-777-workspace" "$CIT/diff" >&2 || true
     exit 1
   }
+elif [[ "$HEAD_BRANCH" == 'fix/pulse-resilience-20261009' ]]; then
+  # Reviewed six-file application-only resilience scope. Production controllers,
+  # release workflows, secrets, and database changes are never authorized here.
+  printf '%s\n' \
+    'deployment/containers/web/default.conf.template' \
+    'docs/operations/PULSE-RESILIENCE-UAT-2026-10-09.md' \
+    'src/backend/ProjectTime.Api/Ai/PulseAiExternalHttpsRuntimePolicy.cs' \
+    'src/backend/ProjectTime.Api/Program.ScopedRbac.g.cs' \
+    'src/backend/ProjectTime.Api/Program.cs' \
+    'tests/resilience/test-optional-ai-startup-boundary.py' \
+    | LC_ALL=C sort > "$CIT/expected-resilience-files"
+  cmp -s "$CIT/diff" "$CIT/expected-resilience-files" || {
+    echo 'Pulse resilience PR differs from the reviewed exact six-file scope.' >&2
+    diff -u "$CIT/expected-resilience-files" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  python3 tests/resilience/test-optional-ai-startup-boundary.py
+  git diff --check "$CURRENT_BASE_SHA"...HEAD
+  echo 'PULSE_RESILIENCE_EXACT_SCOPE=PASS'
 elif cmp -s "$CIT/diff" "$CIT/e-runtime-repair-files"; then
 :
 elif cmp -s "$CIT/diff" "$CIT/e-assigned-work-repair-files"; then
