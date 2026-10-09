@@ -13,4 +13,11 @@ for case in ('target','traffic','candidate','mode'):
     if case=='candidate':obj['properties']['configuration']['ingress']['traffic'].pop()
     if case=='mode':obj['properties']['configuration']['activeRevisionsMode']='Single'
     assert m.verify(b,obj),case
+omitted=copy.deepcopy(c)
+omitted['properties']['configuration']['ingress']['traffic'].pop()
+omitted['properties']['latestRevisionName']='api--new'
+assert not m.verify(b,omitted,'api--new')
+assert m.verify(b,omitted,'api--wrong')
+omitted['properties']['configuration']['ingress']['traffic'][0]={'latestRevision':True,'weight':100}
+assert m.verify(b,omitted,'api--new')
 print('CORE_CANDIDATE_POLICY_TEST=PASS')

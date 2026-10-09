@@ -10,6 +10,7 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).parent))
 import core_test_controller as core
+import failed_core_checkpoint as checkpoint
 
 SHA='a'*40
 DIGEST='sha256:'+'b'*64
@@ -36,6 +37,7 @@ class Cloud:
         if args[:3]==('acr','repository','show'):return {'digest':DIGEST}
         if args[:2]==('acr','build'):return None
         if args[:2]==('containerapp','show'):return copy.deepcopy(self.state)
+        if args[:3]==('containerapp','revision','list'):return copy.deepcopy(list(self.revs.values()))
         if args[:3]==('containerapp','revision','show'):return copy.deepcopy(self.revs[args[args.index('--revision')+1]])
         if args[:3]==('containerapp','revision','set-mode'):
             self.state['properties']['configuration']['activeRevisionsMode']=args[-1].title();return
@@ -124,6 +126,35 @@ class Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',cloud),patch.object(core,'run',git):
             with self.assertRaisesRegex(RuntimeError,'baseline_not_current_template'):core.Controller(Path(temp)/'safe.json').admit()
             self.assertFalse(any('copy' in x for x in cloud.commands))
+    def test_effective_zero_and_active_baseline_recovery_with_azure_serialization(self):
+        cloud=Cloud()
+        def serialized(*args,**kwargs):
+            value=cloud(*args,**kwargs)
+            if args[:3]==('containerapp','ingress','traffic'):
+                cloud.state['properties']['configuration']['ingress']['traffic']=[t for t in cloud.state['properties']['configuration']['ingress']['traffic'] if t['weight']!=0]
+            if args[:3]==('containerapp','revision','activate'):
+                self.fail('Already-active baseline must not be activated')
+            return value
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',serialized),patch.object(core,'run',git),patch.object(core,'check',return_value={'result':'PASS'}):
+            c=core.Controller(Path(temp)/'safe.json');c.execute()
+            self.assertTrue(c.finished);self.assertEqual(c.summary['effectiveCandidateTraffic'],0)
+            self.assertEqual(c.summary['rollback'],'PASS')
+    def test_registered_failed_run_is_repaired_before_new_release(self):
+        cloud=Cloud();base=copy.deepcopy(BASE)
+        base['properties']['latestRevisionName']=checkpoint.CANDIDATE
+        base['properties']['latestReadyRevisionName']=checkpoint.CANDIDATE
+        base['properties']['configuration']['activeRevisionsMode']='Multiple'
+        base['properties']['configuration']['ingress']['traffic']=[{'revisionName':checkpoint.BASELINE,'weight':100}]
+        base['properties']['template']['containers'][0]['image']=checkpoint.NEW_IMAGE
+        old_template=copy.deepcopy(BASE['properties']['template']);old_template['containers'][0]['image']=checkpoint.OLD_IMAGE
+        cloud.state=base;cloud.revs={checkpoint.BASELINE:cloud.rev(checkpoint.BASELINE,old_template),checkpoint.CANDIDATE:cloud.rev(checkpoint.CANDIDATE,base['properties']['template'])}
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(checkpoint,'fetch_checkpoint',return_value={}),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',cloud),patch.object(core,'run',git),patch.object(core,'check',return_value={'result':'PASS'}):
+            c=core.Controller(Path(temp)/'safe.json');c.execute()
+            self.assertTrue(c.finished);self.assertEqual(c.summary['priorRunRecovery']['result'],'PASS')
+            self.assertEqual(c.summary['priorRunRecovery']['failedRun'],checkpoint.RUN)
+            self.assertFalse(cloud.revs[checkpoint.CANDIDATE]['properties']['active'])
+            self.assertEqual(cloud.state['properties']['configuration']['activeRevisionsMode'],'Single')
+            self.assertEqual(c.summary['rollback'],'PASS')
     def test_production_admission_never_mutates(self):
         cloud=Cloud()
         with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,{**ENV,'AZURE_API_APP':'production'},clear=True),patch.object(core,'az',cloud):
