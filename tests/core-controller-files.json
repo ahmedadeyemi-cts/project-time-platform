@@ -31,6 +31,7 @@
   "scripts/release-test/verify-pr1151-uat-supersession.py",
   "scripts/release-test/verify-pr1204-uat-supersession.py",
   "scripts/resilience/admit-core-main.sh",
+  "scripts/resilience/build-ci-web.py",
   "scripts/resilience/core-test-release-controller.sh",
   "scripts/resilience/core_test_canary.py",
   "scripts/resilience/core_test_controller.py",

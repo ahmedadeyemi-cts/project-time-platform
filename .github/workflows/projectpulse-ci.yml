@@ -289,10 +289,7 @@ jobs:
         run: |
           test -f deployment/containers/api/Dockerfile
           test -f deployment/containers/web/Dockerfile
-          docker build \
-            --file deployment/containers/web/Dockerfile \
-            --tag "projectpulse-web-ci:${GITHUB_SHA}" \
-            .
+          python3 scripts/resilience/build-ci-web.py
 
       - name: Generate release manifest
         run: |
