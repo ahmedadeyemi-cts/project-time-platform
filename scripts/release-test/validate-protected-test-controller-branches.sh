@@ -5,6 +5,24 @@
 # this file owns only the existing dispatch table.
 # 2026-10-08 exact Protected UAT enable/dispatch scheduler stabilization.
 # Only the supervisor and this explicit branch-scope registration may change.
+if [[ "$HEAD_BRANCH" == 'control/pulse-resilience-scope-20261009' ]]; then
+  printf '%s\n' \
+    '.github/workflows/module033-project-forge-ci.yml' \
+    'scripts/release-test/validate-protected-test-controller-branches.sh' \
+    'tests/pulse_services/test_activation_integration.py' \
+    | LC_ALL=C sort > "$CIT/pulse-governance-exact-files"
+  cmp -s "$CIT/diff" "$CIT/pulse-governance-exact-files" || {
+    echo 'Pulse governance repair includes files outside exact reviewed controls.' >&2
+    diff -u "$CIT/pulse-governance-exact-files" "$CIT/diff" >&2 || true
+    exit 1
+  }
+  git diff --check "$CURRENT_BASE_SHA"...HEAD
+  git diff --exit-code "$CURRENT_BASE_SHA" HEAD -- \
+    .github/workflows/projectpulse-deploy-test.yml \
+    .github/workflows/projectpulse-deploy-production.yml
+  echo 'PULSE_GOVERNANCE_EXACT_SCOPE=PASS'
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'fix/protected-uat-enable-dispatch-settle-20261008' ]]; then
   expected="$CIT/protected-uat-enable-dispatch-settle-files"
   printf '%s\n' \
