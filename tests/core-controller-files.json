@@ -44,6 +44,7 @@
   "tests/core_test_controller_projection.py",
   "tests/flowhive-psa-admission.test.mjs",
   "tests/laya/processed-source-scope.py",
+  "tests/module025-deployment-startup-recovery.test.mjs",
   "tests/pulse-activation-release/controller.py",
   "tests/security-release/test_controller_registration.py"
 ]

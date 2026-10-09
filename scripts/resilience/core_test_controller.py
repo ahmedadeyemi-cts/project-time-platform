@@ -31,6 +31,17 @@ def az(*args, json_result=False):
     return run('az',*args,'--only-show-errors','-o','json' if json_result else 'none',json_result=json_result)
 
 
+def bind_build_source(context, sha):
+    if not re.fullmatch('[a-f0-9]{40}',sha):raise RuntimeError('build_source_invalid')
+    recipe=context/'deployment/containers/api/Dockerfile'
+    text=recipe.read_text()
+    anchor='/p:UseAppHost=false'
+    if text.count(anchor)!=1:raise RuntimeError('build_recipe_source_binding_denied')
+    # Bind the existing assembly metadata property in the disposable build recipe.
+    # The committed recipe, source files, and release protections stay byte-identical.
+    recipe.write_text(text.replace(anchor,anchor+' /p:ProjectPulseSourceRevision='+sha,1))
+
+
 def policy(name):
     spec=importlib.util.spec_from_file_location(name,Path(__file__).with_name(name+'.py'))
     module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
@@ -145,7 +156,7 @@ class Controller:
             run('git','archive','--format=tar','--output='+str(archive),sha)
             context=Path(temp)/'source';context.mkdir()
             with tarfile.open(archive) as handle:handle.extractall(context,filter='data')
-            (context/'src/backend/ProjectTime.Api/.projectpulse-source-revision').write_text(sha)
+            bind_build_source(context,sha)
             az('acr','build','--registry',ACR,'--image','project-health-dashboard-api:'+tag,
                '--file','deployment/containers/api/Dockerfile','--timeout','3600',str(context))
         digest=az('acr','repository','show','-n',ACR,'--image','project-health-dashboard-api:'+tag,json_result=True)['digest']

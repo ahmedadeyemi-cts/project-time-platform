@@ -65,10 +65,21 @@ def git(*args,**kwargs):
         with tarfile.open(output,'w') as t:
             for name in ['src/backend/ProjectTime.Api']:
                 item=tarfile.TarInfo(name);item.type=tarfile.DIRTYPE;t.addfile(item)
+            recipe=Path(__file__).parents[2]/'deployment/containers/api/Dockerfile'
+            data=recipe.read_bytes();item=tarfile.TarInfo('deployment/containers/api/Dockerfile');item.size=len(data);t.addfile(item,io.BytesIO(data))
         return ''
     raise AssertionError(args)
 
 class Tests(unittest.TestCase):
+    def test_real_recipe_binds_existing_assembly_metadata(self):
+        with tempfile.TemporaryDirectory() as temp:
+            context=Path(temp);recipe=context/'deployment/containers/api/Dockerfile'
+            recipe.parent.mkdir(parents=True)
+            original=(Path(__file__).parents[2]/'deployment/containers/api/Dockerfile').read_text()
+            recipe.write_text(original);core.bind_build_source(context,SHA)
+            self.assertEqual(recipe.read_text(),original.replace('/p:UseAppHost=false','/p:UseAppHost=false /p:ProjectPulseSourceRevision='+SHA))
+            with self.assertRaises(RuntimeError):core.bind_build_source(context,'invalid')
+
     def test_end_to_end_canary_recovery_before_promotion(self):
         cloud=Cloud();checks=[]
         with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'az',cloud),patch.object(core,'run',git),patch.object(core,'check',side_effect=lambda base,source=None: checks.append((base,source)) or {'result':'PASS'}):
