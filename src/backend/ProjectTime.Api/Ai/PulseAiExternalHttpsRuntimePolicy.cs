@@ -466,8 +466,13 @@ public sealed class PulseAiExternalHttpsRuntimeGuard(
                 snapshot.ReadinessEndpoint?.AbsoluteUri,
                 cancellationToken);
             if (!endpointResolution.Approved || endpointResolution.Endpoint is null)
-                throw new InvalidOperationException(
-                    $"The Celar AI external HTTPS readiness endpoint failed DNS/IP pin validation ({endpointResolution.Reason}).");
+            {
+                // Never connect to an unapproved address. External DNS or provider
+                // unavailability degrades only this optional dependency.
+                logger.LogWarning("Celar AI readiness unavailable or endpoint refused by safety policy: {Reason}. Core API remains online.",
+                    endpointResolution.Reason);
+                return;
+            }
 
             var token = Environment.GetEnvironmentVariable(
                     "PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN")
@@ -495,8 +500,10 @@ public sealed class PulseAiExternalHttpsRuntimeGuard(
             var ready = PulseDocumentReadinessPolicy.AcceptOracleHealth(json.RootElement,
                 (int)response.StatusCode, documents.Requested, documents.Valid, documentReady);
             if (!ready)
-                throw new InvalidOperationException(
-                    "The Celar AI external HTTPS runtime failed the authenticated startup readiness contract.");
+            {
+                logger.LogWarning("Celar AI authenticated readiness not satisfied; external AI remains unavailable and core API remains online.");
+                return;
+            }
 
             logger.LogInformation(
                 "Celar AI protected Test external HTTPS runtime passed authenticated readiness. Host={Host} Address={Address}",

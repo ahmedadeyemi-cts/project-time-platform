@@ -12,3 +12,5 @@ for name in ['Program.cs', 'Program.ScopedRbac.g.cs']:
 config = (root/'deployment/containers/web/default.conf.template').read_text()
 assert 'location ^~ /health/' in config
 print('Optional AI startup boundary and HTTP probe contracts passed')
+assert 'endpointResolution.Reason);' in policy
+assert 'external AI remains unavailable and core API remains online' in policy
