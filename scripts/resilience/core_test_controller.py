@@ -14,6 +14,7 @@ import tempfile
 import time
 from core_test_canary import check
 from private_core_canary import check_revision
+from failed_core_checkpoint import repair_known_checkpoint
 
 SUB='cd32baeb-7b71-4bc0-8ea3-9f23a50903fe'
 RG='rg-project-health-dashboard-test-app-westus3'
@@ -101,7 +102,8 @@ class Controller:
         self.summary['phase']='recovery'
         # Pin baseline BEFORE creating a recovery revision; Single mode always selects latest.
         az('containerapp','revision','set-mode','-g',RG,'-n',APP,'--mode','multiple')
-        az('containerapp','revision','activate','-g',RG,'-n',APP,'--revision',self.old)
+        if not self.revision(self.old)['properties'].get('active'):
+            az('containerapp','revision','activate','-g',RG,'-n',APP,'--revision',self.old)
         self.traffic(self.old)
         suffix='cr-'+self.run_id+'-'+self.attempt
         self.recovery=APP+'--'+suffix
@@ -111,7 +113,11 @@ class Controller:
             raise RuntimeError('recovery_template_mismatch')
         self.traffic(self.recovery)
         if self.candidate:
-            az('containerapp','revision','deactivate','-g',RG,'-n',APP,'--revision',self.candidate)
+            revisions=az('containerapp','revision','list','-g',RG,'-n',APP,json_result=True)
+            selected=[r for r in revisions if r['name']==self.candidate]
+            if len(selected)>1:raise RuntimeError('ambiguous_candidate_identity')
+            if selected and selected[0]['properties'].get('active'):
+                az('containerapp','revision','deactivate','-g',RG,'-n',APP,'--revision',self.candidate)
         if self.old_mode=='Single':
             az('containerapp','revision','set-mode','-g',RG,'-n',APP,'--mode','single')
         state=self.app()
@@ -139,6 +145,8 @@ class Controller:
         self.run_id=os.environ['GITHUB_RUN_ID'];self.attempt=os.environ['GITHUB_RUN_ATTEMPT']
         if not re.fullmatch('[0-9]{1,20}',self.run_id) or not re.fullmatch('[0-9]{1,3}',self.attempt):
             raise RuntimeError('run_identity_denied')
+        current=self.app()
+        repair_known_checkpoint(self,current,az,check)
         self.before=self.app()
         failures=policy('verify-core-test-revision-snapshot').verify(self.before)
         if failures:raise RuntimeError('baseline_denied:'+','.join(failures))
@@ -194,12 +202,12 @@ class Controller:
            '--set-env-vars','PROJECTPULSE_SOURCE_COMMIT='+sha,'--revision-suffix',suffix)
         self.traffic(self.old,self.candidate)
         rev=self.wait(self.candidate,image)
-        failures=policy('verify-core-candidate-traffic').verify(self.before,self.app())
+        failures=policy('verify-core-candidate-traffic').verify(self.before,self.app(),self.candidate)
         if failures:raise RuntimeError('zero_traffic_policy:'+','.join(failures))
         fqdn=rev['properties']['fqdn']
         domain=self.before['properties']['configuration']['ingress']['fqdn'].split('.',1)[1]
         if fqdn!=self.candidate+'.'+domain:raise RuntimeError('candidate_fqdn_unverified')
-        self.summary.update(candidateRevision=self.candidate,candidateImage=image)
+        self.summary.update(candidateRevision=self.candidate,candidateImage=image,effectiveCandidateTraffic=0)
         self.summary['phase']='candidate_canary'
         self.summary['candidateCanary']=check_revision(self.candidate,rev['properties']['template']['containers'][0]['name'],sha)
         # Prove recovery while candidate remains zero traffic; do not call this a failure drill.

@@ -4,7 +4,7 @@ import json
 import sys
 
 
-def verify(before, candidate):
+def verify(before, candidate, candidate_name=None):
     reasons = []
     bp = before.get('properties') or {}
     cp = candidate.get('properties') or {}
@@ -17,8 +17,16 @@ def verify(before, candidate):
         reasons.append('invalid_candidate_traffic')
     if any(v.get('weight') != 0 and v.get('revisionName') != bp.get('latestReadyRevisionName') for v in traffic):
         reasons.append('nonbaseline_revision_gets_traffic')
-    if not any(v.get('weight') == 0 and v.get('revisionName') and v.get('revisionName') != bp.get('latestReadyRevisionName') for v in traffic):
+    # Azure omits zero-weight entries. Prove zero effective weight from a complete
+    # 100% named baseline allocation and the separately verified candidate identity.
+    explicit=[v.get('revisionName') for v in traffic if v.get('weight')==0 and v.get('revisionName')!=bp.get('latestReadyRevisionName')]
+    identity=candidate_name or cp.get('latestRevisionName') or (explicit[0] if len(explicit)==1 else None)
+    if not identity or identity==bp.get('latestReadyRevisionName'):
         reasons.append('missing_zero_traffic_candidate')
+    if candidate_name and cp.get('latestRevisionName')!=candidate_name:
+        reasons.append('candidate_revision_identity_mismatch')
+    if identity and any(v.get('weight',0)>0 and (v.get('latestRevision') or v.get('revisionName')==identity) for v in traffic):
+        reasons.append('candidate_receives_traffic')
     if (cp.get('configuration') or {}).get('activeRevisionsMode') != 'Multiple':
         reasons.append('revision_mode_not_multiple')
     return reasons
