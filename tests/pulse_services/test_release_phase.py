@@ -21,8 +21,11 @@ class Workflow(unittest.TestCase):
         spec=importlib.util.spec_from_file_location('reviewed_order_projection',ROOT/'tests/pulse-activation-release/controller.py')
         projection=importlib.util.module_from_spec(spec);spec.loader.exec_module(projection)
         self.assertEqual(projection.normalize(current).decode(),original)
+        current_pr_base=subprocess.check_output(['git','merge-base','origin/main','HEAD'],cwd=ROOT,text=True).strip()
         for path in ['scripts/validate-deployment-concurrency-governance.mjs','.github/workflows/module025-protected-uat-control.yml']:
-            self.assertEqual((ROOT/path).read_bytes(),subprocess.check_output(['git','show',BASE+':'+path],cwd=ROOT))
+            # Do not fail on reviewed main changes after the historical Laya cutover.
+            # Still reject any edit to these protected controls in this PR.
+            self.assertEqual((ROOT/path).read_bytes(),subprocess.check_output(['git','show',current_pr_base+':'+path],cwd=ROOT))
     def test_feature_merge_is_pinned_without_requesting_extra_token_permission(self):
         source=(D/'cutover.py').read_text()
         self.assertIn("'492d991c38fb87237beb570284403aee792e446c',SHA",source)
