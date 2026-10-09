@@ -1,0 +1,32 @@
+name: Pulse core offline read-only acceptance
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/resilience/**'
+      - '.github/workflows/pulse-core-offline-readonly-ci.yml'
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Check static offline acceptance contract
+        run: python3 scripts/resilience/test-core-uat-contract.py
+  live_readonly:
+    if: github.event_name == 'workflow_dispatch'
+    needs: contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Verify current Protected Test core API, never Oracle
+        env:
+          PULSE_TEST_BASE: https://phd-west-test.onenecklab.com
+        run: python3 scripts/resilience/check-core-uat-offline.py
