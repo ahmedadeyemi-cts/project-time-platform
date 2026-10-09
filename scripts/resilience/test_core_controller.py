@@ -103,6 +103,24 @@ class Tests(unittest.TestCase):
             c.recover()
             self.assertEqual(core.template(cloud.state['properties']['template']),core.template(BASE['properties']['template']))
             self.assertEqual(c.summary['rollback'],'PASS')
+    def test_azure_app_defaults_do_not_require_cross_api_template_equality(self):
+        cloud=Cloud()
+        def serialized(*args,**kwargs):
+            value=cloud(*args,**kwargs)
+            if args[:2]==('containerapp','show'):
+                container=value['properties']['template']['containers'][0]
+                container['imageType']='ContainerImage'
+                container['resources']={'ephemeralStorage':'2Gi'}
+            return value
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'az',serialized),patch.object(core,'run',git),patch.object(core,'check',return_value={'result':'PASS'}):
+            c=core.Controller(Path(temp)/'safe.json');c.execute()
+            self.assertTrue(c.finished);self.assertEqual(c.summary['rollback'],'PASS')
+            self.assertNotEqual(core.template(c.before['properties']['template']),core.template(c.baseline['properties']['template']))
+    def test_unready_latest_template_is_denied_without_mutation(self):
+        cloud=Cloud();cloud.state['properties']['latestRevisionName']=core.APP+'--unready'
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'az',cloud),patch.object(core,'run',git):
+            with self.assertRaisesRegex(RuntimeError,'baseline_not_current_template'):core.Controller(Path(temp)/'safe.json').admit()
+            self.assertFalse(any('copy' in x for x in cloud.commands))
     def test_production_admission_never_mutates(self):
         cloud=Cloud()
         with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,{**ENV,'AZURE_API_APP':'production'},clear=True),patch.object(core,'az',cloud):

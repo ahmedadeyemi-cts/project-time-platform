@@ -58,7 +58,7 @@ class Controller:
         self.evidence=evidence;self.before=None;self.baseline=None;self.mutated=False
         self.finished=False;self.candidate=None;self.recovery=None
         self.summary={'result':'BLOCKED','productionMutation':False,'oracleMutation':False,
-                      'celarSowAcceptance':'PENDING_NOT_EXECUTED','rollback':'NOT_EXECUTED'}
+                      'celarSowAcceptance':'PENDING_NOT_EXECUTED','rollback':'NOT_EXECUTED','phase':'admission'}
 
     def persist(self):
         # Only publish fixed safe fields; snapshots contain private env and stay runner-local.
@@ -91,6 +91,7 @@ class Controller:
         raise RuntimeError('revision_readiness_timeout')
 
     def recover(self):
+        self.summary['phase']='recovery'
         # Pin baseline BEFORE creating a recovery revision; Single mode always selects latest.
         az('containerapp','revision','set-mode','-g',RG,'-n',APP,'--mode','multiple')
         az('containerapp','revision','activate','-g',RG,'-n',APP,'--revision',self.old)
@@ -109,7 +110,7 @@ class Controller:
         state=self.app()
         if state['properties']['configuration']['activeRevisionsMode']!=self.old_mode:
             raise RuntimeError('recovery_mode_mismatch')
-        if template(state['properties']['template'])!=template(self.baseline['properties']['template']):
+        if template(state['properties']['template'])!=template(self.before['properties']['template']):
             raise RuntimeError('recovery_current_template_mismatch')
         self.summary['rollbackCanary']=check(ORIGIN)
         self.summary.update(rollback='PASS',recoveryRevision=self.recovery)
@@ -138,8 +139,14 @@ class Controller:
         self.old_mode=self.before['properties']['configuration']['activeRevisionsMode']
         self.baseline=self.revision(self.old)
         self.old_image=self.baseline['properties']['template']['containers'][0]['image']
-        if template(self.baseline['properties']['template'])!=template(self.before['properties']['template']):
+        # App and revision APIs serialize default fields and secretRef values differently.
+        # Bind the current template by Azure's latest/ready revision identity, then compare
+        # app-to-app and revision-to-revision throughout drift and recovery validation.
+        if self.before['properties']['latestRevisionName']!=self.old or self.before['properties']['template']['containers'][0]['image']!=self.old_image:
             raise RuntimeError('baseline_not_current_template')
+        if not self.baseline['properties'].get('active') or self.baseline['properties'].get('healthState')!='Healthy' or self.baseline['properties'].get('provisioningState')!='Provisioned':
+            raise RuntimeError('baseline_revision_not_healthy')
+        if self.old_mode not in ('Single','Multiple'):raise RuntimeError('baseline_mode_unsupported')
         for t in self.before['properties']['configuration']['ingress']['traffic']:
             if t.get('weight',0)>0 and not (t.get('revisionName')==self.old or t.get('latestRevision') and self.before['properties']['latestRevisionName']==self.old):
                 raise RuntimeError('split_baseline_not_supported')
@@ -150,6 +157,7 @@ class Controller:
 
     def execute(self):
         sha=self.admit()
+        self.summary['phase']='immutable_image_build'
         tag='core-'+sha[:12]+'-'+self.run_id+'-'+self.attempt
         with tempfile.TemporaryDirectory() as temp:
             archive=Path(temp)/'source.tar'
@@ -169,6 +177,7 @@ class Controller:
             # Azure timestamps are not part of admission; compare configuration/template/readiness.
             for field in ('configuration','template','latestReadyRevisionName','latestRevisionName'):
                 if current['properties'].get(field)!=self.before['properties'].get(field):raise RuntimeError('baseline_drift_during_build')
+        self.summary['phase']='candidate_staging'
         self.mutated=True
         if self.old_mode=='Single':az('containerapp','revision','set-mode','-g',RG,'-n',APP,'--mode','multiple')
         self.traffic(self.old) # CRITICAL: remove latestRevision before creating candidate.
@@ -184,6 +193,7 @@ class Controller:
         domain=self.before['properties']['configuration']['ingress']['fqdn'].split('.',1)[1]
         if fqdn!=self.candidate+'.'+domain:raise RuntimeError('candidate_fqdn_unverified')
         self.summary.update(candidateRevision=self.candidate,candidateImage=image)
+        self.summary['phase']='candidate_canary'
         self.summary['candidateCanary']=check('https://'+fqdn,sha)
         # Prove recovery while candidate remains zero traffic; do not call this a failure drill.
         self.recover()
@@ -192,6 +202,7 @@ class Controller:
         # then run its canary again before promotion. This also permits safe Single-mode restore.
         az('containerapp','revision','set-mode','-g',RG,'-n',APP,'--mode','multiple')
         self.traffic(self.recovery)
+        self.summary['phase']='promotion_staging'
         suffix='cp-'+self.run_id+'-'+self.attempt
         promotion=APP+'--'+suffix
         self.candidate=promotion
@@ -205,8 +216,9 @@ class Controller:
         state=self.app()
         if state['properties']['latestReadyRevisionName']!=promotion or state['properties']['template']['containers'][0]['image']!=image:
             raise RuntimeError('installed_revision_identity_mismatch')
+        self.summary['phase']='installed_canary'
         self.summary['installedCanary']=check(ORIGIN,sha)
-        self.summary.update(result='PASS',deployedRevision=promotion,deployedImage=image)
+        self.summary.update(result='PASS',phase='complete',deployedRevision=promotion,deployedImage=image)
         self.persist();self.finished=True
 
 
@@ -219,6 +231,11 @@ def main():
     except Exception as exc:
         # Do not print subprocess output or exception payloads containing env or auth material.
         controller.summary['failureType']=type(exc).__name__
+        controller.summary['failurePhase']=controller.summary['phase']
+        if isinstance(exc,RuntimeError) and re.fullmatch(r'[a-z0-9_]+(?::[a-z_,]+| /(?:api|health)/[a-z0-9_/?=&-]+)?',str(exc)):
+            controller.summary['failureReason']=str(exc) # Fixed controller codes/route paths only.
+        if isinstance(exc,subprocess.CalledProcessError):
+            controller.summary['failureCommand']=' '.join(exc.cmd[:3]) # CLI and verb only; never env/output.
         controller.summary['result']='FAILED'
         if controller.mutated and not controller.finished:
             try:

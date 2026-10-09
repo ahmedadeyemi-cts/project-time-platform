@@ -7,8 +7,11 @@ import subprocess
 REPO='ahmedadeyemi-cts/project-time-platform'
 sha=os.environ['GITHUB_SHA']
 assert os.environ['GITHUB_REPOSITORY']==REPO and os.environ['GITHUB_REF']=='refs/heads/main'
-pr=json.loads(subprocess.check_output(['gh','api','repos/'+REPO+'/pulls/1296'],text=True))
-core=pr.get('merged') is True and pr.get('merge_commit_sha')==sha
+prs=json.loads(subprocess.check_output(['gh','api','repos/'+REPO+'/commits/'+sha+'/pulls'],text=True))
+matched=[p for p in prs if p.get('merged_at') and p.get('merge_commit_sha')==sha and p['head']['ref']=='feat/pulse-core-test-controller-20261009']
+assert len(matched)<=1,'Ambiguous merged core PR'
+core=bool(matched)
+pr=matched[0] if core else None
 if core:
     assert pr['head']['ref']=='feat/pulse-core-test-controller-20261009' and pr['base']['ref']=='main'
     assert pr['head']['repo']['full_name']==REPO
