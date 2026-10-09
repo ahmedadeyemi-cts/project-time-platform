@@ -35,7 +35,15 @@ class Cloud:
         self.commands.append(args)
         if args[:2]==('account','show'):return {'id':core.SUB}
         if args[:3]==('acr','repository','show'):return {'digest':DIGEST}
-        if args[:2]==('acr','build'):return None
+        if args[:2]==('acr','build'):
+            # ACR resolves --file against the CLI working directory, then adds that
+            # exact recipe separately to its upload. A context-relative path selects
+            # the committed original recipe and silently loses the temporary binding.
+            recipe=Path(args[args.index('--file')+1]);context=Path(args[-1])
+            assert recipe.is_absolute() and recipe==context/'deployment/containers/api/Dockerfile'
+            assert '/p:ProjectPulseSourceRevision='+SHA in recipe.read_text()
+            assert 'COPY --from=build /app/core-canary/ /app/core-canary/' in recipe.read_text()
+            return None
         if args[:2]==('containerapp','show'):return copy.deepcopy(self.state)
         if args[:3]==('containerapp','revision','list'):return copy.deepcopy(list(self.revs.values()))
         if args[:3]==('containerapp','revision','show'):return copy.deepcopy(self.revs[args[args.index('--revision')+1]])

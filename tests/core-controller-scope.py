@@ -11,6 +11,11 @@ def git(*args):return subprocess.check_output(['git',*args],cwd=ROOT,text=True).
 assert len(args.base)==40 and all(c in '0123456789abcdef' for c in args.base),'Invalid base'
 ORIGINAL='f003a6f921b977e13ce9e6bf24c0320ff84c57e4'
 FOLLOWUP_BASE='6f42999e86a9cfa36db77b2de098d5b0f22e8797'
+if args.base=='7e75371bbbe0f23efb8adfddcab9fbfa2f1467cd':
+    delta=set(git('diff','--name-only',args.base+'...HEAD').splitlines())
+    assert delta=={'scripts/resilience/core_test_controller.py','scripts/resilience/test_core_controller.py','scripts/resilience/private_core_canary.py','scripts/resilience/test_private_core_canary.py','tests/core-controller-scope.py'},'Unreviewed immutable build recipe binding scope'
+    assert git('diff',args.base,'HEAD','--','.github/workflows/projectpulse-deploy-test.yml','.github/workflows/module025-protected-uat-control.yml')=='','Registered protected controllers changed'
+    args.base=ORIGINAL
 if args.base=='ac15ca87444c25997d8ee30ea1dc347e4ea599a7':
     delta=set(git('diff','--name-only',args.base+'...HEAD').splitlines())
     assert delta=={'scripts/resilience/private_core_canary.py','scripts/resilience/test_private_core_canary.py','tests/core-controller-scope.py'},'Unreviewed ready-replica canary scope'
