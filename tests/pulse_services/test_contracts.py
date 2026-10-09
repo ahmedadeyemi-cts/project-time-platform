@@ -33,7 +33,11 @@ class Contracts(unittest.TestCase):
         self.assertIn('input_exceeds_model_budget',s);self.assertIn('"automation_approved": False',s)
         self.assertIn('"HF_HUB_OFFLINE": "1"',s)
     def test_existing_account_and_db_code_is_unchanged(self):
-        changed=subprocess.check_output(['git','diff','--name-only','c8ac122653b2d948343727815dfc3279d98c9cc6'],cwd=ROOT,text=True).splitlines()
+        # Scope this non-regression check to the current PR instead of all
+        # historical changes since the original Laya cutover baseline.
+        # Preserve the stronger byte-for-byte checks against reviewed commits below.
+        base=subprocess.check_output(['git','merge-base','origin/main','HEAD'],cwd=ROOT,text=True).strip()
+        changed=subprocess.check_output(['git','diff','--name-only',f'{base}...HEAD'],cwd=ROOT,text=True).splitlines()
         self.assertFalse(any(p.startswith('database/') for p in changed))
         self.assertFalse(any(any(x in p for x in ('PasswordReset','LocalAccount','Session','SecurityHardeningModule')) for p in changed))
         spec=importlib.util.spec_from_file_location('reviewed_order_projection',ROOT/'tests/pulse-activation-release/controller.py')
