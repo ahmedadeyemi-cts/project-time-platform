@@ -95,6 +95,8 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Test processing guidance
         working-directory: src/frontend/project-time-web
         run: node --test tests/laya-processing-state.test.mjs

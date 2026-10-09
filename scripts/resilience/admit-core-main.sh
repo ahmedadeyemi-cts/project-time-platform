@@ -14,7 +14,7 @@ trap 'rm -rf "$TMP_GATE"' EXIT
 gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$RELEASE_SHA&event=push&per_page=100" > "$TMP_GATE/runs.json"
 gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs?per_page=100" > "$TMP_GATE/checks.json"
 gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/status" > "$TMP_GATE/status.json"
-python3 - "$TMP_GATE" <<'PY'
+python3 - "$TMP_GATE" "$GITHUB_RUN_ID" <<'PY'
 import json,sys
 from pathlib import Path
 root=Path(sys.argv[1])
@@ -24,6 +24,8 @@ for name in ('ProjectPulse CI','ProjectPulse Repository Security Posture','Valid
     assert candidates and candidates[0]['status']=='completed' and candidates[0]['conclusion']=='success', 'Exact-main required workflow not successful: '+name
 checks=json.loads((root/'checks.json').read_text())['check_runs']
 for c in checks:
+    if '/actions/runs/'+sys.argv[2]+'/' in (c.get('details_url') or ''):
+        continue # Only this executing release job; it cannot certify its own CI.
     assert c['status']=='completed' and c['conclusion'] in ('success','neutral','skipped'), 'Exact-main check not successful: '+c['name']
 statuses=json.loads((root/'status.json').read_text())['statuses']
 assert all(s['state']=='success' for s in statuses),'Exact-main status is not successful'

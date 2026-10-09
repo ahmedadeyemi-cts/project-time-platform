@@ -61,6 +61,14 @@ def check(base, source=None):
         if source and (identity.get('component')!='ProjectTime.Api' or identity.get('sourceCommit')!=source):
             raise RuntimeError('immutable_source_identity_unverified')
         if source:passed.append('/health/source')
+        try:
+            request('/api/security/context')
+        except RuntimeError as denied:
+            if not str(denied).startswith(('canary_http_401 ', 'canary_http_403 ')):
+                raise
+        else:
+            raise RuntimeError('anonymous_core_access_not_denied')
+        passed.append('anonymous_session_denied')
         login=request('/api/auth/local/login', {'username':'jason.mosier@ussignal.local','password':password})
         token=login.get('sessionToken')
         if login.get('provider') != 'LOCAL' or login.get('mustChangePassword') is not False or not isinstance(token,str) or not token:

@@ -44,6 +44,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Set up Node 22
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:

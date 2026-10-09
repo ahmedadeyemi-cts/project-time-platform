@@ -980,6 +980,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Install the existing frontend and isolated browser test dependencies
         run: |
           npm ci --prefix src/frontend/project-time-web
@@ -1012,6 +1014,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Set up Node.js 22
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
@@ -1063,6 +1067,8 @@ jobs:
           path: control
           fetch-depth: 0
           persist-credentials: false
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Read the pinned candidate SHA
         id: candidate
         working-directory: control

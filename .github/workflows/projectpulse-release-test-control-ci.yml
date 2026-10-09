@@ -93,6 +93,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Bind manual validation to the reviewed candidate manifest
         if: github.event_name == 'workflow_dispatch'
         shell: bash

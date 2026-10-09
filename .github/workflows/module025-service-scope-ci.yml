@@ -28,6 +28,8 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Archive tracked source and exact merge inputs only
         run: |
           set -Eeuo pipefail
@@ -64,6 +66,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Validate exact Service Scope feature boundary
         if: github.event_name == 'pull_request' && github.head_ref == 'feature/module025-service-scope-20260921'
         env:

@@ -31,6 +31,8 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
         with:
           dotnet-version: '10.0.x'
+      - name: Preload immutable PostgreSQL for standalone regressions
+        run: bash scripts/resilience/preload-ci-postgres.sh
       - name: Build API
         run: dotnet build src/backend/ProjectTime.Api --configuration Release
       - name: Verify canonical reference contract, neutralization, and PostgreSQL migration
