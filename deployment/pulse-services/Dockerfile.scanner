@@ -11,6 +11,8 @@ ENV DEBIAN_FRONTEND=noninteractive PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 
 COPY --from=expat /libexpat1-pulse.deb /tmp/libexpat1-pulse.deb
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates /tmp/libexpat1-pulse.deb clamav-daemon clamav-freshclam python3 libseccomp2 libpcre2-8-0 \
     && python3 -c "import xml.parsers.expat as e; assert e.EXPAT_VERSION == 'expat_2.8.5', e.EXPAT_VERSION" \
+    && apt-get install -y --only-upgrade --no-install-recommends perl-base \
+    && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' perl-base)" ge '5.36.0-7+deb12u4' \
     && dpkg --compare-versions "$(dpkg-query -W -f='${Version}' libpcre2-8-0)" ge '10.42-1+deb12u2' \
     && rm /tmp/libexpat1-pulse.deb && rm -rf /var/lib/apt/lists/*
 RUN install -d -m 0770 -o nobody -g nogroup /run/clamav /var/lib/clamav
