@@ -278,6 +278,22 @@ static string ProjectPulse055D5L2JsonString(System.Text.Json.JsonElement source,
 
 app.MapGet("/", () => Results.Redirect("/health"));
 
+// Infrastructure probes must not depend on optional AI services.
+app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }));
+app.MapGet("/health/ready", () => Results.Ok(new { status = "ready", service = "Project Time Platform API" }));
+// Passive dependency visibility; no credentials, hosts or internal error details.
+app.MapGet("/health/dependencies", () =>
+{
+    var configured = PulseAiExternalHttpsRuntimePolicy.Evaluate();
+    return Results.Ok(new
+    {
+        status = "available",
+        coreApi = "ready",
+        externalAi = configured.Enabled ? (configured.Valid ? "configured_not_proven_ready" : "configuration_invalid") : "disabled",
+        note = "Optional provider runtime availability is evaluated independently of core readiness."
+    });
+});
+
 app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",

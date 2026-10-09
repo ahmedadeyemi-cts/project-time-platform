@@ -458,46 +458,64 @@ public sealed class PulseAiExternalHttpsRuntimeGuard(
         var snapshot = PulseAiExternalHttpsRuntimePolicy.RequireValid();
         if (!snapshot.Enabled) return;
 
-        var endpointResolution = await PulseAiExternalHttpsRuntimePolicy.VerifyEndpointAsync(
-            snapshot.ReadinessEndpoint?.AbsoluteUri,
-            cancellationToken);
-        if (!endpointResolution.Approved || endpointResolution.Endpoint is null)
-            throw new InvalidOperationException(
-                $"The Celar AI external HTTPS readiness endpoint failed DNS/IP pin validation ({endpointResolution.Reason}).");
-
-        var token = Environment.GetEnvironmentVariable(
-                "PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN")
-            ?.Trim() ?? string.Empty;
-        using var request = new HttpRequestMessage(HttpMethod.Get, endpointResolution.Endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        request.Headers.Add("X-Pulse-AI-Privacy-Boundary", PulseAiPrivateRuntimePolicy.PrivacyBoundary);
-        request.Headers.Add("X-Pulse-AI-Feature", "external_https_runtime_startup_readiness");
-
-        var client = httpClientFactory.CreateClient("PulseAiExternalRuntimeReadiness");
-        using var response = await client.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-        var documents = PulseDocumentServiceOptions.FromEnvironment();
-        var documentReady = false;
-        if (documents.Requested)
+        // Configuration remains fail-closed above. Operational outages of an
+        // approved optional AI provider must not prevent core Pulse startup.
+        try
         {
-            if (!documents.Valid) throw new InvalidOperationException("The independent document configuration is invalid.");
-            using var documentClient = new PulseDocumentServiceClient(documents);
-            var probe = await documentClient.ProbeAsync(cancellationToken);
-            documentReady = probe.Ready;
-        }
-        using var json = await ReadBoundedJsonAsync(response.Content, cancellationToken);
-        var ready = PulseDocumentReadinessPolicy.AcceptOracleHealth(json.RootElement,
-            (int)response.StatusCode, documents.Requested, documents.Valid, documentReady);
-        if (!ready)
-            throw new InvalidOperationException(
-                "The Celar AI external HTTPS runtime failed the authenticated startup readiness contract.");
+            var endpointResolution = await PulseAiExternalHttpsRuntimePolicy.VerifyEndpointAsync(
+                snapshot.ReadinessEndpoint?.AbsoluteUri,
+                cancellationToken);
+            if (!endpointResolution.Approved || endpointResolution.Endpoint is null)
+            {
+                // Never connect to an unapproved address. External DNS or provider
+                // unavailability degrades only this optional dependency.
+                logger.LogWarning("Celar AI readiness unavailable or endpoint refused by safety policy: {Reason}. Core API remains online.",
+                    endpointResolution.Reason);
+                return;
+            }
 
-        logger.LogInformation(
-            "Celar AI protected Test external HTTPS runtime passed authenticated readiness. Host={Host} Address={Address}",
-            snapshot.Host,
-            snapshot.ExpectedAddress);
+            var token = Environment.GetEnvironmentVariable(
+                    "PROJECTPULSE_PRIVATE_INFERENCE_BEARER_TOKEN")
+                ?.Trim() ?? string.Empty;
+            using var request = new HttpRequestMessage(HttpMethod.Get, endpointResolution.Endpoint);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Add("X-Pulse-AI-Privacy-Boundary", PulseAiPrivateRuntimePolicy.PrivacyBoundary);
+            request.Headers.Add("X-Pulse-AI-Feature", "external_https_runtime_startup_readiness");
+
+            var client = httpClientFactory.CreateClient("PulseAiExternalRuntimeReadiness");
+            using var response = await client.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            var documents = PulseDocumentServiceOptions.FromEnvironment();
+            var documentReady = false;
+            if (documents.Requested)
+            {
+                if (!documents.Valid) throw new InvalidOperationException("The independent document configuration is invalid.");
+                using var documentClient = new PulseDocumentServiceClient(documents);
+                var probe = await documentClient.ProbeAsync(cancellationToken);
+                documentReady = probe.Ready;
+            }
+            using var json = await ReadBoundedJsonAsync(response.Content, cancellationToken);
+            var ready = PulseDocumentReadinessPolicy.AcceptOracleHealth(json.RootElement,
+                (int)response.StatusCode, documents.Requested, documents.Valid, documentReady);
+            if (!ready)
+            {
+                logger.LogWarning("Celar AI authenticated readiness not satisfied; external AI remains unavailable and core API remains online.");
+                return;
+            }
+
+            logger.LogInformation(
+                "Celar AI protected Test external HTTPS runtime passed authenticated readiness. Host={Host} Address={Address}",
+                snapshot.Host,
+                snapshot.ExpectedAddress);
+        }
+        catch (Exception exception) when (exception is HttpRequestException
+            or TaskCanceledException or System.IO.IOException or JsonException)
+        {
+            logger.LogWarning(exception,
+                "Optional Celar AI readiness unavailable at startup; core Pulse remains online. AI operations retain their own authorization and readiness controls.");
+        }
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
