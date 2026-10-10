@@ -59,6 +59,23 @@ def evaluate(status, raw, expected):
     return dict(httpStatus=status, diagnosticCode=code, expected=expected, actual=actual)
 
 def main():
+    if os.environ.get('ACCEPTANCE_SCOPE') == 'sow_exports':
+        # This existing protected lane does no generation or runtime recovery.
+        sha = os.environ.get('GITHUB_SHA', '')
+        trusted = (os.environ.get('GITHUB_REPOSITORY') == 'ahmedadeyemi-cts/project-time-platform'
+                   and os.environ.get('GITHUB_REF') == 'refs/heads/main'
+                   and os.environ.get('GITHUB_EVENT_NAME') == 'workflow_dispatch'
+                   and os.environ.get('TARGET_RELEASE_BRANCH') == 'main'
+                   and re.fullmatch(r'[0-9a-f]{40}', sha) is not None
+                   and os.environ.get('TARGET_RELEASE_COMMIT') == sha)
+        result = dict(status='not_required' if trusted else 'rejected',
+                      diagnosticCode='generation_free_export_scope' if trusted else 'export_scope_context_invalid',
+                      celarAcceptance='PENDING_NOT_EXECUTED', oracleMutation=False)
+        evidence = Path(os.environ['EVIDENCE_DIR'])
+        evidence.mkdir(parents=True, exist_ok=True)
+        (evidence / 'oracle-sow-runtime.json').write_text(json.dumps(result) + '\n')
+        print(json.dumps(result))
+        return 0 if trusted else 1
     expected = {key: json.loads(Path('deployment/oracle-celar/release.json').read_text())[key] for key in FIELDS}
     evidence = Path(os.environ['EVIDENCE_DIR'])
     evidence.mkdir(parents=True, exist_ok=True)

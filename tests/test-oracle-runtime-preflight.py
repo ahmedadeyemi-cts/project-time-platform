@@ -39,3 +39,18 @@ with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ, EVIDENCE_DIR=t
     assert secret not in output.getvalue()
     result=json.loads((Path(tmp)/'oracle-sow-runtime.json').read_text())
     assert result['diagnosticCode'] == 'runtime_transport_unavailable' and result['attempt'] == 30
+
+# Export-only acceptance must not contact Celar or read its credential.
+export_context=dict(ACCEPTANCE_SCOPE='sow_exports',GITHUB_REPOSITORY='ahmedadeyemi-cts/project-time-platform',
+ GITHUB_REF='refs/heads/main',GITHUB_EVENT_NAME='workflow_dispatch',TARGET_RELEASE_BRANCH='main',
+ GITHUB_SHA='a'*40,TARGET_RELEASE_COMMIT='a'*40,RUNTIME_TOKEN='')
+for invalid in [None,('GITHUB_REPOSITORY','other/repo'),('GITHUB_REF','refs/heads/other'),
+ ('GITHUB_EVENT_NAME','push'),('TARGET_RELEASE_BRANCH','other'),('TARGET_RELEASE_COMMIT','b'*40),('GITHUB_SHA','invalid')]:
+ with tempfile.TemporaryDirectory() as tmp, patch.dict(os.environ,dict(export_context,EVIDENCE_DIR=tmp)), patch.object(m,'fetch') as fetch:
+  if invalid:os.environ[invalid[0]]=invalid[1]
+  with contextlib.redirect_stdout(io.StringIO()):assert m.main()==(1 if invalid else 0)
+  fetch.assert_not_called()
+  result=json.loads((Path(tmp)/'oracle-sow-runtime.json').read_text())
+  assert result['celarAcceptance']=='PENDING_NOT_EXECUTED' and result['oracleMutation'] is False
+  assert result['status']==('rejected' if invalid else 'not_required')
+print('GENERATION_FREE_EXPORT_PREFLIGHT=PASS positive=1 negative=6 retained_full_runtime_checks=PASS')
