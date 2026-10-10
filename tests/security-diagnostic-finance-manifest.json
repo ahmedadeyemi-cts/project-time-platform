@@ -14,6 +14,7 @@
     "src/backend/ProjectTime.Api/Program.cs",
     "tests/ProjectTime.Api.AuthorizationTests/DiagnosticFilterTests.cs",
     "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs",
+    "tests/flowhive-psa-admission.test.mjs",
     "tests/security-diagnostic-finance-manifest.json",
     "tests/security-diagnostic-finance-scope.py",
     "tests/security-installed-read-boundaries.test.py"
@@ -32,7 +33,8 @@
     "src/backend/ProjectTime.Api/Program.cs": "e2bde1ba2f5ad2ab8a98d2720ed2bc58f6c8f6a834501afb47ff5e339ab7ffc6",
     "tests/ProjectTime.Api.AuthorizationTests/DiagnosticFilterTests.cs": "e883dfb7c9fdeb915908bcd40bddbbd5fe5bc55696e801856463644e366421a5",
     "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs": "a6200b2cc2889ce31674c8635ea8e4c98af4a45153db8a6d4509c4184109d843",
-    "tests/security-diagnostic-finance-scope.py": "9b888153f54a9e588c19251876d9c96ee9abfa80aa90d4f2de4469451a9ea02c",
+    "tests/flowhive-psa-admission.test.mjs": "e09b867563ad65e3137d11c15b254f2e5c4c95260c229bc622b11c7a5c554e7b",
+    "tests/security-diagnostic-finance-scope.py": "ca6485a7d73f223f655ab1c86a4bf44c2fbc523e32d9b2e1887f8e7ba041424f",
     "tests/security-installed-read-boundaries.test.py": "a7b70176bf22daec634d4cbd3d3651fef9b5cdf141253253ff06093abd5d34b2"
   }
 }
