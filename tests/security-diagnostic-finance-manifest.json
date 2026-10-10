@@ -1,6 +1,13 @@
 {
   "base": "32ff1a426d6c45d54d60f12ae6979c6bb32e0c6a",
   "files": [
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/laya-processed-source-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/pulse-document-integration-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    "scripts/release-test/validate-module025-governed-release.sh",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
     "scripts/security/verify-installed-read-boundaries.py",
     "src/backend/ProjectTime.Api/Modules/DiagnosticAdministratorFilter.cs",
@@ -12,13 +19,20 @@
     "tests/security-installed-read-boundaries.test.py"
   ],
   "sha256": {
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "4ad44908fcb7ae4f81f0109a1eed199acd0ed782ff659b6030e9ec1e1fe6498a",
+    ".github/workflows/laya-processed-source-ci.yml": "01c43e4b85d3d30addfde88650ab25d551f1e388ac3c72dc5599e7744006e91c",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "248bdf168944f29a84412fae8b46373ce8a438a9df75397ed6066caf1e959d51",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "8b61b7466e01ed02e320ba8fed6584af9776e7dc442ea161edc7b7b5da871a07",
+    ".github/workflows/pulse-document-integration-ci.yml": "6ef4e0bdbee396c7f7014ec4994d03921a999f593ac49d571e66898076b505ac",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "71f7381b1b32a370377d22d963f494fb7cbb31c7a7e92acf3edd14b1fee2d2a3",
+    "scripts/release-test/validate-module025-governed-release.sh": "61d72a857a644e14bdd16bf283087aa530da6602eda3e891232d538b6582b802",
     "scripts/release-test/validate-protected-test-controller-branches.sh": "6cb377762e3377533936bf013f905ea5fc776af29db65363c7102a2499ab95f1",
     "scripts/security/verify-installed-read-boundaries.py": "b483b88cef122e2cc7749b00e461550b1d723af639455b060b7607114345f33d",
     "src/backend/ProjectTime.Api/Modules/DiagnosticAdministratorFilter.cs": "c848fafd1cbd255a1b88e29961f804098b8cf7c4809834cdc25afaf37bc7921b",
     "src/backend/ProjectTime.Api/Program.cs": "e2bde1ba2f5ad2ab8a98d2720ed2bc58f6c8f6a834501afb47ff5e339ab7ffc6",
     "tests/ProjectTime.Api.AuthorizationTests/DiagnosticFilterTests.cs": "e883dfb7c9fdeb915908bcd40bddbbd5fe5bc55696e801856463644e366421a5",
     "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs": "a6200b2cc2889ce31674c8635ea8e4c98af4a45153db8a6d4509c4184109d843",
-    "tests/security-diagnostic-finance-scope.py": "8f1e03f3a88ee7993157c72a1669bc9afcb72370c8fee426861956546d94a06e",
+    "tests/security-diagnostic-finance-scope.py": "9b888153f54a9e588c19251876d9c96ee9abfa80aa90d4f2de4469451a9ea02c",
     "tests/security-installed-read-boundaries.test.py": "a7b70176bf22daec634d4cbd3d3651fef9b5cdf141253253ff06093abd5d34b2"
   }
 }

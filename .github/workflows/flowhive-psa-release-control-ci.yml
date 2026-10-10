@@ -76,6 +76,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-diagnostic-finance-20261010' ]]; then
+            python3 tests/security-diagnostic-finance-scope.py --base "$BASE_SHA"
+            python3 tests/security-diagnostic-finance-scope.py --self-test
+            node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
+            python3 tests/security-release/test_controller_registration.py
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'fix/security-document-scan-evidence-20261010' ]]; then
             python3 tests/security-document-scan-scope.py --base "$BASE_SHA"
             python3 tests/security-document-scan-scope.py --self-test
