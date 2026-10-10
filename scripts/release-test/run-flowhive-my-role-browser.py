@@ -146,7 +146,7 @@ async def browser_check(session: dict, report: dict, evidence_dir: Path) -> None
             await page.goto(ORIGIN + "/#my-role-in-pulse", wait_until="domcontentloaded")
             journey = page.locator("#my-role-in-pulse")
             await wait_visible(journey, "browser_timeout_my_role_page")
-            await wait_visible(page.get_by_role("heading", name="My Role in Pulse", exact=True), "browser_timeout_my_role_heading")
+            await wait_visible(journey.get_by_role("heading", name="My Role in Pulse", exact=True), "browser_timeout_my_role_heading")
 
             role_buttons = journey.locator('aside[aria-label="Your assigned roles"] button[aria-pressed]')
             assigned_index = await wait_for_assigned_role(role_buttons, "my_role_has_no_assigned_playbook")
