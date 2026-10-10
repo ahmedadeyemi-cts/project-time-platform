@@ -45,7 +45,10 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Verify incremental boundary
         run: |
-          if [[ "$GITHUB_HEAD_REF" == 'fix/security-diagnostic-finance-20261010' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-release-manifest-binding-20261010' ]]; then
+            python3 tests/security-release-binding-scope.py --base "$(git merge-base origin/main HEAD)"
+            python3 tests/security-release-binding-scope.py --self-test
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/security-diagnostic-finance-20261010' ]]; then
             python3 tests/security-diagnostic-finance-scope.py --base "$(git merge-base origin/main HEAD)"
             python3 tests/security-diagnostic-finance-scope.py --self-test
           elif [[ "$GITHUB_HEAD_REF" == 'fix/security-document-scan-evidence-20261010' ]]; then
