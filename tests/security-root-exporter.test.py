@@ -64,7 +64,7 @@ class ExporterTests(unittest.TestCase):
             repository = base / 'repository'
             repository.mkdir()
             subprocess.run(['/usr/bin/git', 'init', '-q', str(repository)], check=True)
-            marker = base / 'root-authority-marker'
+            marker = repository / 'monitor-executed-marker'
             monitor = repository / 'monitor'
             monitor.write_text('#!/bin/sh\ntouch "' + str(marker) + '"\n')
             monitor.chmod(0o755)
@@ -76,6 +76,17 @@ class ExporterTests(unittest.TestCase):
                     if error.errno == 22 and not os.environ.get('SECURITY_REQUIRE_ROOT_EXECUTION'):
                         self.skipTest('Local user namespace maps root only; native Linux CI must execute the real UID fixture')
                     raise
+            # Positive control: the same monitor can write its marker as the owner.
+            control = subprocess.run(
+                ['/usr/bin/git', '--no-optional-locks', '-C', str(repository),
+                 '-c', 'core.fsmonitor=' + str(monitor), 'status', '--short'],
+                user=owner.pw_uid, group=owner.pw_gid, extra_groups=[],
+                env={'PATH': '/usr/bin:/bin', 'HOME': owner.pw_dir,
+                     'GIT_CONFIG_NOSYSTEM': '1', 'GIT_CONFIG_GLOBAL': '/dev/null'},
+                capture_output=True, text=True, timeout=10)
+            self.assertEqual(control.returncode, 0, control.stderr)
+            self.assertTrue(marker.exists(), 'Hostile monitor positive control did not execute')
+            marker.unlink()
             response = repository_git(['status', '--short'], repository)
             self.assertTrue(response['ok'], response['stderr'])
             self.assertIn('monitor', response['stdout'])
