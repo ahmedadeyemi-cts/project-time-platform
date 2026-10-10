@@ -11,7 +11,7 @@ internal static class DiagnosticFilterTests
         using var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         foreach (var path in new[] { "/api/db-config-check", "/api/db-health", "/api/schema/tables",
                      "/api/production-data-readiness", "/api/production/data-readiness" })
-        foreach (var spelling in new[] { path, path + "/", path.ToUpperInvariant() + "/" })
+        foreach (var spelling in new[] { path, path + "/", path.ToUpperInvariant() + "/", path.Replace("/api/", "/api//") + "/" })
         foreach (var mode in new[] { "denied", "allowed", "view_as", "unavailable" })
         {
             var context = new DefaultHttpContext { RequestServices = services };

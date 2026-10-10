@@ -46,7 +46,7 @@ def require(value, code):
 
 def variants(path):
     # Keep the proxy's lowercase /api/ prefix; test backend route canonicalization.
-    return (path, path + "/", "/api/" + path[5:].upper() + "/")
+    return (path, path + "/", "/api/" + path[5:].upper() + "/", path.replace("/api/", "/api//") + "/")
 
 
 def request(path, token="", payload=None, parse=False):
@@ -135,7 +135,7 @@ def main():
         for actor in ACCOUNTS:
             exercise_account(*actor, password, report)
         password = ""
-        require(len(report["checks"]) == 174, "matrix_incomplete")
+        require(len(report["checks"]) == 232, "matrix_incomplete")
         require(all(row["passed"] for row in report["checks"]), "boundary_assertion_failed")
         report["status"] = "passed"
     except CheckError as error:
