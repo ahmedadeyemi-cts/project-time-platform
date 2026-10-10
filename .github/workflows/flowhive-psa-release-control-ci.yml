@@ -76,6 +76,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           python -m pip install PyYAML==6.0.3
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-invoice-role-boundary-20261010' ]]; then
+            python3 tests/security-invoice-role-scope.py --base "$BASE_SHA"
+            python3 tests/security-invoice-role-scope.py --self-test
+            node --test tests/flowhive-psa-*.test.mjs tests/flowhive-team-calendar.test.mjs
+            python3 tests/security-release/test_controller_registration.py
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'fix/security-core-recovery-defaults-20261010' ]]; then
             python3 tests/security-core-recovery-scope.py --base "$BASE_SHA"
             python3 tests/security-core-recovery-scope.py --self-test

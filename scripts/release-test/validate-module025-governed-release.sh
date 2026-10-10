@@ -9,6 +9,14 @@ HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 if [[ "$GITHUB_EVENT_NAME" == 'workflow_dispatch' ]]; then
   [[ "$(git rev-parse HEAD)" == "${RELEASE_SHA}" ]] || fail 'Manual Module 025 validation did not check out the requested candidate SHA.'
 fi
+if [[ "$HEAD_BRANCH" == 'fix/security-invoice-role-boundary-20261010' ]]; then
+  python3 tests/security-invoice-role-scope.py --base "$BASE_SHA"
+  python3 tests/security-invoice-role-scope.py --self-test
+  python3 tests/security-release/test_controller_registration.py
+  python3 tests/flowhive-installed-resolution.test.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  exit 0
+fi
 if [[ "$HEAD_BRANCH" == 'fix/security-core-recovery-defaults-20261010' ]]; then
   python3 tests/security-core-recovery-scope.py --base "$BASE_SHA"
   python3 tests/security-core-recovery-scope.py --self-test

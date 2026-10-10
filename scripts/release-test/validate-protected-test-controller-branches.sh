@@ -5,6 +5,14 @@
 # this file owns only the existing dispatch table.
 # 2026-10-08 exact Protected UAT enable/dispatch scheduler stabilization.
 # Only the supervisor and this explicit branch-scope registration may change.
+if [[ "$HEAD_BRANCH" == 'fix/security-invoice-role-boundary-20261010' ]]; then
+  python3 tests/security-invoice-role-scope.py --base "$CURRENT_BASE_SHA"
+  python3 tests/security-invoice-role-scope.py --self-test
+  python3 tests/security-release/test_controller_registration.py
+  python3 tests/flowhive-installed-resolution.test.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'fix/security-core-recovery-defaults-20261010' ]]; then
   python3 tests/security-core-recovery-scope.py --base "$CURRENT_BASE_SHA"
   python3 tests/security-core-recovery-scope.py --self-test
