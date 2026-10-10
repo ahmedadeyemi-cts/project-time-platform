@@ -10,12 +10,13 @@ on:
         required: true
         type: string
       acceptance_scope:
-        description: Installed acceptance slice; full includes FlowHive, sow_role verifies SOW Generator and My Role only
+        description: Installed acceptance slice; full includes FlowHive; sow_exports verifies saved exports, My Role, and accounting without AI generation
         required: true
         type: choice
         options:
           - full
           - sow_role
+          - sow_exports
         default: full
 
 permissions:
@@ -61,7 +62,7 @@ jobs:
           [[ "$(git rev-parse origin/main)" == "$GITHUB_SHA" ]] || { echo 'The installed verifier is not running the current trusted main.' >&2; exit 1; }
           [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'A selected deployment run ID is required.' >&2; exit 1; }
           case "$ACCEPTANCE_SCOPE" in
-            full|sow_role) ;;
+            full|sow_role|sow_exports) ;;
             *) echo 'Unsupported installed-acceptance scope.' >&2; exit 1 ;;
           esac
           [[ "$BASE" == https://phd-west-test.onenecklab.com ]]
@@ -137,7 +138,7 @@ jobs:
 
       - name: Run normal authorized Solution Architect SOW lifecycle
         id: sow
-        if: ${{ !cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.identity.outcome == 'success' }}
+        if: ${{ !cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports') && steps.identity.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         env:
@@ -146,11 +147,15 @@ jobs:
           MODULE025_GENERATION_TIMEOUT_SECONDS: '2430'
         run: |
           set -Eeuo pipefail
-          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
+          if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
+            "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-export-uat.py
+          else
+            "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-module025-installed-sa-uat.py
+          fi
 
       - name: Verify My Role in Pulse, handoffs, reload, and access boundaries
         id: my_role
-        if: ${{ !cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.identity.outcome == 'success' }}
+        if: ${{ !cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports') && steps.identity.outcome == 'success' }}
         shell: bash
         env:
           PROJECTPULSE_M025_PM_EMAIL: ${{ secrets.PROJECTPULSE_M025_PM_EMAIL }}
@@ -159,9 +164,19 @@ jobs:
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-flowhive-my-role-browser.py
 
+      - name: Verify installed accounting reports and financial validation
+        id: accounting
+        if: ${{ !cancelled() && inputs.acceptance_scope == 'sow_exports' && steps.identity.outcome == 'success' }}
+        shell: bash
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-accounting-installed-uat.py
+
       - name: Report Module 025 SOW/GSD authorization prerequisite without enabling it
         id: module025
-        if: ${{ !cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.identity.outcome == 'success' }}
+        if: ${{ !cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports') && steps.identity.outcome == 'success' }}
         continue-on-error: true
         shell: bash
         env:
@@ -191,7 +206,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           case "$ACCEPTANCE_SCOPE" in
-            full|sow_role) ;;
+            full|sow_role|sow_exports) ;;
             *) echo 'Installed acceptance scope was not validated.' >&2; exit 1 ;;
           esac
           [[ "${{ steps.identity.outcome }}" == success ]] || { echo 'Installed identity gate did not pass.' >&2; exit 1; }
@@ -205,6 +220,13 @@ jobs:
           [[ "${{ steps.sow.outcome }}" == success ]] || { echo 'Normal authorized Solution Architect SOW lifecycle did not pass.' >&2; exit 1; }
           [[ "${{ steps.my_role.outcome }}" == success ]] || { echo 'My Role in Pulse browser acceptance did not pass.' >&2; exit 1; }
           [[ -f "$EVIDENCE_DIR/module025-installed-prerequisite.json" ]] || { echo 'Module 025 prerequisite evidence is missing.' >&2; exit 1; }
+          if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
+            [[ "${{ steps.accounting.outcome }}" == success ]] || { echo 'Installed accounting acceptance did not pass.' >&2; exit 1; }
+            jq -e '.status == "passed" and .generationPosts == 0 and .draftExportsVerified == true' "$EVIDENCE_DIR/module025-export-uat.json" >/dev/null
+            jq -e '.status == "passed" and .celarAcceptance == "PENDING_NOT_EXECUTED"' "$EVIDENCE_DIR/accounting-installed-uat.json" >/dev/null
+            echo 'INSTALLED_ACCOUNTING_EXPORT_ACCEPTANCE=PASS CELAR_AI=PENDING_NOT_EXECUTED'
+            exit 0
+          fi
           [[ -f "$EVIDENCE_DIR/module025-installed-sa-uat.json" ]] || { echo 'Normal Solution Architect SOW evidence is missing.' >&2; exit 1; }
           jq -e '
             .status == "passed" and

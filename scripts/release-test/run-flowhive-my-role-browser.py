@@ -24,6 +24,12 @@ class VerificationError(Exception):
     pass
 
 
+SAFE_DIAGNOSTIC_CODES = frozenset(['anonymous_handoff_access_not_denied', 'assigned_role_route_invalid', 'browser_attempted_mutation', 'browser_runtime_error', 'browser_timeout_my_role_example', 'browser_timeout_my_role_heading', 'browser_timeout_my_role_lifecycle', 'browser_timeout_my_role_page', 'browser_timeout_my_role_reentry', 'browser_timeout_my_role_selected_role', 'browser_timeout_my_role_step_two', 'browser_timeout_role_welcome_dashboard', 'browser_timeout_signed_handoff_content', 'browser_timeout_signed_handoff_reload', 'browser_timeout_signed_handoff_route', 'invalid_request_path', 'my_role_access_boundary_missing', 'my_role_exposes_unassigned_playbook', 'my_role_has_incomplete_steps', 'my_role_has_no_assigned_playbook', 'my_role_has_no_playbooks', 'my_role_reentry_has_no_assigned_playbook', 'my_role_step_navigation_stuck', 'network_or_json_failure', 'pm_login_contract_failed', 'pm_login_email_missing', 'pm_login_failed', 'pm_session_missing', 'response_too_large', 'role_step_route_invalid', 'test_login_secret_missing'])
+
+def safe_diagnostic_code(code: str) -> str:
+    return code if code in SAFE_DIAGNOSTIC_CODES else "unclassified_failure"
+
+
 def require(condition: bool, code: str) -> None:
     if not condition:
         raise VerificationError(code)
@@ -271,7 +277,7 @@ def main() -> int:
         report["diagnosticCode"] = "unexpected_" + type(error).__name__
     finally:
         (evidence_dir / "flowhive-my-role-browser.json").write_text(json.dumps(report, indent=2) + "\n")
-    print("FLOWHIVE_MY_ROLE_BROWSER=" + ("PASS" if report["status"] == "passed" else "FAIL"))
+    print("FLOWHIVE_MY_ROLE_BROWSER=" + ("PASS" if report["status"] == "passed" else "FAIL") + " diagnostic=" + safe_diagnostic_code(report.get("diagnosticCode", "")))
     return 0 if report["status"] == "passed" else 1
 
 

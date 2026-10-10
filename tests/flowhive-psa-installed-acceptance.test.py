@@ -114,7 +114,7 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn("path: ${{ github.workspace }}/flowhive-installed-acceptance", self.workflow)
 
     def test_independent_business_checks_keep_identity_and_cancellation_gates(self):
-        identity_gate = "!cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role') && steps.identity.outcome == 'success'"
+        identity_gate = "!cancelled() && (inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports') && steps.identity.outcome == 'success'"
         for name in ("sow", "my_role", "module025"):
             with self.subTest(step=name):
                 self.assertEqual(self.condition(self.step(self.verification_job, name)), identity_gate)
@@ -389,8 +389,19 @@ class InstalledAcceptanceContract(unittest.TestCase):
         self.assertNotIn(".status == \"ready\"' \"$EVIDENCE_DIR/module025-installed-prerequisite.json\"", self.workflow)
 
     def test_sow_role_scope_gates_only_the_selected_installed_acceptance_slice(self):
-        scope_gate = "(inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role')"
+        scope_gate = "(inputs.acceptance_scope == 'full' || inputs.acceptance_scope == 'sow_role' || inputs.acceptance_scope == 'sow_exports')"
         self.assertGreaterEqual(self.workflow.count(scope_gate), 3)
+
+    def test_generation_free_accounting_keeps_independent_identity_and_final_gates(self):
+        step = self.step(self.verification_job, 'accounting')
+        self.assertEqual(self.condition(step), "!cancelled() && inputs.acceptance_scope == 'sow_exports' && steps.identity.outcome == 'success'")
+        self.assertNotIn('continue-on-error', step)
+        self.assertIn('run-accounting-installed-uat.py', step['run'])
+        self.assertIn("if [[ \"$ACCEPTANCE_SCOPE\" == sow_exports ]]; then", self.step(self.verification_job, 'sow')['run'])
+        self.assertIn('run-module025-export-uat.py', self.step(self.verification_job, 'sow')['run'])
+        final = next(s for s in self.verification_job['steps'] if s['name'] == 'Require complete installed acceptance')['run']
+        for gate in ('steps.identity.outcome', 'steps.sow.outcome', 'steps.my_role.outcome', 'steps.accounting.outcome', '.generationPosts == 0', '.draftExportsVerified == true', '.celarAcceptance == "PENDING_NOT_EXECUTED"'):
+            self.assertIn(gate, final)
 
     def test_scripts_parse_as_python(self):
         for source in (IDENTITY, FLOWHIVE, ROLE, MODULE025, MODULE025_SA, PLANNER, PREFLIGHT):
