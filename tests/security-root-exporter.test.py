@@ -5,6 +5,7 @@ from pathlib import Path
 import pwd
 import re
 import secrets
+import shlex
 import stat
 import subprocess
 import tempfile
@@ -103,6 +104,27 @@ class ExporterTests(unittest.TestCase):
                 self.assertTrue(identity['ok'], identity['stderr'])
                 self.assertEqual(identity['stdout'], str(owner.pw_uid))
             print('SECURITY_ROOT_EXPORTER_REAL_UID=PASS', flush=True)
+            # A fresh baseline must still allow the service owner to create its
+            # runtime request directories without recursively owning the repository.
+            application = base / 'application'
+            application.mkdir(mode=0o755)
+            for name in ('app', 'data', 'logs', 'backups', 'scripts'):
+                (application/name).mkdir()
+            create = ['/usr/bin/python3', '-c',
+                      'import pathlib,sys; pathlib.Path(sys.argv[1]).mkdir(parents=True)',
+                      str(application/'backup-requests/pending')]
+            identity = dict(user=owner.pw_uid, group=owner.pw_gid, extra_groups=[])
+            denied = subprocess.run(create, capture_output=True, text=True, **identity)
+            self.assertNotEqual(denied.returncode, 0, 'Fresh root-owned baseline positive control must deny the service owner')
+            baseline = (ROOT/'deployment/rocky-linux/install-baseline-tools-oraclelinux9.sh').read_text()
+            ownership = next(line for line in baseline.splitlines() if line.startswith('sudo chown --no-dereference '))
+            command = ownership.replace('sudo chown --no-dereference opc:opc',
+                                        f'chown --no-dereference {owner.pw_uid}:{owner.pw_gid}')
+            command = command.replace('/opt/project-time-platform', shlex.quote(str(application)))
+            subprocess.run(['bash', '-eu', '-c', command], check=True, capture_output=True, text=True)
+            allowed = subprocess.run(create, capture_output=True, text=True, **identity)
+            self.assertEqual(allowed.returncode, 0, allowed.stderr)
+            print('HOST_RUNTIME_DIRECTORY_WRITE=PASS', flush=True)
 
     def test_service_default_file_and_directory_permissions_are_private(self):
         unit = (ROOT / 'deployment/rocky-linux/projecttime-api.service').read_text()
