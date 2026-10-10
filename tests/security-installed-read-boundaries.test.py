@@ -65,6 +65,24 @@ class Boundaries(unittest.TestCase):
                 module.exercise_account('engineer', 'unused', {'ENGINEER'}, 'unused', {'checks': []})
         self.assertEqual(calls[-1], '/api/auth/session/logout')
 
+    def test_coordinator_expense_allow_does_not_grant_invoice_allow(self):
+        def fake(path, token='', payload=None, parse=False):
+            if path.endswith('/login'):
+                return 200, {'provider': 'LOCAL', 'mustChangePassword': False, 'sessionToken': 's' * 32}
+            if path.endswith('/context'):
+                return 200, {'roles': [{'roleCode': 'PROJECT_TEAM_COORDINATOR'}]}
+            if path.endswith('/logout'):
+                return 200, None
+            canonical = path.lower().rstrip('/').replace('//', '/')
+            if canonical == '/api/expenses/summary':
+                return 200, {}
+            return (410 if canonical in module.RETIRED_READS else 403), None
+        report = {'checks': []}
+        with patch.object(module, 'request', side_effect=fake):
+            module.exercise_account('coordinator', 'unused', {'PROJECT_TEAM_COORDINATOR'}, 'unused', report)
+        self.assertEqual(len(report['checks']), 60)
+        self.assertTrue(all(row['passed'] for row in report['checks']))
+
     def test_large_finance_summary_uses_bounded_prefix(self):
         response = MagicMock()
         response.status = 200

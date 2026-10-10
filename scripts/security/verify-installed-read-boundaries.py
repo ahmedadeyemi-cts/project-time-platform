@@ -101,8 +101,8 @@ def exercise_account(label, username, expected, password, report):
         require(status == 200, "session_context_failed")
         validate_context(context, expected)
         checks = [(path, 403) for path in ADMIN_READS]
-        if label != "coordinator":
-            checks += [(path, 200 if label == "accounting" else 403) for path in FINANCE_READS]
+        checks += [(path, 200 if label == "accounting" or (label == "coordinator" and path == "/api/expenses/summary") else 403)
+                   for path in FINANCE_READS]
         checks += [(path, 410) for path in RETIRED_READS]
         for index, (path, expected_status) in enumerate(checks):
             for variant, candidate in enumerate(variants(path)):
@@ -135,7 +135,7 @@ def main():
         for actor in ACCOUNTS:
             exercise_account(*actor, password, report)
         password = ""
-        require(len(report["checks"]) == 232, "matrix_incomplete")
+        require(len(report["checks"]) == 240, "matrix_incomplete")
         require(all(row["passed"] for row in report["checks"]), "boundary_assertion_failed")
         report["status"] = "passed"
     except CheckError as error:

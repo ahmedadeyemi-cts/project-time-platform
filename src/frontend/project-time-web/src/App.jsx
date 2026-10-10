@@ -4557,7 +4557,7 @@ export default function App() {
             : fetchJson('/api/project-management/summary', authSession)),
           fetchJson(`/api/resource-scheduling/capacity?weekStart=${selectedWeekStart}`, authSession),
           (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/expenses/summary', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' })),
-          (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/invoicing/summary', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' })),
+          (canViewInvoiceSummary ? fetchJson('/api/invoicing/summary', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' })),
           (canViewExecutiveOrAccountingSummaries ? fetchJson('/api/reporting/executive-dashboard', authSession) : Promise.resolve({ count: 0, skipped: '052C_restricted_for_effective_role' }))
         ]);
 
@@ -6505,6 +6505,9 @@ export default function App() {
   /* 052C_STOP_RESTRICTED_EAGER_LOADS_START */
   const canViewAdminProductionReadiness =
     canSeeAny(['VIEW_PRODUCTION_READINESS_COMMAND_CENTER', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
+
+  const canViewInvoiceSummary = currentRoleCodes.some((roleCode) =>
+    ['ACCOUNTING', 'FINANCE', 'BILLING', 'EXECUTIVE', 'ADMINISTRATOR', 'SUPER_ADMINISTRATOR', 'SYSTEM_ADMINISTRATOR'].includes(roleCode));
 
   const canViewExecutiveOrAccountingSummaries =
     canSeeAny(['VIEW_EXPENSES', 'VIEW_ACCOUNT_RECONCILIATION', 'VIEW_EXECUTIVE_REPORTING', 'SYSTEM_ADMINISTRATION', 'MANAGE_ALL']);
