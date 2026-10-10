@@ -20,6 +20,12 @@ helper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name 
 namespace = dict(os=os, pwd=pwd, stat=stat, subprocess=subprocess)
 exec(compile(ast.Module(body=[helper], type_ignores=[]), str(SOURCE), 'exec'), namespace)
 repository_git = namespace['repository_git']
+BACKUP_SOURCE = ROOT / 'ops/projectpulse/scripts/projectpulse-backup.sh'
+backup_code = BACKUP_SOURCE.read_text().split("<<'PY_BACKUP_GIT'\n", 1)[1].split('\nPY_BACKUP_GIT', 1)[0]
+backup_helper = next(n for n in ast.parse(backup_code).body if isinstance(n, ast.FunctionDef) and n.name == 'repository_git')
+backup_namespace = dict(os=os, pwd=pwd, stat=stat, subprocess=subprocess)
+exec(compile(ast.Module(body=[backup_helper], type_ignores=[]), str(BACKUP_SOURCE), 'exec'), backup_namespace)
+backup_repository_git = backup_namespace['repository_git']
 
 
 class ExporterTests(unittest.TestCase):
@@ -88,13 +94,14 @@ class ExporterTests(unittest.TestCase):
             self.assertEqual(control.returncode, 0, control.stderr)
             self.assertTrue(marker.exists(), 'Hostile monitor positive control did not execute')
             marker.unlink()
-            response = repository_git(['status', '--short'], repository)
-            self.assertTrue(response['ok'], response['stderr'])
-            self.assertIn('monitor', response['stdout'])
-            self.assertFalse(marker.exists())
-            identity = repository_git(['-c', 'alias.security-identity=!id -u', 'security-identity'], repository)
-            self.assertTrue(identity['ok'], identity['stderr'])
-            self.assertEqual(identity['stdout'], str(owner.pw_uid))
+            for production_helper in (repository_git, backup_repository_git):
+                response = production_helper(['status', '--short'], repository)
+                self.assertTrue(response['ok'], response['stderr'])
+                self.assertIn('monitor', response['stdout'])
+                self.assertFalse(marker.exists())
+                identity = production_helper(['-c', 'alias.security-identity=!id -u', 'security-identity'], repository)
+                self.assertTrue(identity['ok'], identity['stderr'])
+                self.assertEqual(identity['stdout'], str(owner.pw_uid))
             print('SECURITY_ROOT_EXPORTER_REAL_UID=PASS', flush=True)
 
     def test_service_default_file_and_directory_permissions_are_private(self):
@@ -115,6 +122,11 @@ class ExporterTests(unittest.TestCase):
     def test_all_repository_calls_use_the_unprivileged_helper(self):
         self.assertNotIn('run(["git"', code)
         self.assertEqual(code.count('repository_git(['), 3)
+
+    def test_backup_uses_identical_privilege_boundary(self):
+        self.assertEqual(ast.dump(helper), ast.dump(backup_helper))
+        self.assertNotIn('git -C', BACKUP_SOURCE.read_text())
+        self.assertIn('repository_git(arguments, repository)', backup_code)
 
 
 if __name__ == '__main__':
