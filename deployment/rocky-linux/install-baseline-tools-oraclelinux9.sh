@@ -46,7 +46,8 @@ sudo firewall-cmd --reload
 
 echo "==> Creating application directory structure"
 sudo mkdir -p /opt/project-time-platform/{app,config,data,logs,backups,scripts}
-sudo chown -R opc:opc /opt/project-time-platform
+sudo python3 "$(dirname -- "$(readlink -f -- "$0")")/secure-config-directory.py"
+sudo chown --no-dereference opc:opc /opt/project-time-platform/{app,data,logs,backups,scripts}
 
 echo "==> Validation"
 git --version

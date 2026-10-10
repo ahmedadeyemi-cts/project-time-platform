@@ -5,12 +5,18 @@ on:
     paths:
       - 'ops/projectpulse/scripts/projectpulse-sync-status-export.sh'
       - 'tests/security-root-exporter.test.py'
+      - 'tests/security-host-config.test.py'
+      - 'deployment/rocky-linux/secure-config-directory.py'
+      - 'deployment/rocky-linux/install-baseline-tools-oraclelinux9.sh'
       - '.github/workflows/security-root-exporter-ci.yml'
   push:
     branches: [main]
     paths:
       - 'ops/projectpulse/scripts/projectpulse-sync-status-export.sh'
       - 'tests/security-root-exporter.test.py'
+      - 'tests/security-host-config.test.py'
+      - 'deployment/rocky-linux/secure-config-directory.py'
+      - 'deployment/rocky-linux/install-baseline-tools-oraclelinux9.sh'
       - '.github/workflows/security-root-exporter-ci.yml'
 
 permissions:
@@ -28,3 +34,5 @@ jobs:
         run: bash -n ops/projectpulse/scripts/projectpulse-sync-status-export.sh
       - name: Verify root-to-owner execution on an isolated repository
         run: sudo -n env SECURITY_REQUIRE_ROOT_EXECUTION=true python3 tests/security-root-exporter.test.py
+      - name: Verify existing host configuration permissions and link rejection
+        run: python3 tests/security-host-config.test.py
