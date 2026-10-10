@@ -70,7 +70,8 @@ class AssignedRoleBrowserContract(unittest.TestCase):
     def test_safe_diagnostic_emits_known_code_only(self):
         self.assertEqual(VERIFIER.safe_diagnostic_code('pm_login_failed'), 'pm_login_failed')
         self.assertEqual(VERIFIER.safe_diagnostic_code('my_role_exposes_unassigned_playbook'), 'my_role_exposes_unassigned_playbook')
-        for value in ('customer@example.com', 'sessionToken_secret', 'unexpected_HTTPError', 'pm_login_failed\nsecret'):
+        self.assertEqual(VERIFIER.safe_diagnostic_code('unexpected_Error'), 'unexpected_Error')
+        for value in ('customer@example.com', 'sessionToken_secret', 'unexpected_SecretBearingException', 'pm_login_failed\nsecret'):
             self.assertEqual(VERIFIER.safe_diagnostic_code(value), 'unclassified_failure')
 
     def run_waiter(self, locator, code="assigned_role_missing"):

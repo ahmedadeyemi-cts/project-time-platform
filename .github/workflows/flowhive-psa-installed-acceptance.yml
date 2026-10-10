@@ -170,6 +170,9 @@ jobs:
         shell: bash
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+          PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
+          PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
+          PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
         run: |
           set -Eeuo pipefail
           "$RUNNER_TEMP/flowhive-psa-browser/bin/python" scripts/release-test/run-accounting-installed-uat.py
