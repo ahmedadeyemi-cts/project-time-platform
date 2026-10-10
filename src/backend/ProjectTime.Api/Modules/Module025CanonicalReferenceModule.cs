@@ -312,7 +312,20 @@ public static class Module025CanonicalReferenceModule
                 Classification: "internal_template",
                 RoleCodes: []);
             var extractor = context.RequestServices.GetRequiredService<PulseAiPrivateDocumentExtractionService>();
-            var result = await extractor.ExtractAsync(source, pipeline, cancellationToken);
+            await using var snapshot = await PulseAiImmutableDocumentSnapshot.CreateAsync(
+                source, root, Guid.NewGuid(), Guid.NewGuid(), 1,
+                pipeline.MaximumFileBytes, cancellationToken);
+            var scanner = context.RequestServices.GetRequiredService<PulseAiPrivateMalwareScanner>();
+            var scan = await scanner.ScanAsync(snapshot.Source.StoragePath,
+                PulseAiPrivateRuntimeOptions.FromEnvironment(), cancellationToken);
+            pipeline = pipeline with
+            {
+                MalwareScanAttested = scan.Clean && !scan.Infected
+                    && snapshot.SourceSha256.Equals(scan.SourceSha256, StringComparison.OrdinalIgnoreCase),
+                MalwareScannerMode = scan.Scanner,
+                VerifiedCleanSourceSha256 = scan.Clean && !scan.Infected ? scan.SourceSha256 : string.Empty
+            };
+            var result = await extractor.ExtractAsync(snapshot.Source, pipeline, cancellationToken);
             if (!result.ExtractionSucceeded)
                 return (null, null, null, Results.UnprocessableEntity(new { status = "module025_reference_extraction_failed", message = "The template could not be safely extracted. Confirm the document is a valid .docx and that extraction is enabled.", diagnostics = result.Blockers }));
             var text = string.Join("\n\n", result.Sections.Select(section => section.Text).Where(value => !string.IsNullOrWhiteSpace(value))).Trim();

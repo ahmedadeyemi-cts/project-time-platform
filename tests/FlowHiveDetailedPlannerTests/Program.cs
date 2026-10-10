@@ -1204,7 +1204,10 @@ try
         MaximumSections: 1_000,
         MaximumChunks: 1_500,
         ChunkCharacters: 2_400,
-        ChunkOverlapCharacters: 280);
+        ChunkOverlapCharacters: 280)
+    {
+        VerifiedCleanSourceSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(legacySowBytes)).ToLowerInvariant()
+    };
 
     var compiledExtractor = new PulseAiPrivateDocumentExtractionService(
         Microsoft.Extensions.Logging.Abstractions.NullLogger<PulseAiPrivateDocumentExtractionService>.Instance);
