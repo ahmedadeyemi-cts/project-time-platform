@@ -490,6 +490,7 @@ await PrivilegedIntegrationTests.RunAsync();
 await SecurityDatabaseTests.RunAsync();
 await SecurityCompletionTests.RunAsync();
 await SecurityRouteTests.RunAsync();
+await SecurityDocumentScanTests.RunAsync();
 await CanonicalMiddlewareTests.RunAsync();
 await HtmlExtractionBudgetTests.RunAsync();
 OfficeRangeBudgetTests.Run();

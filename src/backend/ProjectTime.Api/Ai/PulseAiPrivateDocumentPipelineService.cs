@@ -287,7 +287,8 @@ public sealed class PulseAiPrivateDocumentPipelineService
             {
                 MalwareScanAttested = scan.Clean && !scan.Infected
                     && snapshot.SourceSha256.Equals(scan.SourceSha256, StringComparison.OrdinalIgnoreCase),
-                MalwareScannerMode = scan.Scanner
+                MalwareScannerMode = scan.Scanner,
+                VerifiedCleanSourceSha256 = scan.Clean && !scan.Infected ? scan.SourceSha256 : string.Empty
             };
             var extraction = await _extractor.ExtractAsync(source, options, cancellationToken);
             if (extraction.ExtractionSucceeded

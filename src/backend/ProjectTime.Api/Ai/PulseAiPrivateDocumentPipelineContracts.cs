@@ -88,6 +88,10 @@ public sealed record PulseAiDocumentPipelineOptions(
     int ChunkCharacters,
     int ChunkOverlapCharacters)
 {
+    // Set only by a caller after a clean scan of the exact immutable source.
+    // Environment-level scanner approval cannot supply document evidence.
+    public string VerifiedCleanSourceSha256 { get; init; } = string.Empty;
+
     public static PulseAiDocumentPipelineOptions FromEnvironment()
     {
         var documents = PulseDocumentServiceOptions.FromEnvironment();

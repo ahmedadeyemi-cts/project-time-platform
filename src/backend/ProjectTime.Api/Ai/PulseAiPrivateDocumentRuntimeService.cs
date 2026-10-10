@@ -594,7 +594,11 @@ public sealed class PulseAiPrivateDocumentRuntimeService
                 return Result("cancelled", job, null, 0, 0, 0, "cancellation_requested", []);
             }
 
-            pipelineOptions = pipelineOptions with { MalwareScannerMode = scan.Scanner };
+            pipelineOptions = pipelineOptions with
+            {
+                MalwareScannerMode = scan.Scanner,
+                VerifiedCleanSourceSha256 = scan.SourceSha256
+            };
             var extraction = await _extractor.ExtractAsync(source, pipelineOptions, cancellationToken);
             if (!immutableSnapshot.SourceSha256.Equals(
                     extraction.SourceSha256,

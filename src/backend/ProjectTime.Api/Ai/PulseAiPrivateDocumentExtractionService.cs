@@ -271,7 +271,7 @@ public sealed class PulseAiPrivateDocumentExtractionService
                 ReparsePointDetected: false,
                 MacroEnabledFormat: macroEnabled,
                 ArchiveBombRiskDetected: false,
-                MalwareScanAttested: options.MalwareScanAttested,
+                MalwareScanAttested: false,
                 MalwareScannerMode: options.MalwareScannerMode,
                 FileSizeBytes: 0,
                 SourceSha256: string.Empty,
@@ -312,14 +312,17 @@ public sealed class PulseAiPrivateDocumentExtractionService
                 blockers.Add("The Open XML package exceeds safe archive entry or expansion limits.");
         }
 
-        if (!options.MalwareScanAttested)
-            blockers.Add("A verifiable malware-scan result is required before parsing document content.");
         if (options.MalwareScannerMode.Equals("not_configured", StringComparison.OrdinalIgnoreCase))
             warnings.Add("Malware scanner mode is not configured.");
 
         var sourceHash = sizeWithinLimit
             ? await Sha256FileAsync(fullPath, cancellationToken)
             : string.Empty;
+        var documentScanVerified = options.MalwareScanAttested
+            && sourceHash.Length == 64
+            && sourceHash.Equals(options.VerifiedCleanSourceSha256, StringComparison.OrdinalIgnoreCase);
+        if (!documentScanVerified)
+            blockers.Add("A clean malware-scan result bound to this document's SHA-256 is required before parsing document content.");
 
         var status = blockers.Count == 0 ? "document_admitted_for_private_preview" : "document_blocked";
         return new PulseAiDocumentSafetyAssessment(
@@ -334,7 +337,7 @@ public sealed class PulseAiPrivateDocumentExtractionService
             ReparsePointDetected: reparsePoint,
             MacroEnabledFormat: macroEnabled,
             ArchiveBombRiskDetected: archiveBombRisk,
-            MalwareScanAttested: options.MalwareScanAttested,
+            MalwareScanAttested: documentScanVerified,
             MalwareScannerMode: options.MalwareScannerMode,
             FileSizeBytes: fileInfo.Length,
             SourceSha256: sourceHash,
