@@ -51,6 +51,7 @@ CURRENT_MAIN_MIGRATIONS = (
     "127_flowhive_pm_automatic_planning_defaults",
     "133_finance_billing_handoff_notifications",
     "134_customer_billing_notification_profiles",
+    "135_accounting_engagement_reporting",
 )
 LEGACY_MIGRATION_STEP = "Apply and verify Migrations 086, 088, and 093 through 100 inside Test private network"
 CURRENT_MIGRATION_STEP = "Apply and verify governed migrations through Module 025 project-name migration 109 inside Test private network"

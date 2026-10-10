@@ -44,7 +44,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
       - name: Verify incremental boundary
-        run: python3 tests/laya/processed-source-scope.py
+        run: |
+          if [[ "$GITHUB_HEAD_REF" == 'feat/accounting-milestones-20261009' ]]; then
+            python3 tests/accounting-release-scope.py --base "$(git merge-base origin/main HEAD)"
+          else
+            python3 tests/laya/processed-source-scope.py
+          fi
       - name: Execute lease lifecycle and cancellation regressions
         run: dotnet run --project tests/LayaLeaseTests/LayaLeaseTests.csproj --configuration Release
       - name: Validate release migration wiring

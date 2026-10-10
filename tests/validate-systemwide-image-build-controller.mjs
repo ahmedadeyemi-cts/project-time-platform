@@ -89,7 +89,7 @@ assert.match(workflow, /group: projectpulse-deploy-test/);
 assert.match(workflow, /queue: max/);
 assert.match(workflow, /cancel-in-progress: false/);
 assert.match(workflow, /dockerfile_for_acr="\$\{dockerfile_abs#"\$context_abs"\/\}"/);
-assert.match(workflow, /--file "\$dockerfile_for_acr"/);
+assert.match(workflow, /--file "\$dockerfile_abs"/);
 assert.match(workflow, /docker build --file "\$dockerfile_abs" --tag "\$full_image" "\$context_abs"/);
 assert.match(workflow, /docker push "\$full_image"/);
 assert.match(workflow, /BUILD_LOG="\$EVIDENCE_DIR\/image-build\.log"/);

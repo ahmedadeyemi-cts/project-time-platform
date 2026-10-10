@@ -5,6 +5,14 @@
 # this file owns only the existing dispatch table.
 # 2026-10-08 exact Protected UAT enable/dispatch scheduler stabilization.
 # Only the supervisor and this explicit branch-scope registration may change.
+if [[ "$HEAD_BRANCH" == 'feat/accounting-milestones-20261009' ]]; then
+  python3 tests/accounting-release-scope.py --base "$CURRENT_BASE_SHA"
+  python3 tests/security-release/test_controller_registration.py
+  python3 tests/flowhive-installed-resolution.test.py
+  node tests/validate-systemwide-image-build-controller.mjs
+  echo 'ACCOUNTING_CONTROLLER_EXACT_SCOPE=PASS'
+  return
+fi
 if [[ "$HEAD_BRANCH" == 'feat/pulse-core-test-controller-20261009' ]]; then
   python3 tests/core-controller-scope.py --base "$CURRENT_BASE_SHA"
   python3 scripts/resilience/test_core_controller.py

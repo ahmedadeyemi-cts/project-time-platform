@@ -4,6 +4,12 @@ set -Eeuo pipefail
 BASE_BRANCH="${GITHUB_BASE_REF:-main}"
 HEAD_BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
 
+if [[ "$HEAD_BRANCH" == 'feat/accounting-milestones-20261009' ]]; then
+  python3 tests/accounting-release-scope.py --base "${BASE_SHA:-origin/main}"
+  echo "ANALYTICS_CENTER_VALIDATION_MODE=ACCOUNTING_REPORTS" >> "${GITHUB_ENV:-/dev/null}"
+  exit 0
+fi
+
 if [[ "$HEAD_BRANCH" == 'fix/security-complete-20260929' ]]; then
   python3 tests/security-completion/scope.py
   python3 tests/security-completion/test_scope.py
