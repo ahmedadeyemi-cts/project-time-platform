@@ -5,11 +5,12 @@ public static class CanonicalApiPaths
 {
     public static string Normalize(string path)
     {
-        if (!path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)) return path;
-        var segments = path.TrimEnd('/').Split('/');
+        var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (!path.StartsWith('/') || segments.Length == 0
+            || !segments[0].Equals("api", StringComparison.OrdinalIgnoreCase)) return path;
         for (var i = 0; i < segments.Length; i++)
             if (Guid.TryParse(segments[i], out var id)) segments[i] = id.ToString("D");
-        return string.Join('/', segments);
+        return "/" + string.Join('/', segments);
     }
 
     public static WebApplication UseCanonicalApiPaths(this WebApplication app)

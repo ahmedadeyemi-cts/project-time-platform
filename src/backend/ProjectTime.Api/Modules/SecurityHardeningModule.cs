@@ -74,6 +74,14 @@ public static class SecurityHardeningModule
         }
 
 
+        if (RequiredPolicy(path, method) == SecurityPolicy.Finance
+            && ProjectPulseActualSessionAuthority.IsViewAs(context))
+        {
+            await WriteErrorAsync(context, StatusCodes.Status403Forbidden, "finance_own_session_required",
+                "Financial summaries require your own authorized session.");
+            return;
+        }
+
         if (await TryHandleGenericLocalLoginRouteAsync(context, path, method))
         {
             return;

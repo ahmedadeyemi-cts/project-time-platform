@@ -17,12 +17,14 @@ ACCOUNTS = (
     ("engineer", "demo.engineer@ussignal.local", {"ENGINEER", "ENGINEERING"}),
     ("coordinator", "project.team.coordinator@ussignal.local", {"PROJECT_TEAM_COORDINATOR"}),
     ("project_manager", "heather.schrock@ussignal.local", {"PROJECT_MANAGEMENT", "PROJECT_MANAGEMENT_LEAD", "PROJECT_MANAGER", "PROJECT_MANAGER_I", "PROJECT_MANAGER_II", "PROJECT_MANAGER_III", "PROJECT_MANAGER_LEAD", "SENIOR_PROJECT_MANAGER"}),
+    ("accounting", "juli.cambron@ussignal.local", {"ACCOUNTING"}),
 )
 ADMIN_READS = (
     "/api/db-config-check", "/api/db-health", "/api/schema/tables",
     "/api/role-policy/summary", "/api/role-policy/matrix",
     "/api/runtime/role-policy/summary", "/api/runtime/v2/role-policy/matrix",
     "/api/auth/local-accounts",
+    "/api/production-data-readiness", "/api/production/data-readiness",
 )
 FINANCE_READS = ("/api/expenses/summary", "/api/invoicing/summary")
 RETIRED_READS = ("/api/reports/030/preview", "/api/reports/030/filter-options", "/api/project-closeout/email/audit")
@@ -44,7 +46,7 @@ def require(value, code):
 
 def variants(path):
     # Keep the proxy's lowercase /api/ prefix; test backend route canonicalization.
-    return (path, path + "/", "/api/" + path[5:].upper() + "/")
+    return (path, path + "/", "/api/" + path[5:].upper() + "/", path.replace("/api/", "/api//") + "/")
 
 
 def request(path, token="", payload=None, parse=False):
@@ -61,6 +63,11 @@ def request(path, token="", payload=None, parse=False):
         with build_opener(NoRedirect).open(req, timeout=20) as response:
             if not parse:
                 return response.status, None
+            if parse == "container":
+                require("application/json" in response.headers.get("Content-Type", ""), "response_not_json")
+                prefix = response.read(1024).lstrip()
+                require(prefix.startswith((b"{", b"[")), "allowed_response_not_json")
+                return response.status, {}
             raw = response.read(131073)
             require(len(raw) <= 131072, "response_budget_exceeded")
             require("application/json" in response.headers.get("Content-Type", ""), "response_not_json")
@@ -95,11 +102,13 @@ def exercise_account(label, username, expected, password, report):
         validate_context(context, expected)
         checks = [(path, 403) for path in ADMIN_READS]
         if label != "coordinator":
-            checks += [(path, 403) for path in FINANCE_READS]
+            checks += [(path, 200 if label == "accounting" else 403) for path in FINANCE_READS]
         checks += [(path, 410) for path in RETIRED_READS]
         for index, (path, expected_status) in enumerate(checks):
             for variant, candidate in enumerate(variants(path)):
-                status, _ = request(candidate, token)
+                status, body = request(candidate, token, parse="container" if expected_status == 200 else False)
+                if expected_status == 200:
+                    require(isinstance(body, (dict, list)), "allowed_response_not_json")
                 report["checks"].append({"actor": label, "case": index, "variant": variant, "expected": expected_status, "observed": status, "passed": status == expected_status})
         # A stale/expired session must never turn an authorization test into a pass.
         status, context = request("/api/security/context", token, parse=True)
@@ -126,7 +135,7 @@ def main():
         for actor in ACCOUNTS:
             exercise_account(*actor, password, report)
         password = ""
-        require(len(report["checks"]) == 111, "matrix_incomplete")
+        require(len(report["checks"]) == 232, "matrix_incomplete")
         require(all(row["passed"] for row in report["checks"]), "boundary_assertion_failed")
         report["status"] = "passed"
     except CheckError as error:

@@ -8,6 +8,7 @@ internal static class SecurityRouteTests
 {
     internal static async Task RunAsync()
     {
+        await DiagnosticFilterTests.RunAsync();
         var checks = 0;
         void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; }
         using var services = new ServiceCollection().AddLogging().AddOptions().BuildServiceProvider();
@@ -31,6 +32,22 @@ internal static class SecurityRouteTests
                 Check(context.Response.StatusCode == 302 && context.Response.Headers.Location.ToString().Contains("invalid_browser_state"),
                     "SSO callback rejects missing browser state with every route spelling");
             else Check(context.Response.StatusCode == 401, "Protected endpoint requires authentication: " + path);
+        }
+        foreach (var route in new[] { "/api/expenses/summary", "/api/invoicing/summary" })
+        foreach (var path in new[] { route, route + "/", route.ToUpperInvariant() + "/", route.Replace("/summary", "//summary/") })
+        {
+            var context = new DefaultHttpContext { RequestServices = services };
+            context.Request.Path = path;
+            context.Request.Method = "GET";
+            context.Items["ProjectPulseIsViewAs"] = true;
+            context.Items["ProjectPulseSessionUserId"] = Guid.NewGuid();
+            context.Items["ProjectPulseEffectiveUserId"] = Guid.NewGuid();
+            context.Response.Body = new MemoryStream();
+            var reached = false;
+            Func<Task> next = () => { reached = true; return Task.CompletedTask; };
+            await (Task)invoke.Invoke(null, new object[] { context, next })!;
+            Check(!reached && context.Response.StatusCode == 403,
+                "Financial summary rejects View-As before effective identity lookup: " + path);
         }
         var id = Guid.NewGuid();
         foreach (var format in new[] { "N", "D", "B", "P" })
