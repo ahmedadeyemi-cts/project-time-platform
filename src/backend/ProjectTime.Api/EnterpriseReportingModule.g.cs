@@ -111,7 +111,7 @@ public static class EnterpriseReportingModule
         EnterpriseReportRequest request,
         HttpContext context)
     {
-        var built = await BuildForReportAsync(context, request.ReportCode);
+        var built = await BuildForReportAsync(context, request);
         if (built.Failure is not null) return built.Failure;
         if (!CanRun(built.Context!.Actor)) return AccessDenied("Run Enterprise Reports authority is required.");
         var result = EnterpriseReportingEngine.Build(built.Context, built.Definition!, request);
@@ -132,7 +132,7 @@ public static class EnterpriseReportingModule
         EnterpriseReportRequest request,
         HttpContext context)
     {
-        var built = await BuildForReportAsync(context, request.ReportCode);
+        var built = await BuildForReportAsync(context, request);
         if (built.Failure is not null) return built.Failure;
         var actor = built.Context!.Actor;
         if (!CanRun(actor)) return AccessDenied("Run Enterprise Reports authority is required.");
@@ -357,15 +357,15 @@ public static class EnterpriseReportingModule
 
     private static async Task<BuildOutcome> BuildForReportAsync(
         HttpContext context,
-        string? reportCode)
+        EnterpriseReportRequest request)
     {
         var seed = await BuildSeedAsync(context);
         if (seed.Failure is not null) return seed;
         if (!CanView(seed.Context!.Actor)) return new(null, null, AccessDenied("Enterprise reporting access is required."));
-        var definition = EnterpriseReportingCatalog.Find(seed.Context, reportCode);
+        var definition = EnterpriseReportingCatalog.Find(seed.Context, request.ReportCode);
         if (definition is null) return new(seed.Context, null, ReportNotFound(seed.Context));
         var supplemental = await EnterpriseReportingSourceLoader.LoadAsync(
-            seed.Context, definition, context.RequestAborted);
+            seed.Context, definition, context.RequestAborted, request);
         return new(new EnterpriseReportingContext(seed.Context.Truth, supplemental), definition, null);
     }
 

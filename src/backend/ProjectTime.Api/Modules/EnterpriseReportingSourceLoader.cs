@@ -78,7 +78,8 @@ internal static class EnterpriseReportingSourceLoader
     internal static async Task<EnterpriseReportingSupplemental> LoadAsync(
         EnterpriseReportingContext seed,
         EnterpriseReportDefinition definition,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        EnterpriseReportRequest? request = null)
     {
         var keys = definition.RequiredSources
             .Concat(definition.OptionalSources)
@@ -131,7 +132,7 @@ internal static class EnterpriseReportingSourceLoader
                 }
 
                 var columns = await LoadColumnsAsync(connection, spec.Table, cancellationToken);
-                var rows = await LoadRowsAsync(connection, spec, columns, seed, cancellationToken);
+                var rows = await LoadRowsAsync(connection, spec, columns, seed, cancellationToken, request);
                 var truncated = rows.Length > 5000;
                 if (truncated) rows = rows.Take(5000).ToArray();
                 data[key] = rows;
@@ -218,11 +219,28 @@ internal static class EnterpriseReportingSourceLoader
         SourceSpec spec,
         HashSet<string> columns,
         EnterpriseReportingContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        EnterpriseReportRequest? request)
     {
         var predicates = new List<string>();
         var projectColumn = First(columns, "project_id", "affected_project_id");
         var visibleProjectIds = context.Projects.Select(project => project.ProjectId).Distinct().ToArray();
+        var accounting = spec.Key.StartsWith("accounting_", StringComparison.Ordinal);
+        if (accounting && request?.ProjectId is Guid requestedProjectId)
+            visibleProjectIds = visibleProjectIds.Where(id => id == requestedProjectId).ToArray();
+        var dateColumn = accounting ? First(columns, "workDate", "scheduledDate", "accountingPeriod", "invoiceDate") : null;
+        var from = request?.DateFrom;
+        var through = request?.DateTo;
+        if (spec.Key == "accounting_revenue_report")
+        {
+            if (from is DateOnly start) from = new DateOnly(start.Year, start.Month, 1);
+            if (through is DateOnly end) through = new DateOnly(end.Year, end.Month, 1);
+        }
+        if (dateColumn is not null)
+        {
+            if (from.HasValue) predicates.Add($"source.{Quote(dateColumn)} >= @accounting_from");
+            if (through.HasValue) predicates.Add($"source.{Quote(dateColumn)} <= @accounting_through");
+        }
         if (projectColumn is not null)
         {
             var projectPredicate = $"source.{Quote(projectColumn)} = ANY(@project_ids)";
@@ -254,6 +272,11 @@ internal static class EnterpriseReportingSourceLoader
         var where = predicates.Count == 0 ? string.Empty : " WHERE " + string.Join(" AND ", predicates);
         var sql = $"SELECT row_to_json(source)::text FROM {Quote(spec.Table)} source{where} LIMIT 5001;";
         await using var command = new NpgsqlCommand(sql, connection);
+        if (dateColumn is not null)
+        {
+            if (from.HasValue) command.Parameters.AddWithValue("accounting_from", NpgsqlDbType.Date, from.Value);
+            if (through.HasValue) command.Parameters.AddWithValue("accounting_through", NpgsqlDbType.Date, through.Value);
+        }
         if (projectColumn is not null)
         {
             command.Parameters.Add(new NpgsqlParameter(
