@@ -1,0 +1,40 @@
+{
+  "base": "e10bfbd991f143c5b29a58382ea4492d900bf0e9",
+  "files": [
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/laya-processed-source-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/pulse-document-integration-ci.yml",
+    ".github/workflows/security-posture-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    "scripts/release-test/validate-module025-governed-release.sh",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/security/validate-repository-security-posture.py",
+    "scripts/verity/pin-digests.sh",
+    "scripts/verity/verify-release-provenance.py",
+    "tests/flowhive-psa-admission.test.mjs",
+    "tests/security-deployment-boundaries.test.py",
+    "tests/security-release-binding-manifest.json",
+    "tests/security-release-binding-scope.py",
+    "tests/security-release-provenance.test.py"
+  ],
+  "sha256": {
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "199fcecebed3c98feb052bb5a852e602916a7ddac1a431ceeae967178c7b9c3d",
+    ".github/workflows/laya-processed-source-ci.yml": "d01bd71bfbbef460cbfc60a00f1ddb69a43460a1de82c1943b8e74aa19045af7",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "25a697ae4dd7c1fc102dd1f26ad78092ca2ddc44037e8c0b3fb94a583b4774e8",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "66507cb02d72e9cc23aa7fe574b7ea8b7631297335888f477cc9ec8d6a191f08",
+    ".github/workflows/pulse-document-integration-ci.yml": "5fb1878bf093e169250d3dcffe3a661a8dfed91864c937370f1008a206f88875",
+    ".github/workflows/security-posture-ci.yml": "1c3cbd50e96ccaef26d0a99bf100c6a5543dbc78506c29af54b167d045121646",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "d8845965faf1dbdfbe35cb0f028aa1744672af49ca47b72e991aeb0d01c5d1fb",
+    "scripts/release-test/validate-module025-governed-release.sh": "7913215522575ffe6eba88aa2691eac4330de9cfaad3ffde86b3465960cc040e",
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "85fc03f835f46badad453624e16108bf2d8e56ec2f227d74c74772414f80c5a1",
+    "scripts/security/validate-repository-security-posture.py": "56ce0ab5ad3713ec922926482c173ee1b6c43ccde0347e375711da72acde385a",
+    "scripts/verity/pin-digests.sh": "19f439125f51c4ceca1dc000f0578e52b3967e74853242d870075ab1de3b1ec8",
+    "scripts/verity/verify-release-provenance.py": "6ada90988d258f7a04b6cc870d3c5062c22755a66a9cda89c71fda3123916d6e",
+    "tests/flowhive-psa-admission.test.mjs": "95d56e36e4f470e87573f50d38022fa01952633c18cf1336a2ee067064033c3f",
+    "tests/security-deployment-boundaries.test.py": "9ebffa8705016b9f01d395297740bd11b0d1415fca51d0b5629e8ea60e13783c",
+    "tests/security-release-binding-scope.py": "41bcd76fa75a4c05066d89dd9708de96ff54c5a8c128fa3cf8bcb167b9446638",
+    "tests/security-release-provenance.test.py": "3ef406d920a27364a7bdd624c2210d25d37538da31e46c739a2717985107ee9f"
+  }
+}

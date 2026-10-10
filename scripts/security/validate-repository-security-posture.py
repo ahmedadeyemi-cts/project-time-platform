@@ -20,6 +20,7 @@ ALLOWED_CONTENT_WRITE_WORKFLOWS = {
     "publish-pulse-ai-architecture-v1-1.yml",
 }
 CRITICAL_PINNED_WORKFLOWS = {
+    "release.yml",
     "deployment-concurrency-governance-ci.yml",
     "group5-financial-operations-recovery-ci.yml",
     "group7-ai-help-system-guide-ci.yml",
@@ -142,7 +143,7 @@ for workflow in workflows:
     if re.search(r"(?m)^\s*permissions\s*:\s*write-all\s*$", body):
         ERRORS.append(f"{name}: write-all permissions are prohibited")
 
-    if re.search(r"(?m)^\s*contents\s*:\s*write\s*$", body):
+    if re.search(r"(?m)^[ \t]*contents[ \t]*:[ \t]*write[ \t]*(?:#.*)?$", body):
         if name == "release.yml":
             if hashlib.sha256(body.encode()).hexdigest() != RELEASE_PUBLISH_WORKFLOW_SHA256:
                 ERRORS.append("release.yml: reviewed publication permission boundary changed")
