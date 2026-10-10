@@ -3,6 +3,8 @@
   "files": [
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/laya-processed-source-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "scripts/release-test/validate-module025-governed-release.sh",
     "scripts/release-test/validate-protected-test-controller-branches.sh",
     "src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs",
@@ -22,6 +24,8 @@
   "sha256": {
     ".github/workflows/flowhive-psa-release-control-ci.yml": "9e0e528190304d5b037b6d0d8c7fada82048d75434c43de9abcf2d69a0a34760",
     ".github/workflows/laya-processed-source-ci.yml": "0a84923d5559b984ecc04849d3f3c8ad7d78e1e8446122925e16c3f0ed361f0a",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "4a09387e23d2622bef57f76915b0f73809e00a3ae127794cff873f2dbb30e120",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "9ad385a05f4948426438cce9e124d5e1dd1f707f3961b7a164220daa5c52f49b",
     "scripts/release-test/validate-module025-governed-release.sh": "182ab47baf46bda088a2304ae889a5c9d9b24c8a4eec9ddfb0eb76cd0ea4aef7",
     "scripts/release-test/validate-protected-test-controller-branches.sh": "12d47c15f5e2536c09e4e7e1254cdabc09c9fc0529d5c2e1899fe869c8cc4936",
     "src/backend/ProjectTime.Api/Ai/PulseAiPrivateDocumentExtractionService.cs": "89ec959995aa38fa911782effd456de29e033fb5c42c5e47e13cdbab8bebb2b5",
@@ -34,7 +38,7 @@
     "tests/ProjectTime.Api.AuthorizationTests/Program.cs": "383d86fc028ee1fd58af30111611d7b73be1303bce6db6a0961d2d159c9c0aa4",
     "tests/ProjectTime.Api.AuthorizationTests/SecurityDocumentScanTests.cs": "89ad66253c1e28b51869defef2d7d8c58a4ff5089cdcb428ca8dc41db9d0a1b1",
     "tests/flowhive-psa-admission.test.mjs": "692b67b57ea9b64b0b39d81b3504eb44ee09d1dceab67b2b7b16d067c4d99f55",
-    "tests/security-document-scan-scope.py": "bddb53b207a976b37b1b197c5e753b9fcb80c93e34aa2f545672a6928414ecae",
+    "tests/security-document-scan-scope.py": "dab8ccf51ae05c42b19e6448bd934acf532198cef86c60a8c4ac0a28cee8733a",
     "tests/test-celar-sow-runtime-deadlines.py": "8d384dbb293d2ae25d5421a9599ab9abcb0043e05e5e2c1d3eecf1dd5713d297"
   }
 }
