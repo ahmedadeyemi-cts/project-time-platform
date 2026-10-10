@@ -42,7 +42,8 @@ public static partial class InvoiceBillingModule
         var basis = await LoadManualBillingBasisAsync(connection, null, projectId);
         var commercial = await SellCommercialReadModelModule.LoadProjectCommercialSummaryAsync(connection, projectId);
         basis = basis with { Fingerprint = BillingHash(basis.Fingerprint + JsonSerializer.Serialize(commercial, ManualJson)) };
-        return Results.Ok(new { status = "manual_billing_loaded", projectId, canCreate = access.CanCreateInvoices,
+        var milestones = await AccountingReady(connection) ? await AccountingRows(connection,"accounting_milestone_report",projectId) : [];
+        return Results.Ok(new { milestones, status = "manual_billing_loaded", projectId, canCreate = access.CanCreateInvoices,
             canApproveException = CanApproveBillingException(access), fixedPrice = IsFixedPrice(commercial.ContractType),
             commercial, sellAvailable = IsSellAvailable(commercial), basis, currency = "USD", connectorRequired = false });
     }
@@ -146,6 +147,8 @@ public static partial class InvoiceBillingModule
             if (project.PurchaseOrder?.AuthorizedAmount is decimal limit && request.BillToDate > limit)
                 return Results.Conflict(new { message = "Cumulative billing exceeds the active purchase order amount. Obtain an updated authorization first." });
             var amount = request.BillToDate - basis.PulseInvoiced - request.PreviouslyBilledOutsidePulse;
+            if (await ValidateMilestoneInvoice(connection, transaction, projectId, request, amount) is {} milestoneError)
+                return Results.Conflict(new { message = milestoneError });
             var invoiceId = Guid.NewGuid();
             var identity = await AllocateInvoiceIdentityAsync(connection, transaction, projectId, userId.Value);
             var snapshot = JsonSerializer.Serialize(new {
@@ -181,6 +184,12 @@ public static partial class InvoiceBillingModule
                 audit.Parameters.AddWithValue("invoice", invoiceId); audit.Parameters.AddWithValue("actor", userId.Value);
                 audit.Parameters.AddWithValue("reason", "Manual amount invoice: " + Clean(request.Reason));
                 audit.Parameters.AddWithValue("snapshot", snapshot); await audit.ExecuteNonQueryAsync();
+            }
+            if (request.MilestoneId is Guid milestoneId)
+            {
+                await using var link = new NpgsqlCommand("UPDATE accounting_milestones SET billing_invoice_id=@invoice WHERE milestone_id=@milestone AND project_id=@project AND billing_invoice_id IS NULL",connection,transaction);
+                link.Parameters.AddWithValue("invoice",invoiceId);link.Parameters.AddWithValue("milestone",milestoneId);link.Parameters.AddWithValue("project",projectId);
+                if (await link.ExecuteNonQueryAsync()!=1) return Results.Conflict(new {message="Milestone changed. Reload before invoicing."});
             }
             await transaction.CommitAsync();
             return Results.Created($"/api/billing/invoices/{invoiceId}", new { status = "billing_invoice_created",

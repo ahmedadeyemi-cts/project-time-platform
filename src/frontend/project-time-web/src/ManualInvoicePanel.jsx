@@ -19,7 +19,7 @@ function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
   const [state, setState] = useState({ loading: true, data: null, error: '' });
   const [revision, setRevision] = useState(0);
   const [form, setForm] = useState({ invoiceType: 'partial', agreedTotal: '', billToDate: '', previouslyBilledOutsidePulse: '0',
-    periodStart: today(), periodEnd: today(), description: '', authorizationReference: '', externalBillingReference: '', reason: '', confirmed: false, billingBasis: 'progress', progressReference: '', exceptionReason: '', commercialReference: '', commercialFallbackReason: '' });
+    periodStart: today(), periodEnd: today(), description: '', authorizationReference: '', externalBillingReference: '', reason: '', confirmed: false, billingBasis: 'progress', progressReference: '', exceptionReason: '', commercialReference: '', commercialFallbackReason: '', milestoneId: '' });
   const [busy, setBusy] = useState(false), [uncertain, setUncertain] = useState(false), [message, setMessage] = useState('');
   const flight = useRef(false), operation = useRef(null), alive = useRef(true), saveAbort = useRef(null);
   const endpoint = `/api/billing/projects/${encodeURIComponent(projectId)}`;
@@ -49,7 +49,7 @@ function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
     event.preventDefault();
     if (flight.current || blocked || !form.confirmed || charge === null) return;
     operation.current ||= { ...form, operationId: crypto.randomUUID(), expectedFingerprint: basis.fingerprint,
-      agreedTotal: Number(form.agreedTotal), billToDate: Number(form.invoiceType === 'final' ? form.agreedTotal : form.billToDate),
+      milestoneId: form.milestoneId || null, agreedTotal: Number(form.agreedTotal), billToDate: Number(form.invoiceType === 'final' ? form.agreedTotal : form.billToDate),
       previouslyBilledOutsidePulse: Number(form.previouslyBilledOutsidePulse) };
     flight.current = true; setBusy(true); setMessage('');
     const abort = new AbortController(); saveAbort.current = abort;
@@ -87,6 +87,11 @@ function ManualInvoiceForm({ projectId, projectName, onSaved, onBasis }) {
       {basis.manualInvoicesExist ? <p>This project uses manual amount billing. Continue here for later invoices so the same time is not charged again through the time-based path.</p> : null}
       {blocked ? <p role="status">{basis.closed ? 'Reopen this project before additional billing.' : basis.finalInvoiceExists ? 'A final invoice is already recorded. Review the invoice history below.' : !state.data.canCreate ? 'Your current role can view billing but cannot create invoices.' : 'Manual project-amount invoices require a fixed-price contract. Use approved time or governed billing packages for other contracts.'}</p> : <form onSubmit={save}>
         <fieldset disabled={busy || uncertain}><legend>Amounts and authorization (USD)</legend><div className="m042-manual-fields">
+          <label>Billing milestone<select value={form.milestoneId} onChange={event => {
+            const milestone = state.data.milestones?.find(m => m.milestoneId === event.target.value);
+            update('milestoneId', event.target.value);
+            if (milestone) setForm(current => ({ ...current, billToDate: String(Number(basis.pulseInvoiced) + Number(current.previouslyBilledOutsidePulse) + Number(milestone.milestoneAmount)), description: `Accepted milestone: ${milestone.milestone}`, progressReference: `Milestone acceptance: ${milestone.acceptanceReference}`, confirmed: false }));
+          }}><option value="">Other authorized project billing</option>{state.data.milestones?.filter(m => m.status === 'accepted').map(m => <option key={m.milestoneId} value={m.milestoneId}>{m.milestone} · {money(m.milestoneAmount)}</option>)}</select></label>
           <label>Invoice type<select aria-label="Invoice type" value={form.invoiceType} onChange={event => update('invoiceType', event.target.value)}><option value="partial">Partial invoice</option><option value="final">Full / final invoice</option></select></label>
           <label>Billing basis<select aria-label="Billing basis" value={form.billingBasis} onChange={event => update('billingBasis', event.target.value)}><option value="progress">Authorized partial progress / milestone</option><option value="completion">Recorded delivery completion</option>{state.data.canApproveException ? <option value="exception">Explicit billing exception</option> : null}</select></label>
           <label>Progress / milestone / billing instruction reference<textarea required minLength={5} maxLength={1000} value={form.progressReference} onChange={event => update('progressReference', event.target.value)} /></label>

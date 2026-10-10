@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 
 REPORTS = (
-    "immutable-images.json", "release-boundary.json", "module001b-revision-reconcile.json",
+    "accounting-installed-uat.json", "immutable-images.json", "release-boundary.json", "module001b-revision-reconcile.json",
     "flowhive-my-role-browser.json", "flowhive-installed-identity.json", "module025-installed-prerequisite.json",
     "uat-summary.json", "deployment-health-verified.json", "deployment-identity.json",
     "migrations.json", "flowhive-psa-migrations.json", "flowhive-psa-live-uat.json",

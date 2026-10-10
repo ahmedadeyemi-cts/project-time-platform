@@ -687,8 +687,39 @@ internal static class EnterpriseReportingCatalog
             ])
     ];
 
+    private static readonly EnterpriseReportDefinition[] Accounting = [
+        Report("accounting_invoice_ledger", "Accounting Invoice Ledger", "Financial",
+            "Invoice totals, adjustments, taxes and milestone links. Draft and cancelled invoices are explicitly excluded from cumulative totals.",
+            ["030", "042"], ["projects", "accounting_invoice_report"], [], ["accounting_scoped"], "Finance scope with authorized engagement filters.",
+            [DateFrom(), DateTo(), Customer(), Project(), Search()],
+            [C("customer","Customer"),C("salesforceAccountId","Salesforce Account ID"),C("engagementId","Engagement ID"),C("engagement","Engagement"),C("currency","Currency"),
+             C("invoiceNumber","Invoice number"),C("invoiceDate","Invoice date","date"),C("invoiceStatus","Invoice status"),C("billingPeriodStart","Billing period start","date"),C("billingPeriodEnd","Billing period end","date"),
+             C("subtotal","Subtotal","currency",true),C("adjustments","Adjustments / credits","currency",true),C("tax","Tax","currency",true),C("total","Invoice total","currency",true),C("milestone","Milestone"),C("includedInTotal","Included in cumulative total","boolean")]),
+        Report("accounting_engagement_summary", "Engagement Accounting Summary", "Financial",
+            "Finance-maintained accounting evidence. USD; invoice totals exclude drafts and cancellations. Missing values remain unknown.",
+            ["030", "042"], ["projects", "accounting_engagement_report"], [], ["accounting_scoped"],
+            "Finance and Accounting access only; rows remain limited to authorized engagements.",
+            [Customer(), Project(), ContractType(), Search()], [C("customer", "Customer"), C("salesforceAccountId", "Salesforce Account ID"), C("salesforceOpportunityId", "Salesforce opportunity / record ID"), C("engagementId", "Engagement ID"), C("engagement", "Engagement"), C("engagementStatus", "Engagement status"), C("contractType", "Contract type"), C("contractNumber", "Contract / SOW number"), C("startDate", "Start date", "date"), C("endDate", "End date", "date"), C("currency", "Currency"), C("originalContractAmount", "Original contract amount", "currency", true), C("approvedChanges", "Approved contract changes", "currency", true), C("totalContractAmount", "Total contract amount", "currency", true), C("pulseInvoiceNet", "Pulse invoice net", "currency", true), C("invoiceTax", "Invoice tax", "currency", true), C("pulseInvoiceTotal", "Pulse invoice total", "currency", true), C("externalInvoiceTotal", "Recorded external invoice total", "currency", true), C("totalInvoiceAmount", "Total invoice amount", "currency", true), C("remainingUnbilled", "Remaining unbilled net basis", "currency", true), C("prepaidFunded", "Prepaid funded", "currency", true), C("prepaidUsed", "Prepaid used", "currency", true), C("prepaidBalance", "Prepaid balance", "currency", true), C("recognizedToDate", "Recognized to date", "currency", true), C("unrecognizedAmount", "Unrecognized amount", "currency", true), C("dataStatus", "Data completeness")]),
+        Report("accounting_milestone_detail", "Milestone Billing Detail", "Financial",
+            "Finance-maintained accounting evidence. USD; invoice totals exclude drafts and cancellations. Missing values remain unknown.",
+            ["030", "042"], ["projects", "accounting_milestone_report"], [], ["accounting_scoped"],
+            "Finance and Accounting access only; rows remain limited to authorized engagements.",
+            [DateFrom(), DateTo(), Customer(), Project(), WorkflowStatus(), Search()], [C("customer", "Customer"), C("salesforceAccountId", "Salesforce Account ID"), C("engagementId", "Engagement ID"), C("engagement", "Engagement"), C("milestone", "Milestone"), C("currency", "Currency"), C("milestoneAmount", "Milestone amount", "currency", true), C("scheduledDate", "Scheduled billing date", "date"), C("acceptanceDate", "Acceptance date", "date"), C("acceptanceReference", "Acceptance reference"), C("status", "Milestone status"), C("invoiceNumber", "Invoice number"), C("invoiceStatus", "Invoice status"), C("invoiceDate", "Invoice date", "date")]),
+        Report("accounting_billable_time", "Accounting Billable Time by Date", "Financial",
+            "Finance-maintained accounting evidence. USD; invoice totals exclude drafts and cancellations. Missing values remain unknown.",
+            ["030", "042"], ["projects", "accounting_time_report"], [], ["accounting_scoped"],
+            "Finance and Accounting access only; rows remain limited to authorized engagements.",
+            [DateFrom(), DateTo(), Customer(), Project(), WorkflowStatus(), Search()], [C("customer", "Customer"), C("salesforceAccountId", "Salesforce Account ID"), C("engagementId", "Engagement ID"), C("engagement", "Engagement"), C("workDate", "Work date", "date"), C("employee", "Employee"), C("task", "Task"), C("hours", "Hours", "number"), C("approvalStatus", "Approval status"), C("currency", "Currency"), C("historicalRate", "Dated bill rate", "currency", true), C("billableAmount", "Extended amount", "currency", true), C("rateSource", "Rate source"), C("billingStatus", "Billed / unbilled"), C("invoiceNumber", "Invoice number")]),
+        Report("accounting_monthly_revenue", "Monthly Revenue Recognition", "Financial",
+            "Finance-maintained accounting evidence. USD; invoice totals exclude drafts and cancellations. Missing values remain unknown.",
+            ["030", "042"], ["projects", "accounting_revenue_report"], [], ["accounting_scoped"],
+            "Finance and Accounting access only; rows remain limited to authorized engagements.",
+            [DateFrom(), DateTo(), Customer(), Project(), WorkflowStatus(), Search()], [C("customer", "Customer"), C("salesforceAccountId", "Salesforce Account ID"), C("engagementId", "Engagement ID"), C("engagement", "Engagement"), C("accountingPeriod", "Accounting period", "date"), C("currency", "Currency"), C("recognizedAmount", "Recognized in month", "currency", true), C("recognizedToDate", "Cumulative recognized", "currency", true), C("entryCount", "Entry count", "number"), C("approvalReferences", "Approval references"), C("recognitionBasis", "Recognition basis")]),
+    ];
+
     internal static readonly EnterpriseReportDefinition[] All = Core
         .Concat(Legacy)
+        .Concat(Accounting)
         .GroupBy(report => report.Code, StringComparer.OrdinalIgnoreCase)
         .Select(group => group.First())
         .ToArray();
@@ -706,6 +737,7 @@ internal static class EnterpriseReportingCatalog
         FinancialOperationsActor actor,
         FinancialOperationsProject[] projects)
     {
+        if (report.Audience.Contains("accounting_scoped") && !actor.HasRole("FINANCE", "ACCOUNTING", "ACCOUNTING_BILLING", "BILLING", "SUPER_ADMINISTRATOR", "ADMINISTRATOR")) return false;
         if (report.Audience.Contains("control_plane")
             && !actor.HasRole("SUPER_ADMINISTRATOR", "ADMINISTRATOR")) return false;
 
@@ -722,6 +754,7 @@ internal static class EnterpriseReportingCatalog
 
         return report.Audience.Any(audience => audience switch
         {
+            "accounting_scoped" => true,
             "all_scoped" => isEngineer || isPm || isManager || isSales || isOperations,
             "financial_scoped" => financialVisible || isPm || isOperations,
             "commercial_scoped" => isSales || isPm || isOperations,

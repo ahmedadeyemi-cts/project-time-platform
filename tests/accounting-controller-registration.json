@@ -1,0 +1,152 @@
+{
+  "controllerSha256": "ad2e0cd771591b6ee5da99bb78e2c5a978c8b6950c840afc5afa6c7bb6bfc232",
+  "controllerBlob": "7d8bbf455c139112712035a5496a03bc5afcb362",
+  "parentSha256": "61ee7279be5a2947df3478a1fb51be32973be6702229f2fe79e5ac5dae123ea5",
+  "parentBlob": "bc47803c9c41ebc365d7f68d2b73bc0a90579d30",
+  "supervisorSha256": "31fe3486ce4f506c0edc08df871536a30102092e450e7d1401158c5a38cff09d",
+  "parentSupervisorSha256": "9908b69aa8fb4e4068e1dbcab6d7139f913b71972e078cb5c6f094095daa03f4",
+  "patches": {
+    ".github/workflows/projectpulse-deploy-test.yml": [
+      [
+        "          install -m 0644 database/migrations/134_customer_billing_notification_profiles.sql \"$MIGRATION_CONTEXT/database/migrations/134_customer_billing_notification_profiles.sql\"\n",
+        "          install -m 0644 database/migrations/134_customer_billing_notification_profiles.sql \"$MIGRATION_CONTEXT/database/migrations/134_customer_billing_notification_profiles.sql\"\n          install -m 0644 database/migrations/135_accounting_engagement_reporting.sql \"$MIGRATION_CONTEXT/database/migrations/135_accounting_engagement_reporting.sql\"\n"
+      ],
+      [
+        "            \"$ROOT/database/migrations/134_customer_billing_notification_profiles.sql\"; do",
+        "            \"$ROOT/database/migrations/134_customer_billing_notification_profiles.sql\" \\\n            \"$ROOT/database/migrations/135_accounting_engagement_reporting.sql\"; do"
+      ],
+      [
+        "'133_finance_billing_handoff_notifications','134_customer_billing_notification_profiles')) = 5",
+        "'133_finance_billing_handoff_notifications','134_customer_billing_notification_profiles','135_accounting_engagement_reporting')) = 6\n            AND to_regclass('public.accounting_revenue_report') IS NOT NULL\n            AND to_regclass('public.accounting_time_report') IS NOT NULL\n            AND to_regclass('public.accounting_invoice_report') IS NOT NULL"
+      ],
+      [
+        "\"133_finance_billing_handoff_notifications\",\"134_customer_billing_notification_profiles\"],image:",
+        "\"133_finance_billing_handoff_notifications\",\"134_customer_billing_notification_profiles\",\"135_accounting_engagement_reporting\"],image:"
+      ],
+      [
+        "                --file \"$dockerfile_for_acr\" \\",
+        "                --file \"$dockerfile_abs\" \\"
+      ],
+      [
+        "      - name: Build private Pulse service images\n",
+        "      - name: Verify installed accounting reports and financial write validation\n        id: accounting_uat\n        if: ${{ !inputs.core_only && (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') }}\n        timeout-minutes: 10\n        working-directory: release\n        env:\n          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}\n        run: python3 scripts/release-test/run-accounting-installed-uat.py\n\n      - name: Build private Pulse service images\n"
+      ],
+      [
+        "|| steps.pulse_private_services_final.outcome == 'failure'))",
+        "|| steps.pulse_private_services_final.outcome == 'failure' || steps.accounting_uat.outcome == 'failure'))"
+      ],
+      [
+        "          API_DIGEST=\"$(build_image project-health-dashboard-api deployment/containers/api/Dockerfile .)\"\n",
+        "          python3 - \"$TARGET_RELEASE_COMMIT\" <<'SOURCE'\n          import pathlib,re,sys\n          sha=sys.argv[1];assert re.fullmatch('[0-9a-f]{40}',sha)\n          recipe=pathlib.Path('deployment/containers/api/Dockerfile')\n          text=recipe.read_text();anchor='/p:UseAppHost=false';assert text.count(anchor)==1\n          recipe.write_text(text.replace(anchor,anchor+' /p:ProjectPulseSourceRevision='+sha,1))\n          SOURCE\n          API_DIGEST=\"$(build_image project-health-dashboard-api deployment/containers/api/Dockerfile .)\"\n"
+      ]
+    ],
+    ".github/workflows/module025-protected-uat-control.yml": [
+      [
+        "          CORE_ONLY: ${{ steps.core_scope.outputs.core_only }}\n",
+        "          CORE_ONLY: ${{ steps.core_scope.outputs.core_only }}\n          ACCEPTANCE_SCOPE: ${{ steps.core_scope.outputs.acceptance_scope }}\n"
+      ],
+      [
+        "          [[ \"$CORE_ONLY\" != true || \"$RECOVER_PRIVATE_RUNTIME\" == false ]] || fail 'Core release cannot recover Oracle.'\n",
+        "          [[ \"$CORE_ONLY\" != true || \"$RECOVER_PRIVATE_RUNTIME\" == false ]] || fail 'Core release cannot recover Oracle.'\n          [[ \"$ACCEPTANCE_SCOPE\" == full || \"$ACCEPTANCE_SCOPE\" == sow_exports ]] || fail 'Unknown acceptance scope.'\n          [[ \"$ACCEPTANCE_SCOPE\" != sow_exports || ( \"$CORE_ONLY\" == false && \"$RECOVER_PRIVATE_RUNTIME\" == false ) ]] || fail 'Accounting release cannot recover Oracle or omit its database and web release.'\n"
+      ],
+      [
+        "            --arg core_only \"$CORE_ONLY\" \\\n",
+        "            --arg core_only \"$CORE_ONLY\" \\\n            --arg acceptance_scope \"$ACCEPTANCE_SCOPE\" \\\n"
+      ],
+      [
+        "              acceptance_scope:\"full\",",
+        "              acceptance_scope:$acceptance_scope,"
+      ]
+    ],
+    "tests/core_test_controller_projection.py": [
+      [
+        "    assert hashlib.sha256(data).hexdigest()==REG['controllerSha256']",
+        "    if hashlib.sha256(data).hexdigest()!=REG['controllerSha256']:\n        import importlib.util\n        spec=importlib.util.spec_from_file_location('accounting_projection',ROOT/'scripts/resilience/accounting_release_projection.py')\n        projection=importlib.util.module_from_spec(spec);spec.loader.exec_module(projection)\n        data=projection.normalize(data,'.github/workflows/projectpulse-deploy-test.yml')\n    assert hashlib.sha256(data).hexdigest()==REG['controllerSha256']"
+      ],
+      [
+        "    assert hashlib.sha256(data).hexdigest()==reg['sha256']",
+        "    if hashlib.sha256(data).hexdigest()!=reg['sha256']:\n        import importlib.util\n        spec=importlib.util.spec_from_file_location('accounting_supervisor_projection',ROOT/'scripts/resilience/accounting_release_projection.py')\n        projection=importlib.util.module_from_spec(spec);spec.loader.exec_module(projection)\n        data=projection.normalize(data,'.github/workflows/module025-protected-uat-control.yml')\n    assert hashlib.sha256(data).hexdigest()==reg['sha256']"
+      ]
+    ],
+    "tests/pulse-activation-release/controller.py": [
+      [
+        "CORE_ONLY_SHA256='61ee7279be5a2947df3478a1fb51be32973be6702229f2fe79e5ac5dae123ea5'",
+        "CORE_ONLY_SHA256='ad2e0cd771591b6ee5da99bb78e2c5a978c8b6950c840afc5afa6c7bb6bfc232'"
+      ]
+    ],
+    "scripts/release-test/verify-module025-quarantine-controller.py": [
+      [
+        "CORE_CONTROLLER_SHA256='61ee7279be5a2947df3478a1fb51be32973be6702229f2fe79e5ac5dae123ea5'",
+        "CORE_CONTROLLER_SHA256='ad2e0cd771591b6ee5da99bb78e2c5a978c8b6950c840afc5afa6c7bb6bfc232'"
+      ]
+    ],
+    "scripts/release-test/recover-pr1139-uat-orphan.py": [
+      [
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"",
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"\nACCOUNTING_DEPLOYMENT_BLOB = \"7d8bbf455c139112712035a5496a03bc5afcb362\""
+      ],
+      [
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB),",
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB, ACCOUNTING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-uat-orphan.py": [
+      [
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"",
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"\nACCOUNTING_DEPLOYMENT_BLOB = \"7d8bbf455c139112712035a5496a03bc5afcb362\""
+      ],
+      [
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB),",
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB, ACCOUNTING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/recover-pr1140-migration-retry-orphan.py": [
+      [
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"",
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"\nACCOUNTING_DEPLOYMENT_BLOB = \"7d8bbf455c139112712035a5496a03bc5afcb362\""
+      ],
+      [
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB),",
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB, ACCOUNTING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1151-uat-supersession.py": [
+      [
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"",
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"\nACCOUNTING_DEPLOYMENT_BLOB = \"7d8bbf455c139112712035a5496a03bc5afcb362\""
+      ],
+      [
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB),",
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB, ACCOUNTING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "scripts/release-test/verify-pr1204-uat-supersession.py": [
+      [
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"",
+        "CORE_ONLY_DEPLOYMENT_BLOB = \"bc47803c9c41ebc365d7f68d2b73bc0a90579d30\"\nACCOUNTING_DEPLOYMENT_BLOB = \"7d8bbf455c139112712035a5496a03bc5afcb362\""
+      ],
+      [
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB),",
+        "FINANCE_BILLING_DEPLOYMENT_BLOB, CORE_ONLY_DEPLOYMENT_BLOB, ACCOUNTING_DEPLOYMENT_BLOB),"
+      ]
+    ],
+    "tests/security-release/test_controller_registration.py": [
+      [
+        "FINANCE_BILLING_REGISTRATION = json.loads((ROOT/'tests/finance-billing-controller-registration.json').read_text())",
+        "FINANCE_BILLING_REGISTRATION = json.loads((ROOT/'tests/finance-billing-controller-registration.json').read_text())\nACCOUNTING_REGISTRATION = json.loads((ROOT/'tests/accounting-controller-registration.json').read_text())"
+      ],
+      [
+        "            self.assertEqual((ROOT/file).read_text(),old)",
+        "            for before,after in ACCOUNTING_REGISTRATION['patches'].get(file,[]):\n                self.assertEqual(old.count(before),1);old=old.replace(before,after,1)\n            self.assertEqual((ROOT/file).read_text(),old)"
+      ],
+      [
+        "CORE_REGISTRATION['controllerBlob'],'0'*40",
+        "CORE_REGISTRATION['controllerBlob'],ACCOUNTING_REGISTRATION['controllerBlob'],'0'*40"
+      ],
+      [
+        "FINANCE_BILLING_REGISTRATION['controllerBlob'],CORE_REGISTRATION['controllerBlob']):",
+        "FINANCE_BILLING_REGISTRATION['controllerBlob'],CORE_REGISTRATION['controllerBlob'],ACCOUNTING_REGISTRATION['controllerBlob']):"
+      ]
+    ]
+  }
+}

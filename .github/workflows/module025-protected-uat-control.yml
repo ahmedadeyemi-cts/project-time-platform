@@ -386,6 +386,7 @@ jobs:
           RELEASE_SHA: ${{ steps.authorize.outputs.release_sha }}
           RECOVER_PRIVATE_RUNTIME: ${{ steps.authorize.outputs.recover_private_runtime }}
           CORE_ONLY: ${{ steps.core_scope.outputs.core_only }}
+          ACCEPTANCE_SCOPE: ${{ steps.core_scope.outputs.acceptance_scope }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
@@ -436,16 +437,19 @@ jobs:
             || fail 'Protected-Test runtime recovery mode must be explicit.'
           [[ "$CORE_ONLY" == true || "$CORE_ONLY" == false ]] || fail 'Core release selection is not explicit.'
           [[ "$CORE_ONLY" != true || "$RECOVER_PRIVATE_RUNTIME" == false ]] || fail 'Core release cannot recover Oracle.'
+          [[ "$ACCEPTANCE_SCOPE" == full || "$ACCEPTANCE_SCOPE" == sow_exports ]] || fail 'Unknown acceptance scope.'
+          [[ "$ACCEPTANCE_SCOPE" != sow_exports || ( "$CORE_ONLY" == false && "$RECOVER_PRIVATE_RUNTIME" == false ) ]] || fail 'Accounting release cannot recover Oracle or omit its database and web release.'
           jq -n \
             --arg ref 'main' \
             --arg release_sha "$RELEASE_SHA" \
             --arg release_branch 'main' \
             --arg recover_private_runtime "$RECOVER_PRIVATE_RUNTIME" \
             --arg core_only "$CORE_ONLY" \
+            --arg acceptance_scope "$ACCEPTANCE_SCOPE" \
             '{ref:$ref,inputs:{
               release_sha:$release_sha,
               release_branch:$release_branch,
-              acceptance_scope:"full",
+              acceptance_scope:$acceptance_scope,
               qualification_provider:"none",
               recover_private_runtime:$recover_private_runtime,
               core_only:$core_only,

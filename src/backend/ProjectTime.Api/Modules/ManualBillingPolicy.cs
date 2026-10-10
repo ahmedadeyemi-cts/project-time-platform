@@ -6,7 +6,7 @@ public sealed record ManualInvoiceRequest(
     DateOnly PeriodStart, DateOnly PeriodEnd, string Description,
     string AuthorizationReference, string ExternalBillingReference, string Reason, bool Confirmed,
     string BillingBasis = "", string ProgressReference = "", string ExceptionReason = "",
-    string CommercialReference = "", string CommercialFallbackReason = "");
+    string CommercialReference = "", string CommercialFallbackReason = "", Guid? MilestoneId = null);
 
 public static class ManualBillingPolicy
 {
