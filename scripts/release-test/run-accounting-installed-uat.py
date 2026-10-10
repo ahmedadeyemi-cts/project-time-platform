@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Read-only accounting acceptance against installed protected Test; no AI calls."""
-import json,os,urllib.request,urllib.error,uuid
+import json,os,urllib.request,urllib.error,uuid,importlib.util
 from pathlib import Path
 ORIGIN='https://phd-west-test.onenecklab.com'
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -21,11 +21,16 @@ try:
  except urllib.error.HTTPError as e:assert e.code in (401,403)
  else:raise RuntimeError('anonymous_accounting_access')
  checks.append('anonymous_denied')
- login=request('/api/auth/local/login',{'username':'jason.mosier@ussignal.local','password':os.environ['TEST_LOGIN_PASSWORD']},False)
- token=login.get('sessionToken');assert token
+ if os.environ.get('PROJECTPULSE_TEST_UAT_ADMIN_EMAIL') or os.environ.get('PROJECTPULSE_TEST_UAT_SESSION'):
+  spec=importlib.util.spec_from_file_location('accounting_identity',Path(__file__).with_name('verify-flowhive-installed-identity.py'))
+  identity=importlib.util.module_from_spec(spec);spec.loader.exec_module(identity)
+  token,_,_=identity.open_supported_identity_session()
+ else:
+  login=request('/api/auth/local/login',{'username':'jason.mosier@ussignal.local','password':os.environ['TEST_LOGIN_PASSWORD']},False)
+  token=login.get('sessionToken');assert token
  catalog=request('/api/enterprise-reporting/catalog');codes={r['code'] for r in catalog['reports']}
  expected={'accounting_engagement_summary','accounting_invoice_ledger','accounting_milestone_detail','accounting_billable_time','accounting_monthly_revenue'}
- assert expected<=codes;checks.append('five_accounting_reports_installed')
+ assert expected<=codes, 'accounting_catalog_missing_'+','.join(sorted(expected-codes));checks.append('five_accounting_reports_installed')
  for code in sorted(expected):
   report=request('/api/enterprise-reporting/preview',{'reportCode':code,'limit':1})
   assert report['result']['resultStatus'] in ('complete','no_data'), 'accounting_source_not_complete'
