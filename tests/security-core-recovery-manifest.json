@@ -1,0 +1,32 @@
+{
+  "base": "d2ace4dba01e7ed3d7bca63b97ad9baff35d46ce",
+  "files": [
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/laya-processed-source-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/pulse-document-integration-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    "scripts/release-test/validate-module025-governed-release.sh",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/resilience/core_test_controller.py",
+    "scripts/resilience/test_core_controller.py",
+    "tests/flowhive-psa-admission.test.mjs",
+    "tests/security-core-recovery-manifest.json",
+    "tests/security-core-recovery-scope.py"
+  ],
+  "sha256": {
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "5af0124202b42fcff71f6f9f27a546735fb3078d5cca7fbb1cfb61c3082a3011",
+    ".github/workflows/laya-processed-source-ci.yml": "b889839a6187c3ef72881bd072989e0a5a5508e00bdc1594c73a1d9d1feab373",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "66525067c7ec49380c2c5d604ea826051d32d78335b3405e5b08ce0c52586937",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "40874496503c89e3dc6c1199f0758f775b7db3bcc6d1c582041ee4df7753eb82",
+    ".github/workflows/pulse-document-integration-ci.yml": "7e48c4f0a38f61b0661bd040639f443755453f175d544871f4fd0eb272b57f47",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "f7a498991dd3f4d6df63424b9ee58e6a85d6eddaeb07cbe8ec8d929ee8a0fa51",
+    "scripts/release-test/validate-module025-governed-release.sh": "58ec430b60b0386efae1bbf44d224a512d1531f888955e4594f9f1847789e428",
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "bd2aee14f5358a6818dbcd61e511c1eb58dde266d48a5c936822f3ab77aa30ba",
+    "scripts/resilience/core_test_controller.py": "0d726dccb0e2283b0605d828d1cc1d42b3563b3e88371d3b66a65d2cea5013db",
+    "scripts/resilience/test_core_controller.py": "548eee16fb69c8134f6e8990710ac5bffc0efa5a55886c69c84203bc4705cb61",
+    "tests/flowhive-psa-admission.test.mjs": "fb0390dcfde440c96dd67e3025faeaa37c916a6bdc5c86b1dc0e4f790bca7103",
+    "tests/security-core-recovery-scope.py": "d31feb9bc5ca7b90eeddeb357e3c03a0500bcdff45d261c13ad7271ef3d44943"
+  }
+}

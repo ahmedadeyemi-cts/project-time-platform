@@ -57,7 +57,22 @@ def policy(name):
 
 
 def template(value):
+    # Compare effective writable state, rather than Azure's optional/default
+    # serialization. Keep every unknown field and every explicit nondefault.
+    # Scale defaults: https://learn.microsoft.com/en-us/azure/container-apps/scale-app
+    # ephemeralStorage is readonly in the Microsoft ContainerResources SDK model.
     result=copy.deepcopy(value);result.pop('revisionSuffix',None)
+    if result.get('customMetricsSettings') is None:
+        result.pop('customMetricsSettings',None)
+    scale=result.get('scale')
+    if isinstance(scale,dict):
+        for key,default in [('cooldownPeriod',300),('pollingInterval',30)]:
+            if scale.get(key) is None:scale[key]=default
+    for collection in ('containers','initContainers'):
+        for container in result.get(collection) or []:
+            if container.get('imageType') is None:container['imageType']='ContainerImage'
+            resources=container.get('resources')
+            if isinstance(resources,dict):resources.pop('ephemeralStorage',None)
     return result
 
 
@@ -191,7 +206,9 @@ class Controller:
         if current!=self.before:
             # Azure timestamps are not part of admission; compare configuration/template/readiness.
             for field in ('configuration','template','latestReadyRevisionName','latestRevisionName'):
-                if current['properties'].get(field)!=self.before['properties'].get(field):raise RuntimeError('baseline_drift_during_build')
+                actual=current['properties'].get(field);expected=self.before['properties'].get(field)
+                if field=='template':actual=template(actual);expected=template(expected)
+                if actual!=expected:raise RuntimeError('baseline_drift_during_build')
         self.summary['phase']='candidate_staging'
         self.mutated=True
         if self.old_mode=='Single':az('containerapp','revision','set-mode','-g',RG,'-n',APP,'--mode','multiple')
