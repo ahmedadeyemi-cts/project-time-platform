@@ -99,7 +99,8 @@ gate = controller.split('      - name: Verify the matching Oracle SOW runtime be
 build = controller.split('      - name: Build immutable API, web, and migration images', 1)[1].split('      - name:', 1)[0]
 def conditions(step):
     return [line.strip() for line in step.splitlines() if line.startswith('        if:')]
-assert conditions(gate) == conditions(build) == [f'if: {GATE}']
+expected_condition = 'if: ${{ !inputs.core_only && (' + GATE + ') }}'
+assert conditions(gate) == conditions(build) == [expected_condition]
 assert 'verify-oracle-sow-runtime.py' in gate
 assert controller.index('Verify the matching Oracle SOW runtime') < controller.index('Build immutable API')
 
