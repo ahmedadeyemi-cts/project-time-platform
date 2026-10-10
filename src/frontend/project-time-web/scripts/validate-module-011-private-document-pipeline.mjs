@@ -122,8 +122,12 @@ assert(
 
 assert(
   'MALWARE_SCAN_REQUIRED',
-  extractor.includes('A verifiable malware-scan result is required before parsing document content')
-    && extractor.includes('MalwareScanAttested')
+  extractor.includes("A clean malware-scan result bound to this document's SHA-256 is required before parsing document content")
+    && extractor.includes('var documentScanVerified = options.MalwareScanAttested')
+    && extractor.includes('sourceHash.Equals(options.VerifiedCleanSourceSha256, StringComparison.OrdinalIgnoreCase)')
+    && extractor.includes('if (!documentScanVerified)')
+    && extractor.includes('MalwareScanAttested: documentScanVerified')
+    && contracts.includes('public string VerifiedCleanSourceSha256 { get; init; } = string.Empty;')
     && extractor.includes('AllowedForPreview')
     && phaseDoc.includes('A verifiable malware-scan attestation is required before content parsing'),
   'parsing remains blocked without verifiable malware-scan evidence'
