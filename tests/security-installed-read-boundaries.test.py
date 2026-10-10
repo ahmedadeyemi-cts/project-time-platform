@@ -1,7 +1,8 @@
 import importlib.util
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+from io import BytesIO
 
 root = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('installed', root / 'scripts/security/verify-installed-read-boundaries.py')
@@ -63,6 +64,34 @@ class Boundaries(unittest.TestCase):
             with self.assertRaisesRegex(module.CheckError, 'session_context_failed'):
                 module.exercise_account('engineer', 'unused', {'ENGINEER'}, 'unused', {'checks': []})
         self.assertEqual(calls[-1], '/api/auth/session/logout')
+
+    def test_large_finance_summary_uses_bounded_prefix(self):
+        response = MagicMock()
+        response.status = 200
+        response.headers = {"Content-Type": "application/json"}
+        stream = BytesIO(b'{"invoices":[' + b' ' * 200000 + b']}')
+        response.read.side_effect = stream.read
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value = response
+        with patch.object(module, "build_opener", return_value=opener):
+            status, body = module.request("/api/invoicing/summary", "session", parse="container")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {})
+        response.read.assert_called_once_with(1024)
+        self.assertEqual(stream.tell(), 1024)
+
+    def test_finance_success_cannot_be_html(self):
+        for content_type, prefix in [("text/html", b"<html>"), ("application/json", b"<html>"),
+                                     ("application/json", b"null")]:
+            response = MagicMock()
+            response.status = 200
+            response.headers = {"Content-Type": content_type}
+            response.read.return_value = prefix
+            opener = MagicMock()
+            opener.open.return_value.__enter__.return_value = response
+            with patch.object(module, "build_opener", return_value=opener):
+                with self.assertRaises(module.CheckError):
+                    module.request("/api/invoicing/summary", "session", parse="container")
 
     def test_accounting_positive_control_keeps_response_content_private(self):
         calls = []
