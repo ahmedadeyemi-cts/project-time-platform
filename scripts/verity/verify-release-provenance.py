@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Bind a release asset to its Git tag and independently observed registry digests."""
 import argparse
+from contextlib import contextmanager
+import os
+import tempfile
 import importlib.util
 import json
 from pathlib import Path
@@ -49,13 +52,48 @@ def verify(path, tag, repository, read=query):
     return values
 
 
+
+@contextmanager
+def authenticated_registry():
+    """Use an isolated Docker credential store; never print or persist a token."""
+    token = os.environ.get("GHCR_READ_TOKEN", "")
+    if not token:
+        token = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True,
+                               timeout=30, check=True).stdout.strip()
+    require(bool(token) and len(token) <= 8192 and "\n" not in token and "\r" not in token,
+            "registry_read_credential_missing")
+    username = os.environ.get("GHCR_READ_USERNAME", "")
+    if not username:
+        username = subprocess.run(["gh", "api", "user", "--jq", ".login"], capture_output=True,
+                                  text=True, timeout=30, check=True).stdout.strip()
+    require(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", username) is not None,
+            "invalid_registry_identity")
+    prior = os.environ.get("DOCKER_CONFIG")
+    try:
+        with tempfile.TemporaryDirectory(prefix="release-registry-") as directory:
+            os.chmod(directory, 0o700)
+            os.environ["DOCKER_CONFIG"] = directory
+            subprocess.run(["docker", "login", "ghcr.io", "--username", username, "--password-stdin"],
+                           input=token + "\n", capture_output=True, text=True, timeout=30, check=True)
+            token = ""
+            yield
+    finally:
+        token = ""
+        if prior is None:
+            os.environ.pop("DOCKER_CONFIG", None)
+        else:
+            os.environ["DOCKER_CONFIG"] = prior
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("--tag", required=True)
     parser.add_argument("--repository", required=True)
     args = parser.parse_args()
-    verify(args.source, args.tag, args.repository)
+    release.read_manifest(args.source, args.tag)
+    with authenticated_registry():
+        verify(args.source, args.tag, args.repository)
     print("RELEASE_MANIFEST_BINDING=PASS")
 
 

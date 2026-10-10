@@ -107,10 +107,12 @@ class ReleaseBoundaryTests(unittest.TestCase):
         gh.write_text('#!/usr/bin/env python3\nimport os,sys,shutil,json\nif sys.argv[1:3] == ["release","view"]: print(os.environ["SECURITY_RELEASE_TAG"])\nelif sys.argv[1:3] == ["repo","view"]: print("Owner/Repo")\nelif sys.argv[1] == "api": print(json.dumps({"object":{"type":"commit","sha":os.environ.get("SECURITY_TAG_SOURCE","c"*40)}}))\nelif sys.argv[1:3] == ["release","download"]:\n shutil.copyfile(os.environ["SECURITY_RELEASE_MANIFEST"],os.path.join(sys.argv[sys.argv.index("--dir")+1],"release-digests.json"))\nelse: sys.exit(99)\n')
         gh.chmod(0o700)
         docker = binary / 'docker'
-        docker.write_text('#!/usr/bin/env python3\nimport sys,json\ncomponent=sys.argv[4].split("/")[-1].split(":")[0]\nprint(json.dumps({"digest":"sha256:"+("a" if component=="web" else "b")*64}))\n')
+        docker.write_text('#!/usr/bin/env python3\nimport sys,json,os\nif sys.argv[1]=="login":\n assert sys.stdin.read().strip()=="fixture-token-only-invalid"\n assert os.stat(os.environ["DOCKER_CONFIG"]).st_mode & 0o777 == 0o700\n sys.exit(0)\ncomponent=sys.argv[4].split("/")[-1].split(":")[0]\nprint(json.dumps({"digest":"sha256:"+("a" if component=="web" else "b")*64}))\n')
         docker.chmod(0o700)
         return root, {**os.environ, 'PATH': str(binary)+':'+os.environ['PATH'],
                       'SECURITY_RELEASE_TAG': 'v1.2.3',
+                      'GHCR_READ_TOKEN': 'fixture-token-only-invalid',
+                      'GHCR_READ_USERNAME': 'fixture-user',
                       'SECURITY_RELEASE_MANIFEST': str(root / 'manifest.json')}
 
     def test_actual_pinning_script_rejects_hostile_release_metadata_without_execution(self):

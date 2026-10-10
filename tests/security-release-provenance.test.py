@@ -3,6 +3,8 @@ import importlib.util
 import json
 import subprocess
 import sys
+import os
+from unittest.mock import patch
 from pathlib import Path
 import tempfile
 import unittest
@@ -89,6 +91,43 @@ class BindingTests(unittest.TestCase):
                              r"release.yml:[0-9]+: action reference is not pinned to a full commit SHA")
         finally:
             workflow.write_bytes(original)
+
+    def test_registry_authentication_is_private_and_removed_after_failure(self):
+        original = "/test-only-existing-docker-store"
+        seen = []
+        def run(command, **options):
+            self.assertEqual(command, ["docker", "login", "ghcr.io", "--username", "fixture-user", "--password-stdin"])
+            self.assertEqual(options["input"], "fixture-token-only-invalid\n")
+            self.assertNotIn("fixture-token-only-invalid", repr(command))
+            directory = Path(os.environ["DOCKER_CONFIG"])
+            self.assertEqual(directory.stat().st_mode & 0o777, 0o700)
+            (directory / "config.json").write_text("fixture-only-private-credential")
+            seen.append(directory)
+            return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        with patch.dict(os.environ, {"GHCR_READ_TOKEN":"fixture-token-only-invalid",
+                                     "GHCR_READ_USERNAME":"fixture-user", "DOCKER_CONFIG":original}):
+            with patch.object(binding.subprocess, "run", side_effect=run):
+                with self.assertRaisesRegex(ValueError, "test-only verification failure"):
+                    with binding.authenticated_registry():
+                        self.assertNotEqual(os.environ["DOCKER_CONFIG"], original)
+                        raise ValueError("test-only verification failure")
+            self.assertEqual(os.environ["DOCKER_CONFIG"], original)
+        self.assertTrue(seen)
+        self.assertTrue(all(not directory.exists() for directory in seen))
+
+    def test_registry_login_failure_cleans_up_and_preserves_existing_store(self):
+        seen = []
+        def fail(command, **options):
+            seen.append(Path(os.environ["DOCKER_CONFIG"]))
+            raise subprocess.CalledProcessError(1, command, stderr="test-only authorization denied")
+        with patch.dict(os.environ, {"GHCR_READ_TOKEN":"fixture-token-only-invalid",
+                                     "GHCR_READ_USERNAME":"fixture-user", "DOCKER_CONFIG":"/test-only-store"}):
+            with patch.object(binding.subprocess, "run", side_effect=fail):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    with binding.authenticated_registry():
+                        self.fail("Failed login cannot permit registry inspection")
+            self.assertEqual(os.environ["DOCKER_CONFIG"], "/test-only-store")
+        self.assertTrue(all(not directory.exists() for directory in seen))
 
     def test_unavailable_registry_fails_closed(self):
         def read(command):

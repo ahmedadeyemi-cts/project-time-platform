@@ -31,10 +31,10 @@
     "scripts/release-test/validate-protected-test-controller-branches.sh": "85fc03f835f46badad453624e16108bf2d8e56ec2f227d74c74772414f80c5a1",
     "scripts/security/validate-repository-security-posture.py": "56ce0ab5ad3713ec922926482c173ee1b6c43ccde0347e375711da72acde385a",
     "scripts/verity/pin-digests.sh": "19f439125f51c4ceca1dc000f0578e52b3967e74853242d870075ab1de3b1ec8",
-    "scripts/verity/verify-release-provenance.py": "80799421264733dd8f29b0f9d21fe108e8abffe720e7f2268f646a10a19e44cd",
+    "scripts/verity/verify-release-provenance.py": "6ada90988d258f7a04b6cc870d3c5062c22755a66a9cda89c71fda3123916d6e",
     "tests/flowhive-psa-admission.test.mjs": "95d56e36e4f470e87573f50d38022fa01952633c18cf1336a2ee067064033c3f",
-    "tests/security-deployment-boundaries.test.py": "db1a90b58fab60f727ea5e011439792c431d32dc606902c0330b893c235e90c0",
+    "tests/security-deployment-boundaries.test.py": "9ebffa8705016b9f01d395297740bd11b0d1415fca51d0b5629e8ea60e13783c",
     "tests/security-release-binding-scope.py": "41bcd76fa75a4c05066d89dd9708de96ff54c5a8c128fa3cf8bcb167b9446638",
-    "tests/security-release-provenance.test.py": "c0c8a94cd903bb5f030eafddd5b352ab4b0cfbf202630b41626fb40f4f336d8e"
+    "tests/security-release-provenance.test.py": "3ef406d920a27364a7bdd624c2210d25d37538da31e46c739a2717985107ee9f"
   }
 }
