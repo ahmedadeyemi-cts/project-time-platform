@@ -3,6 +3,7 @@ import ast
 import os
 from pathlib import Path
 import pwd
+import re
 import secrets
 import stat
 import subprocess
@@ -95,6 +96,21 @@ class ExporterTests(unittest.TestCase):
             self.assertTrue(identity['ok'], identity['stderr'])
             self.assertEqual(identity['stdout'], str(owner.pw_uid))
             print('SECURITY_ROOT_EXPORTER_REAL_UID=PASS', flush=True)
+
+    def test_service_default_file_and_directory_permissions_are_private(self):
+        unit = (ROOT / 'deployment/rocky-linux/projecttime-api.service').read_text()
+        masks = re.findall(r'^UMask=([0-7]{3,4})$', unit, re.MULTILINE)
+        self.assertEqual(len(masks), 1, 'The API unit must specify one creation mask')
+        mask = int(masks[0], 8)
+        with tempfile.TemporaryDirectory() as directory:
+            process = subprocess.run(
+                ['/usr/bin/python3', '-c',
+                 'import os,pathlib,sys; os.umask(int(sys.argv[1],8)); '
+                 'p=pathlib.Path(sys.argv[2]); (p/"fixture").write_text("test-only"); '
+                 '(p/"private-dir").mkdir()', masks[0], directory],
+                check=True, capture_output=True, text=True)
+            self.assertEqual(stat.S_IMODE((Path(directory)/'fixture').stat().st_mode), 0o600)
+            self.assertEqual(stat.S_IMODE((Path(directory)/'private-dir').stat().st_mode), 0o700)
 
     def test_all_repository_calls_use_the_unprivileged_helper(self):
         self.assertNotIn('run(["git"', code)
