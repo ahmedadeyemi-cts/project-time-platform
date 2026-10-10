@@ -8,6 +8,7 @@ Requires=postgresql.service
 Type=simple
 User=opc
 Group=opc
+UMask=0077
 WorkingDirectory=/opt/project-time-platform/app/published/api
 EnvironmentFile=/opt/project-time-platform/config/postgres.env
 Environment=ASPNETCORE_ENVIRONMENT=Production

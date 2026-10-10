@@ -6,8 +6,16 @@ on:
       - '.github/workflows/installed-read-boundaries.yml'
       - 'scripts/security/verify-installed-read-boundaries.py'
       - 'tests/security-installed-read-boundaries.test.py'
+      - 'scripts/security/verify-core-installed-read-boundaries.py'
+      - 'tests/security-core-installed-boundaries.test.py'
   workflow_dispatch:
     inputs:
+      deployment_kind:
+        description: Native full deployment or Oracle-independent core API deployment
+        required: true
+        type: choice
+        default: full
+        options: [full, core]
       deployment_run_id:
         description: Existing protected Test deployment to verify
         required: true
@@ -26,6 +34,7 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 tests/security-installed-read-boundaries.test.py
+      - run: python3 tests/security-core-installed-boundaries.test.py
 
   installed:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
@@ -39,6 +48,7 @@ jobs:
       cancel-in-progress: false
     env:
       DEPLOYMENT_RUN_ID: ${{ inputs.deployment_run_id }}
+      DEPLOYMENT_KIND: ${{ inputs.deployment_kind || 'full' }}
       EVIDENCE_DIR: ${{ github.workspace }}/installed-read-private
       SAFE_EVIDENCE_DIR: ${{ github.workspace }}/installed-read-safe
       OUTPUT_CONTEXT: ${{ github.workspace }}/installed-read-private/installed-release-context.json
@@ -56,25 +66,36 @@ jobs:
           set -Eeuo pipefail
           [[ "$GITHUB_REF" == refs/heads/main ]]
           [[ "$DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$DEPLOYMENT_KIND" == full || "$DEPLOYMENT_KIND" == core ]]
           [[ "$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)" == "$GITHUB_SHA" ]]
           umask 077
           mkdir -p "$EVIDENCE_DIR" "$SAFE_EVIDENCE_DIR"
-          python3 scripts/release-test/resolve-flowhive-installed-deployment.py
+          if [[ "$DEPLOYMENT_KIND" == full ]]; then
+            python3 scripts/release-test/resolve-flowhive-installed-deployment.py
+          fi
       - name: Verify server-confirmed installed source
+        if: inputs.deployment_kind != 'core'
         env:
           PROJECTPULSE_TEST_UAT_SESSION: ${{ secrets.PROJECTPULSE_TEST_UAT_SESSION }}
           PROJECTPULSE_TEST_UAT_ADMIN_EMAIL: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_EMAIL }}
           PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD: ${{ secrets.PROJECTPULSE_TEST_UAT_ADMIN_PASSWORD }}
         run: python3 scripts/release-test/verify-flowhive-installed-identity.py
       - name: Verify supported authenticated read boundaries
+        if: inputs.deployment_kind != 'core'
         env:
           TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
         run: python3 scripts/security/verify-installed-read-boundaries.py
+      - name: Verify API-only core identity and authenticated read boundaries
+        if: inputs.deployment_kind == 'core'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: python3 scripts/security/verify-core-installed-read-boundaries.py
       - name: Publish content-free acceptance summary
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: installed-read-boundaries-${{ github.run_id }}
-          path: ${{ github.workspace }}/installed-read-safe/installed-read-boundaries.json
+          path: ${{ github.workspace }}/installed-read-safe/*.json
           if-no-files-found: ignore
           retention-days: 7
