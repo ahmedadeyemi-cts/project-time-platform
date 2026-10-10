@@ -1,0 +1,52 @@
+{
+  "schema": 1,
+  "date": "2026-10-10",
+  "originalFindingCount": 149,
+  "closedFindingCount": 2,
+  "remainingUnestablishedCount": 147,
+  "scope": "Only listed findings and protected Test API deployment. Other findings and Production remain unassessed by this record.",
+  "evidenceSource": "Downloaded content-free native acceptance artifacts and exact installed application source.",
+  "findingDispositions": {
+    "4755994": {
+      "decision": "closed_endpoint_retired",
+      "environment": "protected_test_api",
+      "applicationSource": "7a7d34dd11bac71a462823a73af857f92e6c4609",
+      "apiImageDigest": "sha256:771f0cad04aac6c775a2c97c551e288213b1f578365ffbb23010ff5201f3524d",
+      "deploymentRunId": 38086173579,
+      "acceptanceRunId": 38089735462,
+      "receipt": "https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/38089735462",
+      "receiptArtifact": "installed-read-boundaries-38089735462",
+      "positiveEvidence": "Authenticated non-administrator role context verified before and after endpoint checks.",
+      "negativeEvidence": "Retired endpoints returned 410 for all three tested actors and canonical, trailing-slash and uppercase variants.",
+      "reviewReference": "https://github.com/ahmedadeyemi-cts/project-time-platform/pull/1310",
+      "reviewPolicy": "owner_authorized_review_exception",
+      "productionAssessed": false,
+      "endpoints": [
+        "/api/reports/030/preview",
+        "/api/reports/030/filter-options"
+      ],
+      "verifiedNegativeChecks": 18,
+      "sourceEvidence": "SecurityHardeningModule canonical retirement branch returns a fixed error before endpoint execution, independent of role."
+    },
+    "4756004": {
+      "decision": "closed_endpoint_retired",
+      "environment": "protected_test_api",
+      "applicationSource": "7a7d34dd11bac71a462823a73af857f92e6c4609",
+      "apiImageDigest": "sha256:771f0cad04aac6c775a2c97c551e288213b1f578365ffbb23010ff5201f3524d",
+      "deploymentRunId": 38086173579,
+      "acceptanceRunId": 38089735462,
+      "receipt": "https://github.com/ahmedadeyemi-cts/project-time-platform/actions/runs/38089735462",
+      "receiptArtifact": "installed-read-boundaries-38089735462",
+      "positiveEvidence": "Authenticated non-administrator role context verified before and after endpoint checks.",
+      "negativeEvidence": "Retired endpoints returned 410 for all three tested actors and canonical, trailing-slash and uppercase variants.",
+      "reviewReference": "https://github.com/ahmedadeyemi-cts/project-time-platform/pull/1310",
+      "reviewPolicy": "owner_authorized_review_exception",
+      "productionAssessed": false,
+      "endpoints": [
+        "/api/project-closeout/email/audit"
+      ],
+      "verifiedNegativeChecks": 9,
+      "sourceEvidence": "SecurityHardeningModule canonical retirement branch returns a fixed error before endpoint execution, independent of role."
+    }
+  }
+}

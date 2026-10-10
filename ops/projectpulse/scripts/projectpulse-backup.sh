@@ -64,10 +64,49 @@ CHECKSUM_FILE="$RUN_DIR/sha256sums.txt"
   echo
 
   if [ -d "$APP_DIR/.git" ]; then
-    echo "Git branch: $(git -C "$APP_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    echo "Git commit: $(git -C "$APP_DIR" rev-parse HEAD 2>/dev/null || true)"
-    echo "Git status:"
-    git -C "$APP_DIR" status --short 2>/dev/null || true
+    python3 - "$APP_DIR" <<'PY_BACKUP_GIT'
+import os
+from pathlib import Path
+import pwd
+import stat
+import subprocess
+import sys
+
+def repository_git(arguments, repository):
+    """Never execute repository-controlled Git configuration with root authority."""
+    try:
+        metadata = os.lstat(repository)
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid == 0:
+            raise ValueError("Repository must be a real directory owned by a non-root account")
+        owner = pwd.getpwuid(metadata.st_uid)
+        identity = {}
+        if os.geteuid() == 0:
+            identity = dict(user=owner.pw_uid, group=owner.pw_gid, extra_groups=[])
+        elif os.geteuid() != owner.pw_uid:
+            raise ValueError("Repository owner does not match the exporter identity")
+        # Do not pass database credentials or root's Git configuration to this child.
+        environment = {
+            "PATH": "/usr/bin:/bin", "HOME": owner.pw_dir, "LANG": "C", "TZ": "UTC",
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"
+        }
+        result = subprocess.run(
+            ["/usr/bin/git", "--no-optional-locks", "-c", "core.fsmonitor=false",
+             "-c", "core.hooksPath=/dev/null", *arguments],
+            cwd=str(repository), env=environment, text=True, capture_output=True,
+            timeout=10, check=False, **identity)
+        return {"ok": result.returncode == 0, "exitCode": result.returncode,
+                "stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
+    except Exception as exc:
+        return {"ok": False, "exitCode": None, "stdout": "", "stderr": str(exc)}
+
+repository = Path(sys.argv[1])
+for label, arguments in (("Git branch", ["rev-parse", "--abbrev-ref", "HEAD"]),
+                         ("Git commit", ["rev-parse", "HEAD"]),
+                         ("Git status", ["status", "--short"])):
+    result = repository_git(arguments, repository)
+    print(label + ": " + (result["stdout"] if result["ok"] else "unavailable"))
+PY_BACKUP_GIT
   fi
 } > "$MANIFEST"
 
