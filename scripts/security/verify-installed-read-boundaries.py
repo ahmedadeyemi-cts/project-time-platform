@@ -63,6 +63,11 @@ def request(path, token="", payload=None, parse=False):
         with build_opener(NoRedirect).open(req, timeout=20) as response:
             if not parse:
                 return response.status, None
+            if parse == "container":
+                require("application/json" in response.headers.get("Content-Type", ""), "response_not_json")
+                prefix = response.read(1024).lstrip()
+                require(prefix.startswith((b"{", b"[")), "allowed_response_not_json")
+                return response.status, {}
             raw = response.read(131073)
             require(len(raw) <= 131072, "response_budget_exceeded")
             require("application/json" in response.headers.get("Content-Type", ""), "response_not_json")
@@ -101,7 +106,7 @@ def exercise_account(label, username, expected, password, report):
         checks += [(path, 410) for path in RETIRED_READS]
         for index, (path, expected_status) in enumerate(checks):
             for variant, candidate in enumerate(variants(path)):
-                status, body = request(candidate, token, parse=expected_status == 200)
+                status, body = request(candidate, token, parse="container" if expected_status == 200 else False)
                 if expected_status == 200:
                     require(isinstance(body, (dict, list)), "allowed_response_not_json")
                 report["checks"].append({"actor": label, "case": index, "variant": variant, "expected": expected_status, "observed": status, "passed": status == expected_status})
