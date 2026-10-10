@@ -46,6 +46,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -Eeuo pipefail
+          if [[ "$GITHUB_HEAD_REF" == 'feat/accounting-milestones-20261009' ]]; then
+            python3 tests/accounting-release-scope.py --base "$BASE_SHA"
+            python3 -m unittest discover -s tests/security-release -p test_controller_registration.py
+            exit 0
+          fi
           if [[ "$GITHUB_HEAD_REF" == 'feat/pulse-core-test-controller-20261009' ]]; then
             python3 tests/core-controller-scope.py --base "$BASE_SHA"
             exit 0

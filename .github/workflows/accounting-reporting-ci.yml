@@ -1,0 +1,23 @@
+name: Accounting reporting and milestone billing tests
+on:
+  pull_request:
+    paths: ['src/backend/ProjectTime.Api/Modules/*Accounting*', 'src/backend/ProjectTime.Api/Modules/ManualBillingPolicy.cs', 'src/backend/ProjectTime.Api/Modules/InvoiceBillingManualModule.cs', 'src/backend/ProjectTime.Api/Modules/EnterpriseReporting*', 'database/migrations/135_accounting_engagement_reporting.sql', 'tests/AccountingReportingTests/**', 'tests/test-accounting-reporting.sh', '.github/workflows/accounting-reporting-ci.yml']
+  push:
+    branches: [main]
+    paths: ['src/backend/ProjectTime.Api/Modules/*Accounting*', 'database/migrations/135_accounting_engagement_reporting.sql', 'tests/AccountingReportingTests/**']
+permissions:
+  contents: read
+concurrency:
+  group: accounting-reporting-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with: {persist-credentials: false}
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68
+        with: {dotnet-version: '10.0.x'}
+      - run: bash scripts/resilience/preload-ci-postgres.sh
+      - run: bash tests/test-accounting-reporting.sh

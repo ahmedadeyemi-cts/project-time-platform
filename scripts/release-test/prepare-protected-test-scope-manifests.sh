@@ -69,7 +69,13 @@ tests/validate-systemwide-image-build-controller.mjs
 tests/validate-utilization-role-scoping.mjs
 FILES
 sed -i 's/^[[:space:]]*//' "$CIT/allowed-release-files"
-if [[ "$HEAD_BRANCH" == 'feat/finance-billing-automation-20261005' ]]; then
+if [[ "$HEAD_BRANCH" == 'feat/accounting-milestones-20261009' ]]; then
+  python3 - <<'ACCOUNTING_FILES' >> "$CIT/allowed-release-files"
+import json
+from pathlib import Path
+print('\n'.join(json.loads(Path('tests/accounting-release-files.json').read_text())))
+ACCOUNTING_FILES
+elif [[ "$HEAD_BRANCH" == 'feat/finance-billing-automation-20261005' ]]; then
   cat >> "$CIT/allowed-release-files" <<'FILES'
 .github/workflows/manual-billing-ci.yml
 .github/workflows/pr1139-uat-recovery-ci.yml
@@ -78,6 +84,7 @@ if [[ "$HEAD_BRANCH" == 'feat/finance-billing-automation-20261005' ]]; then
 .github/workflows/uat-migration-throttle-recovery-ci.yml
 database/migrations/133_finance_billing_handoff_notifications.sql
 database/migrations/134_customer_billing_notification_profiles.sql
+database/migrations/135_accounting_engagement_reporting.sql
 database/rollback/133_finance_billing_handoff_notifications_rollback.sql
 database/rollback/134_customer_billing_notification_profiles_rollback.sql
 docs/production-readiness/foundation/initialization-review.json

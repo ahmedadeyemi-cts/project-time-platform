@@ -108,6 +108,11 @@ internal static class EnterpriseReportingEngine
             "project_closeout_readiness" => CloseoutReadiness(projects, context.Supplemental),
             "notification_delivery" => NotificationDelivery(projects, context.Supplemental, normalized),
             "executive_summary_dashboard" => ExecutiveSummaryDashboard(projects, context, normalized),
+            "accounting_invoice_ledger" => AccountingRows(projects, context.Supplemental, normalized, definition, "accounting_invoice_report"),
+            "accounting_engagement_summary" => AccountingRows(projects, context.Supplemental, normalized, definition, "accounting_engagement_report"),
+            "accounting_milestone_detail" => AccountingRows(projects, context.Supplemental, normalized, definition, "accounting_milestone_report"),
+            "accounting_billable_time" => AccountingRows(projects, context.Supplemental, normalized, definition, "accounting_time_report"),
+            "accounting_monthly_revenue" => AccountingRows(projects, context.Supplemental, normalized, definition, "accounting_revenue_report"),
             "accounting_invoice_detail" => AccountingInvoiceDetail(projects, context.Supplemental, normalized),
             "tm_sales" => TmSales(projects),
             "project_status_billed_balance" => ProjectStatusBilledBalance(projects, context.Supplemental),
@@ -621,6 +626,26 @@ internal static class EnterpriseReportingEngine
                 ("closeoutPending", projects.Count(project => !HasClosedCloseout(closeouts, project.ProjectId))),
                 ("dataAsOf", projects.Select(project => project.CalculatedAt).DefaultIfEmpty(DateTimeOffset.UtcNow).Max()))
         ];
+    }
+
+    private static Dictionary<string, object?>[] AccountingRows(
+        FinancialOperationsProject[] projects, EnterpriseReportingSupplemental supplemental,
+        EnterpriseReportRequest request, EnterpriseReportDefinition definition, string source)
+    {
+        if (source == "accounting_revenue_report") request = request with {
+            DateFrom = request.DateFrom is DateOnly from ? new DateOnly(from.Year,from.Month,1) : null,
+            DateTo = request.DateTo is DateOnly through ? new DateOnly(through.Year,through.Month,1) : null };
+        var ids = projects.Select(p => p.ProjectId).ToHashSet();
+        return supplemental.Rows(source)
+            .Where(item => GuidValue(item, "project_id") is Guid id && ids.Contains(id))
+            .Where(item => WithinDate(item, request, "workDate", "scheduledDate", "accountingPeriod", "invoiceDate"))
+            .Where(item => string.IsNullOrWhiteSpace(request.WorkflowStatus) ||
+                new[] {"status", "approvalStatus", "billingStatus"}.Any(key => Text(item,key).Equals(request.WorkflowStatus,StringComparison.OrdinalIgnoreCase)))
+            .Select(item => definition.Columns.ToDictionary(col => col.Key, col =>
+                !item.TryGetProperty(col.Key, out var value) || value.ValueKind == JsonValueKind.Null ? null :
+                value.ValueKind == JsonValueKind.Number ? (object?)value.GetDecimal() :
+                value.ValueKind == JsonValueKind.True ? true : value.ValueKind == JsonValueKind.False ? false : (object?)value.GetString()))
+            .Where(row => MatchesSearch(row, request.Search)).ToArray();
     }
 
     private static Dictionary<string, object?>[] AccountingInvoiceDetail(

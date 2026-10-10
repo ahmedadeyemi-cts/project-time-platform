@@ -25,6 +25,7 @@ public static partial class InvoiceBillingModule
     public static WebApplication MapInvoiceBillingEndpoints(this WebApplication app)
     {
         MapManualBillingEndpoints(app);
+        MapAccountingEndpoints(app);
         app.MapGet(
             "/api/billing/candidates",
             (Func<HttpContext, Task<IResult>>)GetCandidatesAsync);

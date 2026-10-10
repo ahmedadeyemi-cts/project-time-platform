@@ -23,6 +23,7 @@ PATHFIX_REGISTRATION = json.loads((ROOT/'tests/pulse-runtime-prerequisites/pathf
 STALE_SOW_REGISTRATION = json.loads((ROOT/'tests/stale-sow-controller-registration.json').read_text())
 CORE_REGISTRATION = json.loads((ROOT/'tests/core-test-controller-registration.json').read_text())
 FINANCE_BILLING_REGISTRATION = json.loads((ROOT/'tests/finance-billing-controller-registration.json').read_text())
+ACCOUNTING_REGISTRATION = json.loads((ROOT/'tests/accounting-controller-registration.json').read_text())
 def historical_controller():
     return _activation.normalize((ROOT/CONTROLLER).read_bytes())
 
@@ -91,6 +92,8 @@ class ControllerTests(unittest.TestCase):
                 self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
             for before,after in CORE_REGISTRATION['patches'][file]:
                 self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
+            for before,after in ACCOUNTING_REGISTRATION['patches'].get(file,[]):
+                self.assertEqual(old.count(before),1);old=old.replace(before,after,1)
             self.assertEqual((ROOT/file).read_text(),old)
     def test_all_five_recovery_contexts_accept_only_exact_current_controller(self):
         current='b'*40
@@ -100,14 +103,14 @@ class ControllerTests(unittest.TestCase):
             class Api:
                 def read(self,*_): return {'object':{'sha':current}}
             env={'GITHUB_REPOSITORY':m.REPOSITORY,'GITHUB_REF':'refs/heads/main','GITHUB_EVENT_NAME':'push','GITHUB_SHA':current,'GITHUB_WORKFLOW_REF':f'{m.REPOSITORY}/{m.SUPERVISOR}@refs/heads/main'}
-            for blob in [REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob'],FINANCE_BILLING_REGISTRATION['controllerBlob'],CORE_REGISTRATION['controllerBlob'],'0'*40]:
+            for blob in [REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob'],FINANCE_BILLING_REGISTRATION['controllerBlob'],CORE_REGISTRATION['controllerBlob'],ACCOUNTING_REGISTRATION['controllerBlob'],'0'*40]:
                 def git(*args):
                     if args==('rev-parse','HEAD'): return current
                     if args==('rev-parse',f'{current}:{m.DEPLOYMENT}'): return blob
                     if args[0]=='rev-parse': return m.DEPLOYMENT_BLOB
                     return ''
                 with patch.dict(os.environ,env,clear=True),patch.object(m,'git',side_effect=git):
-                    if blob in (REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob'],FINANCE_BILLING_REGISTRATION['controllerBlob'],CORE_REGISTRATION['controllerBlob']): self.assertEqual(m.verify_context(Api()),current)
+                    if blob in (REGISTRATION['controllerBlob'],ACTIVATION_REGISTRATION['controllerBlob'],ORDER_REGISTRATION['controllerBlob'],PREREQUISITE_REGISTRATION['controllerBlob'],PATHFIX_REGISTRATION['controllerBlob'],STALE_SOW_REGISTRATION['controllerBlob'],FINANCE_BILLING_REGISTRATION['controllerBlob'],CORE_REGISTRATION['controllerBlob'],ACCOUNTING_REGISTRATION['controllerBlob']): self.assertEqual(m.verify_context(Api()),current)
                     else:
                         with self.assertRaises(RuntimeError): m.verify_context(Api())
     def test_known_quarantine_base_and_byte_changes(self):

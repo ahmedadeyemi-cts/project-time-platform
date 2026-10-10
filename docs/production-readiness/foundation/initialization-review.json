@@ -2234,6 +2234,17 @@
       "review_default": "review_required",
       "decision": "review_required",
       "rationale": "Pulse-owned per-customer invoice workflow notification profile and enterprise notification policy. Requires explicit migration review and governed Protected UAT release; defaults off and does not enable external customer-contact delivery."
+    },
+    {
+      "path": "database/migrations/135_accounting_engagement_reporting.sql",
+      "sha256": "265ff7a8f90dc32ca855d4f92392504def5e0d72c1c6907e9436dcd9a01ca94a",
+      "signals": [
+        "data_mutation",
+        "dynamic_sql"
+      ],
+      "review_default": "review_required",
+      "decision": "candidate_schema_or_reference",
+      "rationale": "Additive accounting schema, scoped views and append-only evidence; verified against disposable PostgreSQL. Protected Test only; not production activation or seed data."
     }
   ]
 }

@@ -98,7 +98,7 @@ function execute(body, changes = {}, envChanges = {}) {
       RECOVERY_REAL_GIT: execFileSync('which', ['git'], {encoding: 'utf8'}).trim(),
       RECOVERY_TEST_STATE: statePath, RUNNER_TEMP: directory, GITHUB_OUTPUT: output,
       GITHUB_REPOSITORY: 'example/repo', GITHUB_SHA: release, RELEASE_SHA: release,
-      CORE_ONLY: 'false', GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main', REQUEST_COMMENT: '',
+      CORE_ONLY: 'false', ACCEPTANCE_SCOPE: 'full', GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main', REQUEST_COMMENT: '',
       DEPLOY_WORKFLOW_ID: '315562561', DEPLOY_WORKFLOW_PATH: '.github/workflows/projectpulse-deploy-test.yml',
       REPAIRED_MODULE025_SHA: 'f7c86b45cff09741dd022c0e80bc1e6ad7d5c80b',
       QUARANTINED_ZERO_JOB_RUN_ID: '33654881418', QUARANTINED_ZERO_JOB_RUN_ID_2: '34377182662',

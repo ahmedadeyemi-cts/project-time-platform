@@ -815,7 +815,7 @@ jobs:
               if az acr build \
                 --registry "$ACR" \
                 --image "$image" \
-                --file "$dockerfile_for_acr" \
+                --file "$dockerfile_abs" \
                 --timeout 3600 \
                 "$context_abs" 2>&1 | tee -a "$BUILD_LOG" >&2; then
                 digest="$(resolve_digest "$image" || true)"
@@ -848,6 +848,7 @@ jobs:
           install -m 0644 database/migrations/114_module064_private_admin_override.sql "$MIGRATION_CONTEXT/database/migrations/114_module064_private_admin_override.sql"
           install -m 0644 database/migrations/133_finance_billing_handoff_notifications.sql "$MIGRATION_CONTEXT/database/migrations/133_finance_billing_handoff_notifications.sql"
           install -m 0644 database/migrations/134_customer_billing_notification_profiles.sql "$MIGRATION_CONTEXT/database/migrations/134_customer_billing_notification_profiles.sql"
+          install -m 0644 database/migrations/135_accounting_engagement_reporting.sql "$MIGRATION_CONTEXT/database/migrations/135_accounting_engagement_reporting.sql"
           printf '%s\n' "$TARGET_RELEASE_COMMIT" > "$MIGRATION_CONTEXT/release-commit"
           cat > "$MIGRATION_CONTEXT/entrypoint.sh" <<'ENTRYPOINT'
           #!/usr/bin/env bash
@@ -867,7 +868,8 @@ jobs:
             "$ROOT/database/migrations/113_module065_teams_notifications.sql" \
             "$ROOT/database/migrations/114_module064_private_admin_override.sql" \
             "$ROOT/database/migrations/133_finance_billing_handoff_notifications.sql" \
-            "$ROOT/database/migrations/134_customer_billing_notification_profiles.sql"; do
+            "$ROOT/database/migrations/134_customer_billing_notification_profiles.sql" \
+            "$ROOT/database/migrations/135_accounting_engagement_reporting.sql"; do
             [[ -f "$migration" ]] || { echo "ERROR: Missing migration $migration" >&2; exit 1; }
             psql -X -v ON_ERROR_STOP=1 --file "$migration"
           done
@@ -927,7 +929,10 @@ jobs:
           echo 'MIGRATION_093=APPLIED_AND_VERIFIED'
           enterprise_verified="$(psql -X -At -v ON_ERROR_STOP=1 <<'SQL'
           SELECT (
-            (SELECT count(*) FROM schema_migrations WHERE migration_id IN ('112_optional_ai_providers','113_module065_teams_notifications','114_module064_private_admin_override','133_finance_billing_handoff_notifications','134_customer_billing_notification_profiles')) = 5
+            (SELECT count(*) FROM schema_migrations WHERE migration_id IN ('112_optional_ai_providers','113_module065_teams_notifications','114_module064_private_admin_override','133_finance_billing_handoff_notifications','134_customer_billing_notification_profiles','135_accounting_engagement_reporting')) = 6
+            AND to_regclass('public.accounting_revenue_report') IS NOT NULL
+            AND to_regclass('public.accounting_time_report') IS NOT NULL
+            AND to_regclass('public.accounting_invoice_report') IS NOT NULL
             AND to_regclass('public.module065_teams_configuration') IS NOT NULL
             AND to_regclass('public.module065_teams_delivery') IS NOT NULL
             AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='ai_private_model_profiles' AND column_name='administrator_override')
@@ -971,6 +976,13 @@ jobs:
           ENTRYPOINT ["/usr/local/bin/systemwide-reliability-migrate"]
           DOCKERFILE
 
+          python3 - "$TARGET_RELEASE_COMMIT" <<'SOURCE'
+          import pathlib,re,sys
+          sha=sys.argv[1];assert re.fullmatch('[0-9a-f]{40}',sha)
+          recipe=pathlib.Path('deployment/containers/api/Dockerfile')
+          text=recipe.read_text();anchor='/p:UseAppHost=false';assert text.count(anchor)==1
+          recipe.write_text(text.replace(anchor,anchor+' /p:ProjectPulseSourceRevision='+sha,1))
+          SOURCE
           API_DIGEST="$(build_image project-health-dashboard-api deployment/containers/api/Dockerfile .)"
           WEB_DIGEST="$(build_image project-health-dashboard-web deployment/containers/web/Dockerfile .)"
           MIGRATION_DIGEST="$(build_image project-health-dashboard-reliability-migrator "$MIGRATION_CONTEXT/Dockerfile" "$MIGRATION_CONTEXT")"
@@ -1018,7 +1030,7 @@ jobs:
             PROJECTPULSE_RELEASE_ROOT="$PWD" bash "$GITHUB_WORKSPACE/control/scripts/release-test/build-and-run-flowhive-psa-migrations.sh"
           fi
           echo 'applied_and_verified=true' >> "$GITHUB_OUTPUT"
-          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["080_celar_ai_internal_data_intelligence","081_celar_ai_private_runtime_activation","086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name","115_module_066_task_notifications","121_flowhive_sequential_phase_checkpoints","122_flowhive_automatic_first_draft","123_module064_external_generation_approval","124_module025_service_scope","125_automatic_document_admission_laya","127_flowhive_pm_automatic_planning_defaults","133_finance_billing_handoff_notifications","134_customer_billing_notification_profiles"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
+          jq -n --arg image '${{ steps.build.outputs.migration_image }}' '{status:"applied_and_verified",migrations:["080_celar_ai_internal_data_intelligence","081_celar_ai_private_runtime_activation","086_module_066_flowhive_enterprise_pm","088_systemwide_enterprise_reliability","093_assigned_work_canonical_visibility_repair","094_flowhive_canonical_sow_authority","095_project_planning_collaboration_access","096_project_planning_document_authority","097_project_planning_identity_safe_admission","098_module_management_owner_storage_reconciliation","098_customer_directory_source_authority","099_module025_sow_gsd_workspace","100_module001b_catalog_ownership_reconciliation","109_module025_project_name","115_module_066_task_notifications","121_flowhive_sequential_phase_checkpoints","122_flowhive_automatic_first_draft","123_module064_external_generation_approval","124_module025_service_scope","125_automatic_document_admission_laya","127_flowhive_pm_automatic_planning_defaults","133_finance_billing_handoff_notifications","134_customer_billing_notification_profiles","135_accounting_engagement_reporting"],image:$image,productionMutation:false}' > "$EVIDENCE_DIR/migrations.json"
 
       - name: Deploy immutable Test API image
         if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none')) }}
@@ -1248,6 +1260,15 @@ jobs:
           fi
           jq -e '.status == "passed"' "$EVIDENCE_DIR/flowhive-my-role-browser.json" >/dev/null
           echo 'MODULE025_SCOPED_DEPLOYMENT_ACCEPTANCE=PASSED'
+
+      - name: Verify installed accounting reports and financial write validation
+        id: accounting_uat
+        if: ${{ !inputs.core_only && (inputs.qualification_provider == '' || inputs.qualification_provider == 'none') }}
+        timeout-minutes: 10
+        working-directory: release
+        env:
+          TEST_LOGIN_PASSWORD: ${{ secrets.PROJECTPULSE_M087_PASSWORD }}
+        run: python3 scripts/release-test/run-accounting-installed-uat.py
 
       - name: Build private Pulse service images
         id: pulse_service_images
@@ -2274,7 +2295,7 @@ jobs:
           if-no-files-found: error
 
       - name: Restore exact prior Test images after application failure
-        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && ((steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true') || steps.pulse_private_services_final.outcome == 'failure'))) }}
+        if: ${{ !inputs.core_only && ((inputs.qualification_provider == '' || inputs.qualification_provider == 'none') && (failure() && (steps.deploy_api.outputs.started == 'true' || steps.deploy_web.outputs.started == 'true') && ((steps.uat.outputs.deployment_health_verified != 'true' && steps.psa_live_uat.outputs.deployment_health_verified != 'true' && steps.sow_role_uat.outputs.deployment_health_verified != 'true') || steps.pulse_private_services_final.outcome == 'failure' || steps.accounting_uat.outcome == 'failure'))) }}
         shell: bash
         working-directory: release
         run: |

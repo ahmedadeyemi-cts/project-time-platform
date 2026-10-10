@@ -1,3 +1,4 @@
+import AccountingEngagementPanel from './AccountingEngagementPanel.jsx';
 import ManualInvoicePanel from './ManualInvoicePanel.jsx';
 import ProjectCompletionChecklist from './ProjectCompletionChecklist.jsx';
 import { useEffect, useMemo, useState } from 'react';
@@ -957,6 +958,7 @@ export default function InvoiceBillingCenter({ usSignalLogoUrl, userKey }) {
 
           {selected ? <ManualInvoicePanel key={`${userKey}:${selected.projectId}`} projectId={selected.projectId} projectName={selected.projectName} onBasis={setManualBasis}
             onSaved={async () => { await loadLiveData(selected.projectId); }} /> : null}
+          {selected ? <AccountingEngagementPanel projectId={selected.projectId} projectName={selected.projectName} onSaved={() => loadLiveData(selected.projectId)} /> : null}
           {selected ? <ProjectCompletionChecklist projectId={selected.projectId} /> : null}
           <section className="m042-workspace" id="finance-line-invoice">
 

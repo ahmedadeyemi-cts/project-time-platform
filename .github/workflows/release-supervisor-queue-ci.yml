@@ -26,7 +26,11 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "$GITHUB_HEAD_REF" == 'feat/pulse-core-test-controller-20261009' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'feat/accounting-milestones-20261009' ]]; then
+            python3 tests/accounting-release-scope.py --base "$BASE_SHA"
+            python3 -m unittest tests/release-supervisor-queue/test_queue.py -k test_every_shared_workflow_preserves_pending_requests
+            python3 -m unittest tests/release-supervisor-queue/test_queue.py -k test_all_sibling_orderings_retain_authorized_release
+          elif [[ "$GITHUB_HEAD_REF" == 'feat/pulse-core-test-controller-20261009' ]]; then
             python3 tests/core-controller-scope.py --base "$BASE_SHA"
             python3 -m unittest tests/release-supervisor-queue/test_queue.py -k test_every_shared_workflow_preserves_pending_requests
             python3 -m unittest tests/release-supervisor-queue/test_queue.py -k test_all_sibling_orderings_retain_authorized_release
