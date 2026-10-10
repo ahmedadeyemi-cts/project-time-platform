@@ -23,7 +23,9 @@ fi
 python3 - <<'PY'
 import json
 import os
+import pwd
 import socket
+import stat
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -73,6 +75,34 @@ def parse_systemctl_show(output):
             key, value = line.split("=", 1)
             props[key] = value
     return props
+
+def repository_git(arguments, repository):
+    """Never execute repository-controlled Git configuration with root authority."""
+    try:
+        metadata = os.lstat(repository)
+        if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid == 0:
+            raise ValueError("Repository must be a real directory owned by a non-root account")
+        owner = pwd.getpwuid(metadata.st_uid)
+        identity = {}
+        if os.geteuid() == 0:
+            identity = dict(user=owner.pw_uid, group=owner.pw_gid, extra_groups=[])
+        elif os.geteuid() != owner.pw_uid:
+            raise ValueError("Repository owner does not match the exporter identity")
+        # Do not pass database credentials or root's Git configuration to this child.
+        environment = {
+            "PATH": "/usr/bin:/bin", "HOME": owner.pw_dir, "LANG": "C", "TZ": "UTC",
+            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0", "GIT_OPTIONAL_LOCKS": "0"
+        }
+        result = subprocess.run(
+            ["/usr/bin/git", "--no-optional-locks", "-c", "core.fsmonitor=false",
+             "-c", "core.hooksPath=/dev/null", *arguments],
+            cwd=str(repository), env=environment, text=True, capture_output=True,
+            timeout=10, check=False, **identity)
+        return {"ok": result.returncode == 0, "exitCode": result.returncode,
+                "stdout": result.stdout.strip(), "stderr": result.stderr.strip()}
+    except Exception as exc:
+        return {"ok": False, "exitCode": None, "stdout": "", "stderr": str(exc)}
 
 def systemctl_show(name):
     result = run([
@@ -142,9 +172,9 @@ git = {
 }
 
 if app_root.exists():
-    branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=app_root)
-    commit = run(["git", "rev-parse", "--short", "HEAD"], cwd=app_root)
-    dirty = run(["git", "status", "--short"], cwd=app_root)
+    branch = repository_git(["rev-parse", "--abbrev-ref", "HEAD"], app_root)
+    commit = repository_git(["rev-parse", "--short", "HEAD"], app_root)
+    dirty = repository_git(["status", "--short"], app_root)
     dirty_count = len([line for line in dirty["stdout"].splitlines() if line.strip()])
 
     git = {

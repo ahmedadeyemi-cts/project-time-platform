@@ -1,0 +1,30 @@
+name: Root exporter privilege boundary
+
+on:
+  pull_request:
+    paths:
+      - 'ops/projectpulse/scripts/projectpulse-sync-status-export.sh'
+      - 'tests/security-root-exporter.test.py'
+      - '.github/workflows/security-root-exporter-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'ops/projectpulse/scripts/projectpulse-sync-status-export.sh'
+      - 'tests/security-root-exporter.test.py'
+      - '.github/workflows/security-root-exporter-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  root-exporter-boundary:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Validate shell syntax
+        run: bash -n ops/projectpulse/scripts/projectpulse-sync-status-export.sh
+      - name: Verify root-to-owner execution on an isolated repository
+        run: sudo -n env SECURITY_REQUIRE_ROOT_EXECUTION=true python3 tests/security-root-exporter.test.py
