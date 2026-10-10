@@ -38,7 +38,7 @@ class Boundaries(unittest.TestCase):
         with patch.object(module, 'request', side_effect=fake):
             module.exercise_account('engineer', 'unused', {'ENGINEER'}, 'unused', report)
         self.assertEqual(calls[-1], '/api/auth/session/logout')
-        self.assertEqual(len(report['checks']), 39)
+        self.assertEqual(len(report['checks']), 45)
         self.assertNotIn('s' * 32, str(report))
         return report
 
@@ -62,6 +62,29 @@ class Boundaries(unittest.TestCase):
         with patch.object(module, 'request', side_effect=fake):
             with self.assertRaisesRegex(module.CheckError, 'session_context_failed'):
                 module.exercise_account('engineer', 'unused', {'ENGINEER'}, 'unused', {'checks': []})
+        self.assertEqual(calls[-1], '/api/auth/session/logout')
+
+    def test_accounting_positive_control_keeps_response_content_private(self):
+        calls = []
+        def fake(path, token='', payload=None, parse=False):
+            calls.append(path)
+            if path.endswith('/login'):
+                return 200, {'provider': 'LOCAL', 'mustChangePassword': False, 'sessionToken': 's'*32}
+            if path.endswith('/context'):
+                return 200, {'roles': [{'roleCode': 'ACCOUNTING'}]}
+            if path.endswith('/logout'): return 200, None
+            normalized = path.lower().rstrip('/')
+            if normalized in module.FINANCE_READS:
+                self.assertTrue(parse)
+                return 200, {'test_only_private_content': 'not-for-evidence'}
+            return (410 if normalized in module.RETIRED_READS else 403), None
+        report = {'checks': []}
+        with patch.object(module, 'request', side_effect=fake):
+            module.exercise_account('accounting', 'unused', {'ACCOUNTING'}, 'unused', report)
+        self.assertEqual(len(report['checks']), 45)
+        self.assertEqual(sum(c['expected']==200 for c in report['checks']), 6)
+        self.assertTrue(all(c['passed'] for c in report['checks']))
+        self.assertNotIn('not-for-evidence', str(report))
         self.assertEqual(calls[-1], '/api/auth/session/logout')
 
 

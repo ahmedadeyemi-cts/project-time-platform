@@ -8,6 +8,7 @@ internal static class SecurityRouteTests
 {
     internal static async Task RunAsync()
     {
+        await DiagnosticFilterTests.RunAsync();
         var checks = 0;
         void Check(bool value, string message) { if (!value) throw new Exception(message); checks++; }
         using var services = new ServiceCollection().AddLogging().AddOptions().BuildServiceProvider();

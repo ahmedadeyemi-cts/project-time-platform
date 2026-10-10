@@ -679,7 +679,7 @@ static bool ProjectPulseIsPublicAuthEndpoint(string? requestPath)
 
 
 
-app.MapGet("/api/production-data-readiness", BuildProjectPulseProductionDataReadinessResultAsync);
+app.MapGet("/api/production-data-readiness", BuildProjectPulseProductionDataReadinessResultAsync).AddEndpointFilter<DiagnosticAdministratorFilter>();
 
 app.MapGet("/api/production/data-readiness", async () =>
 {
@@ -850,7 +850,7 @@ app.MapGet("/api/production/data-readiness", async () =>
             detail: ex.Message,
             statusCode: StatusCodes.Status500InternalServerError);
     }
-});
+}).AddEndpointFilter<DiagnosticAdministratorFilter>();
 
 app.MapGet("/api/version", () => Results.Ok(new
 {
@@ -875,7 +875,7 @@ app.MapGet("/api/db-config-check", () =>
         port = config.Port,
         passwordConfigured = !string.IsNullOrWhiteSpace(config.Password)
     });
-});
+}).AddEndpointFilter<DiagnosticAdministratorFilter>();
 
 app.MapGet("/api/db-health", async () =>
 {
@@ -914,7 +914,7 @@ app.MapGet("/api/db-health", async () =>
             detail: ex.Message,
             statusCode: StatusCodes.Status500InternalServerError);
     }
-});
+}).AddEndpointFilter<DiagnosticAdministratorFilter>();
 
 app.MapGet("/api/schema/tables", async () =>
 {
@@ -947,7 +947,7 @@ app.MapGet("/api/schema/tables", async () =>
         count = tables.Count,
         tables
     });
-});
+}).AddEndpointFilter<DiagnosticAdministratorFilter>();
 
 
 
