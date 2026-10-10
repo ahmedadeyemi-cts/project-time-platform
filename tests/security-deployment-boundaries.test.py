@@ -99,18 +99,16 @@ class ReleaseBoundaryTests(unittest.TestCase):
         root = Path(directory)
         scripts = root / 'scripts/verity'; scripts.mkdir(parents=True)
         (root / '.verity').mkdir()
-        for name in ('pin-digests.sh', 'release-config.py', 'validate-runtime-config.py'):
+        for name in ('pin-digests.sh', 'release-config.py', 'validate-runtime-config.py', 'verify-release-provenance.py'):
             shutil.copyfile(ROOT / 'scripts/verity' / name, scripts / name)
         shutil.copyfile(ROOT / 'deploy.sh', root / 'deploy.sh')
         binary = root / 'bin'; binary.mkdir()
         gh = binary / 'gh'
-        gh.write_text('#!/usr/bin/env python3\nimport os,sys,shutil\n'
-                      'if sys.argv[1:3] == ["release","view"]: print(os.environ["SECURITY_RELEASE_TAG"])\n'
-                      'elif sys.argv[1:3] == ["release","download"]: '
-                      'shutil.copyfile(os.environ["SECURITY_RELEASE_MANIFEST"], '
-                      'os.path.join(sys.argv[sys.argv.index("--dir")+1], "release-digests.json"))\n'
-                      'else: sys.exit(99)\n')
+        gh.write_text('#!/usr/bin/env python3\nimport os,sys,shutil,json\nif sys.argv[1:3] == ["release","view"]: print(os.environ["SECURITY_RELEASE_TAG"])\nelif sys.argv[1:3] == ["repo","view"]: print("Owner/Repo")\nelif sys.argv[1] == "api": print(json.dumps({"object":{"type":"commit","sha":os.environ.get("SECURITY_TAG_SOURCE","c"*40)}}))\nelif sys.argv[1:3] == ["release","download"]:\n shutil.copyfile(os.environ["SECURITY_RELEASE_MANIFEST"],os.path.join(sys.argv[sys.argv.index("--dir")+1],"release-digests.json"))\nelse: sys.exit(99)\n')
         gh.chmod(0o700)
+        docker = binary / 'docker'
+        docker.write_text('#!/usr/bin/env python3\nimport sys,json\ncomponent=sys.argv[4].split("/")[-1].split(":")[0]\nprint(json.dumps({"digest":"sha256:"+("a" if component=="web" else "b")*64}))\n')
+        docker.chmod(0o700)
         return root, {**os.environ, 'PATH': str(binary)+':'+os.environ['PATH'],
                       'SECURITY_RELEASE_TAG': 'v1.2.3',
                       'SECURITY_RELEASE_MANIFEST': str(root / 'manifest.json')}
@@ -118,8 +116,9 @@ class ReleaseBoundaryTests(unittest.TestCase):
     def test_actual_pinning_script_rejects_hostile_release_metadata_without_execution(self):
         with tempfile.TemporaryDirectory() as directory:
             root, env = self.release_fixture(directory)
-            manifest = dict(tag='v1.2.3', version='1.2.3',
-                            images=dict(web=self.values()['WEB_IMAGE'], api=self.values()['API_IMAGE']))
+            manifest = dict(tag='v1.2.3', version='1.2.3', commit='c'*40,
+                            images=dict(web='ghcr.io/owner/repo/web@sha256:'+'a'*64,
+                                        api='ghcr.io/owner/repo/api@sha256:'+'b'*64))
             source = root / 'manifest.json'
             source.write_text(json.dumps(manifest))
             command = ['bash', str(root/'scripts/verity/pin-digests.sh')]
@@ -144,6 +143,30 @@ class ReleaseBoundaryTests(unittest.TestCase):
                         self.assertFalse(marker.exists())
                         self.assertEqual(output.read_bytes(), original)
             print('RELEASE_METADATA_EXPLOITS=PASS cases=20')
+
+    def test_actual_pinning_preserves_existing_pin_for_tampered_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, env = self.release_fixture(directory)
+            data = dict(tag='v1.2.3', version='1.2.3', commit='c'*40,
+                        images=dict(web='ghcr.io/owner/repo/web@sha256:'+'a'*64,
+                                    api='ghcr.io/owner/repo/api@sha256:'+'b'*64))
+            manifest = root / 'manifest.json'
+            manifest.write_text(json.dumps(data))
+            command = ['bash', str(root/'scripts/verity/pin-digests.sh')]
+            valid = subprocess.run(command, env=env, capture_output=True, text=True)
+            self.assertEqual(valid.returncode, 0, valid.stderr)
+            output = root / '.verity/release.env'
+            original = output.read_bytes()
+            for field in ('commit', 'web', 'api'):
+                changed = json.loads(json.dumps(data))
+                if field == 'commit': changed['commit'] = 'f'*40
+                else: changed['images'][field] = 'ghcr.io/owner/repo/'+field+'@sha256:'+'e'*64
+                manifest.write_text(json.dumps(changed))
+                bad = subprocess.run(command, env=env, capture_output=True, text=True)
+                self.assertNotEqual(bad.returncode, 0)
+                self.assertEqual(output.read_bytes(), original)
+                self.assertIn('provenance verification failed', bad.stderr)
+            print('RELEASE_PIN_PROVENANCE_TAMPERING=PASS cases=3')
 
     def test_actual_deployer_refuses_executable_release_file_before_any_docker_call(self):
         with tempfile.TemporaryDirectory() as directory:

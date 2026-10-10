@@ -26,6 +26,9 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 gh release download "$TAG" --pattern release-digests.json --dir "$TMP" --clobber
 
+REPOSITORY="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
+python3 "$REPO_ROOT/scripts/verity/verify-release-provenance.py"   "$TMP/release-digests.json" --tag "$TAG" --repository "$REPOSITORY"
+
 python3 "$REPO_ROOT/scripts/verity/release-config.py" manifest \
   "$TMP/release-digests.json" --tag "$TAG" --output "$OUT"
 

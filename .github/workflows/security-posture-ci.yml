@@ -53,6 +53,7 @@ jobs:
           python3 tests/security-completion/revision-read.test.py
           python3 tests/security-completion/test_scope.py
           python3 tests/security-deployment-boundaries.test.py
+          python3 tests/security-release-provenance.test.py
           python3 tests/security-release/test_controller_registration.py
           python3 tests/security-frontend-proxy.test.py
           python3 tests/flowhive-installed-resolution.test.py
