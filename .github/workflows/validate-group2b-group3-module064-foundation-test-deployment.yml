@@ -65,7 +65,7 @@ jobs:
           bash -n scripts/validate-group2b-group3-module064-pulse-ai-foundation-test-deployment.sh
           bash scripts/validate-group2b-group3-module064-pulse-ai-foundation-test-deployment.sh
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
