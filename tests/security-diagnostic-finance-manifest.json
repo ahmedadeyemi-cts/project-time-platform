@@ -1,0 +1,24 @@
+{
+  "base": "32ff1a426d6c45d54d60f12ae6979c6bb32e0c6a",
+  "files": [
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/security/verify-installed-read-boundaries.py",
+    "src/backend/ProjectTime.Api/Modules/DiagnosticAdministratorFilter.cs",
+    "src/backend/ProjectTime.Api/Program.cs",
+    "tests/ProjectTime.Api.AuthorizationTests/DiagnosticFilterTests.cs",
+    "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs",
+    "tests/security-diagnostic-finance-manifest.json",
+    "tests/security-diagnostic-finance-scope.py",
+    "tests/security-installed-read-boundaries.test.py"
+  ],
+  "sha256": {
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "6cb377762e3377533936bf013f905ea5fc776af29db65363c7102a2499ab95f1",
+    "scripts/security/verify-installed-read-boundaries.py": "b483b88cef122e2cc7749b00e461550b1d723af639455b060b7607114345f33d",
+    "src/backend/ProjectTime.Api/Modules/DiagnosticAdministratorFilter.cs": "c848fafd1cbd255a1b88e29961f804098b8cf7c4809834cdc25afaf37bc7921b",
+    "src/backend/ProjectTime.Api/Program.cs": "e2bde1ba2f5ad2ab8a98d2720ed2bc58f6c8f6a834501afb47ff5e339ab7ffc6",
+    "tests/ProjectTime.Api.AuthorizationTests/DiagnosticFilterTests.cs": "e883dfb7c9fdeb915908bcd40bddbbd5fe5bc55696e801856463644e366421a5",
+    "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs": "a6200b2cc2889ce31674c8635ea8e4c98af4a45153db8a6d4509c4184109d843",
+    "tests/security-diagnostic-finance-scope.py": "8f1e03f3a88ee7993157c72a1669bc9afcb72370c8fee426861956546d94a06e",
+    "tests/security-installed-read-boundaries.test.py": "a7b70176bf22daec634d4cbd3d3651fef9b5cdf141253253ff06093abd5d34b2"
+  }
+}
