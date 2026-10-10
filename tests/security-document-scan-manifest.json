@@ -4,6 +4,7 @@
     ".github/workflows/flowhive-psa-release-control-ci.yml",
     ".github/workflows/laya-processed-source-ci.yml",
     ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
     ".github/workflows/pulse-document-integration-ci.yml",
     ".github/workflows/uat-migration-throttle-recovery-ci.yml",
     "scripts/release-test/validate-module025-governed-release.sh",
@@ -26,6 +27,7 @@
     ".github/workflows/flowhive-psa-release-control-ci.yml": "9e0e528190304d5b037b6d0d8c7fada82048d75434c43de9abcf2d69a0a34760",
     ".github/workflows/laya-processed-source-ci.yml": "0a84923d5559b984ecc04849d3f3c8ad7d78e1e8446122925e16c3f0ed361f0a",
     ".github/workflows/pr1140-uat-recovery-ci.yml": "4a09387e23d2622bef57f76915b0f73809e00a3ae127794cff873f2dbb30e120",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "954329920867d228b1a720928e135af5650faa4f15102e5bf77b598895577c0b",
     ".github/workflows/pulse-document-integration-ci.yml": "02f45c33caf56e5b941ff80451c5b049e139ca94b69168d0dbc779b86ac48852",
     ".github/workflows/uat-migration-throttle-recovery-ci.yml": "9ad385a05f4948426438cce9e124d5e1dd1f707f3961b7a164220daa5c52f49b",
     "scripts/release-test/validate-module025-governed-release.sh": "182ab47baf46bda088a2304ae889a5c9d9b24c8a4eec9ddfb0eb76cd0ea4aef7",
@@ -40,7 +42,7 @@
     "tests/ProjectTime.Api.AuthorizationTests/Program.cs": "383d86fc028ee1fd58af30111611d7b73be1303bce6db6a0961d2d159c9c0aa4",
     "tests/ProjectTime.Api.AuthorizationTests/SecurityDocumentScanTests.cs": "89ad66253c1e28b51869defef2d7d8c58a4ff5089cdcb428ca8dc41db9d0a1b1",
     "tests/flowhive-psa-admission.test.mjs": "692b67b57ea9b64b0b39d81b3504eb44ee09d1dceab67b2b7b16d067c4d99f55",
-    "tests/security-document-scan-scope.py": "216961490e6d27b764e2fdbd20e8ebf11dd01b67e4b15c3370827d2f02c1cfa5",
+    "tests/security-document-scan-scope.py": "8b38b7cd89ae00a2a64c16332c60d224c7e4a7bee454c4aa168b50572d167a0d",
     "tests/test-celar-sow-runtime-deadlines.py": "8d384dbb293d2ae25d5421a9599ab9abcb0043e05e5e2c1d3eecf1dd5713d297"
   }
 }
