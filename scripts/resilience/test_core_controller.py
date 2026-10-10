@@ -129,6 +129,55 @@ class Tests(unittest.TestCase):
             c=core.Controller(Path(temp)/'safe.json');c.execute()
             self.assertTrue(c.finished);self.assertEqual(c.summary['rollback'],'PASS')
             self.assertNotEqual(core.template(c.before['properties']['template']),core.template(c.baseline['properties']['template']))
+    def test_defaults_materialized_only_after_revision_copy_restore_and_promote(self):
+        cloud=Cloud()
+        cloud.state['properties']['template']['containers'][0]['resources']={'cpu':0.5,'memory':'1Gi'}
+        cloud.state['properties']['template']['scale'].update(cooldownPeriod=None,pollingInterval=None)
+        cloud.revs[OLD]=cloud.rev(OLD,cloud.state['properties']['template'])
+        def serialized(*args,**kwargs):
+            value=cloud(*args,**kwargs)
+            if args[:2]==('containerapp','show') and any(c[:3]==('containerapp','revision','copy') for c in cloud.commands):
+                t=value['properties']['template'];t['customMetricsSettings']=None
+                t['scale'].update(cooldownPeriod=300,pollingInterval=30)
+                t['containers'][0]['imageType']='ContainerImage'
+                t['containers'][0].setdefault('resources',{})['ephemeralStorage']='2Gi'
+            return value
+        with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',serialized),patch.object(core,'run',git),patch.object(core,'check',return_value={'result':'PASS'}):
+            c=core.Controller(Path(temp)/'safe.json');c.execute()
+            self.assertTrue(c.finished);self.assertEqual(c.summary['rollback'],'PASS')
+            self.assertEqual(c.summary['result'],'PASS')
+
+    def test_template_normalization_retains_every_writable_change(self):
+        original={'containers':[{'name':'api','image':OLD_IMAGE,'env':[{'name':'DB','secretRef':'db'}],
+                  'resources':{'cpu':0.5,'memory':'1Gi'},'probes':[{'type':'Readiness','httpGet':{'path':'/health'}}],
+                  'volumeMounts':[{'volumeName':'data','mountPath':'/data'}]}],
+                  'scale':{'minReplicas':1,'maxReplicas':3},'volumes':[{'name':'data','storageName':'expected'}]}
+        materialized=copy.deepcopy(original)
+        materialized['customMetricsSettings']=None
+        materialized['scale'].update(cooldownPeriod=300,pollingInterval=30)
+        materialized['containers'][0]['imageType']='ContainerImage'
+        materialized['containers'][0]['resources']['ephemeralStorage']='2Gi'
+        self.assertEqual(core.template(original),core.template(materialized))
+        mutations=[
+            lambda t:t['containers'][0].update(image=NEW_IMAGE),
+            lambda t:t['containers'][0]['env'][0].update(secretRef='other'),
+            lambda t:t['containers'][0]['resources'].update(cpu=1),
+            lambda t:t['containers'][0]['resources'].update(memory='2Gi'),
+            lambda t:t['containers'][0]['probes'][0]['httpGet'].update(path='/wrong'),
+            lambda t:t['containers'][0]['volumeMounts'][0].update(mountPath='/other'),
+            lambda t:t['volumes'][0].update(storageName='other'),
+            lambda t:t['scale'].update(minReplicas=0),
+            lambda t:t['scale'].update(maxReplicas=5),
+            lambda t:t['scale'].update(cooldownPeriod=299),
+            lambda t:t['scale'].update(pollingInterval=31),
+            lambda t:t['containers'][0].update(imageType='CloudBuild'),
+            lambda t:t.update(customMetricsSettings={'enabled':True}),
+            lambda t:t.update(unknownRuntimeSetting='changed')
+        ]
+        for mutate in mutations:
+            changed=copy.deepcopy(materialized);mutate(changed)
+            self.assertNotEqual(core.template(original),core.template(changed))
+
     def test_unready_latest_template_is_denied_without_mutation(self):
         cloud=Cloud();cloud.state['properties']['latestRevisionName']=core.APP+'--unready'
         with tempfile.TemporaryDirectory() as temp,patch.dict(os.environ,ENV,clear=True),patch.object(core,'check_revision',return_value={'result':'PASS'}),patch.object(core,'az',cloud),patch.object(core,'run',git):
