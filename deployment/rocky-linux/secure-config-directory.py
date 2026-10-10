@@ -16,6 +16,7 @@ def secure_directory(path, uid, gid):
         raise ValueError('absolute_configuration_path_required')
     descriptors = []
     entries = []
+    inventories = {}
     try:
         parent = os.open('/', DIRECTORY_FLAGS)
         descriptors.append(parent)
@@ -30,7 +31,9 @@ def secure_directory(path, uid, gid):
             metadata = os.fstat(fd)
             if metadata.st_uid not in {0, uid}:
                 raise ValueError('unexpected_configuration_owner')
-            for name in sorted(os.listdir(fd)):
+            names = sorted(os.listdir(fd))
+            inventories[fd] = names
+            for name in names:
                 if len(entries) >= 256:
                     raise ValueError('configuration_entry_budget_exceeded')
                 before = os.stat(name, dir_fd=fd, follow_symlinks=False)
@@ -60,6 +63,18 @@ def secure_directory(path, uid, gid):
         for _, _, child, metadata in entries:
             os.fchown(child, uid, gid)
             os.fchmod(child, 0o700 if stat.S_ISDIR(metadata.st_mode) else 0o600)
+        for fd, names in inventories.items():
+            if sorted(os.listdir(fd)) != names:
+                raise ValueError('configuration_changed')
+        for fd, name, child, metadata in entries:
+            current = os.stat(name, dir_fd=fd, follow_symlinks=False)
+            actual = os.fstat(child)
+            mode = 0o700 if stat.S_ISDIR(metadata.st_mode) else 0o600
+            if ((current.st_dev, current.st_ino) != (metadata.st_dev, metadata.st_ino)
+                    or actual.st_uid != uid or actual.st_gid != gid
+                    or stat.S_IMODE(actual.st_mode) != mode
+                    or (stat.S_ISREG(actual.st_mode) and actual.st_nlink != 1)):
+                raise ValueError('configuration_changed')
         # A swapped tree is never reported as successfully secured.
         current = os.stat(path, follow_symlinks=False)
         actual = os.fstat(configuration)

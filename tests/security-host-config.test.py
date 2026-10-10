@@ -4,6 +4,7 @@ from pathlib import Path
 import stat
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('host_config', ROOT/'deployment/rocky-linux/secure-config-directory.py')
@@ -65,6 +66,25 @@ class HostConfigurationTests(unittest.TestCase):
             directory = Path(temp)
             for index in range(257): (directory/str(index)).write_text('test-only')
             with self.assertRaisesRegex(ValueError, 'budget'): self.secure(directory)
+
+    def test_concurrent_insert_or_replacement_cannot_be_reported_as_secured(self):
+        for action in ('insert', 'replace'):
+            with self.subTest(action=action), tempfile.TemporaryDirectory() as temp:
+                directory = Path(temp)
+                existing = directory/'existing.env'
+                existing.write_text('test-only')
+                original = os.fchmod
+                mutated = False
+                def chmod(fd, mode):
+                    nonlocal mutated
+                    original(fd, mode)
+                    if not mutated:
+                        mutated = True
+                        if action == 'replace': existing.unlink()
+                        (directory/('existing.env' if action == 'replace' else 'new.env')).write_text('test-only')
+                with patch.object(os, 'fchmod', side_effect=chmod):
+                    with self.assertRaisesRegex(ValueError, 'configuration_changed'):
+                        self.secure(directory)
 
     def test_baseline_uses_fixed_helper_without_recursive_ownership_changes(self):
         source = (ROOT/'deployment/rocky-linux/install-baseline-tools-oraclelinux9.sh').read_text()
