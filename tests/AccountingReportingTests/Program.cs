@@ -57,6 +57,28 @@ Check(await Number($"SELECT \"billableAmount\" FROM accounting_time_report WHERE
 Check(Status(await Save(rate with {OperationId=Guid.NewGuid(),TargetId=Guid.NewGuid()}))==409,"foreign or missing time entry denied");
 await Sql(File.ReadAllText(Path.Combine(root,"database/migrations/135_accounting_engagement_reporting.sql")));
 Check(await Number($"SELECT \"recognizedToDate\" FROM accounting_revenue_report WHERE project_id='{p}'")==75,"migration rerun preserves monthly recognition");
+// Exercise the real report loader before its row limit with two authorized engagements.
+var reportingAssembly=typeof(InvoiceBillingModule).Assembly;
+Type ReportingType(string name)=>reportingAssembly.GetType("ProjectTime.Api.Modules."+name)!;
+object ReportingRecord(string name,object value)=>JsonSerializer.Deserialize(JsonSerializer.Serialize(value),ReportingType(name))!;
+var reportContext=ReportingRecord("EnterpriseReportingContext",new {
+ Truth=new {Actor=new {ActualUserId=actor,EffectiveUserId=actor,Email="synthetic@example.invalid",DisplayName="Synthetic Finance",Roles=new[]{"FINANCE"},Permissions=Array.Empty<string>(),IsViewAs=false,Broad=true,PmLead=false,Sales=false,RateAdmin=false},
+ Projects=new[]{new {ProjectId=p,Engineers=Array.Empty<object>(),FullAmounts=true},new {ProjectId=other,Engineers=Array.Empty<object>(),FullAmounts=true}},Sources=Array.Empty<object>(),GeneratedAt=DateTimeOffset.UtcNow},
+ Supplemental=new {Data=new Dictionary<string,JsonElement[]>(),Sources=Array.Empty<object>()}});
+await Sql($"INSERT INTO time_entries(time_entry_id,timesheet_id,project_id,user_id,work_date,hours,billable,status) SELECT gen_random_uuid(),'{sheet}','{other}','{pm}','{today:yyyy-MM-dd}',1,true,'manager_approved' FROM generate_series(1,5001)");
+async Task<JsonElement> LoadReport(string code,DateOnly from,DateOnly through) {
+ var req=ReportingRecord("EnterpriseReportRequest",new {ReportCode=code,ProjectId=p,DateFrom=from,DateTo=through});
+ var definition=ReportingType("EnterpriseReportingCatalog").GetMethod("Find",BindingFlags.Static|BindingFlags.NonPublic)!.Invoke(null,[reportContext,code]);
+ var task=(Task)ReportingType("EnterpriseReportingSourceLoader").GetMethod("LoadAsync",BindingFlags.Static|BindingFlags.NonPublic)!.Invoke(null,[reportContext,definition,CancellationToken.None,req])!;
+ await task;return JsonSerializer.SerializeToElement(task.GetType().GetProperty("Result")!.GetValue(task));
+}
+var scopedTime=await LoadReport("accounting_billable_time",today,today.AddDays(-1));
+Check(scopedTime.GetProperty("Data").GetProperty("accounting_time_report").GetArrayLength()==1,"engagement and reversed date filters run before the source row limit");
+Check(scopedTime.GetProperty("Sources").EnumerateArray().All(source=>source.GetProperty("Status").GetString()=="healthy"),"other engagements cannot make the selected time export partial");
+Check(Status(await Save(q with {OperationId=Guid.NewGuid(),Date=today.AddMonths(-1),Amount=600}))==200,"Finance can recognize a prior month independently of invoices");
+var monthly=await LoadReport("accounting_monthly_revenue",today,today);
+var current=monthly.GetProperty("Data").GetProperty("accounting_revenue_report").EnumerateArray().Single();
+Check(current.GetProperty("recognizedAmount").GetDecimal()==75 && current.GetProperty("recognizedToDate").GetDecimal()==675,"monthly filtering retains cumulative revenue from prior months");
 try{await Sql($"UPDATE accounting_entries SET amount=999 WHERE entry_id='{q.OperationId}'");throw new Exception("immutable history edited");}catch(PostgresException){Check(true,"financial ledger rejects mutation");}
 Console.WriteLine($"ACCOUNTING_REPORTING_DATABASE=PASS checks={passed}");
 void Check(bool ok,string name){if(!ok)throw new Exception(name);passed++;Console.WriteLine("PASS "+name);}

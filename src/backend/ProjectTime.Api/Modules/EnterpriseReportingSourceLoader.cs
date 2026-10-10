@@ -231,6 +231,7 @@ internal static class EnterpriseReportingSourceLoader
         var dateColumn = accounting ? First(columns, "workDate", "scheduledDate", "accountingPeriod", "invoiceDate") : null;
         var from = request?.DateFrom;
         var through = request?.DateTo;
+        if (from.HasValue && through.HasValue && from > through) (from, through) = (through, from);
         if (spec.Key == "accounting_revenue_report")
         {
             if (from is DateOnly start) from = new DateOnly(start.Year, start.Month, 1);
