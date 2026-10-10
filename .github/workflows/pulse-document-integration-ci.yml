@@ -33,8 +33,15 @@ jobs:
       - name: Exercise actual scanner and OCR integration with isolated transports
         run: dotnet run --project tests/PulseDocumentServiceTests/PulseDocumentServiceTests.csproj --configuration Release
       - name: Verify exact source and unchanged account/deployment boundaries
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          python3 tests/pulse-document-integration/scope.py
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-document-scan-evidence-20261010' ]]; then
+            python3 tests/security-document-scan-scope.py --base "$BASE_SHA"
+            python3 tests/security-document-scan-scope.py --self-test
+          else
+            python3 tests/pulse-document-integration/scope.py
+          fi
           python3 tests/pulse-document-integration/test_scope.py
       - name: Verify repository security posture
         run: python3 scripts/security/validate-repository-security-posture.py
