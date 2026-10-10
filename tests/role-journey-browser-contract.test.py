@@ -123,6 +123,10 @@ class AssignedRoleBrowserContract(unittest.TestCase):
         self.assertLess(wait, count)
         self.assertLess(count, nonempty)
 
+    def test_role_heading_belongs_to_assigned_workspace(self):
+        self.assertIn('journey.get_by_role("heading", name="My Role in Pulse", exact=True)', SOURCE)
+        self.assertNotIn('await wait_visible(page.get_by_role("heading", name="My Role in Pulse", exact=True)', SOURCE)
+
     def test_live_access_navigation_and_write_guards_are_preserved(self):
         required = (
             'require(anonymous_status in (401, 403), "anonymous_handoff_access_not_denied")',
