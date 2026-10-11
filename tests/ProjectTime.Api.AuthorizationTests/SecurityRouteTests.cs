@@ -53,6 +53,8 @@ internal static class SecurityRouteTests
         var policyAllows = typeof(SecurityHardeningModule).GetMethod("PolicyAllows", BindingFlags.Static | BindingFlags.NonPublic)!;
         var accessType = typeof(SecurityHardeningModule).GetNestedType("AccessContext", BindingFlags.NonPublic)!;
         foreach (var role in new[] { "ENGINEER", "PROJECT_MANAGEMENT", "PROJECT_TEAM_COORDINATOR", "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE", "ADMINISTRATOR", "SUPER_ADMINISTRATOR" })
+        foreach (var permissions in new[] { new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "MANAGE_ALL", "VIEW_EXPENSES" } })
         foreach (var route in new[] { "/api/expenses/summary", "/api/invoicing/summary" })
         foreach (var path in new[] { route, route + "/", route.ToUpperInvariant() + "/", route.Replace("/summary", "//summary/") })
         {
@@ -60,10 +62,10 @@ internal static class SecurityRouteTests
             // Broad permissions must not turn a non-finance role into an invoice reader.
             var access = Activator.CreateInstance(accessType, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                 null, new object[] { new HashSet<string>(StringComparer.OrdinalIgnoreCase) { role },
-                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "MANAGE_ALL", "VIEW_EXPENSES" } }, null)!;
+                    permissions }, null)!;
             var allowed = (bool)policyAllows.Invoke(null, new[] { policy, access })!;
             var expected = role is "ACCOUNTING" or "FINANCE" or "BILLING" or "EXECUTIVE" or "ADMINISTRATOR" or "SUPER_ADMINISTRATOR"
-                || (role == "PROJECT_TEAM_COORDINATOR" && route == "/api/expenses/summary");
+                || (permissions.Contains("VIEW_EXPENSES") && route == "/api/expenses/summary");
             Check(allowed == expected, "Summary role scope: " + role + " " + path);
         }
         var id = Guid.NewGuid();

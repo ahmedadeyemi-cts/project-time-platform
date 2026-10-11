@@ -28,9 +28,9 @@
     "scripts/release-test/validate-module025-governed-release.sh": "7c56a6a7ce4d824e73e855a4ade90151ae35fc4ab8234505f0d633a62a77b0c2",
     "scripts/release-test/validate-protected-test-controller-branches.sh": "f44dd1f6a505164c1ed8f66e0c836028f8527622b9b39a98fb5d895564af93b7",
     "scripts/security/verify-installed-read-boundaries.py": "46c6aa246f31097f8d8c0688a344a442149ac19708ff9543739b63309d1ca38e",
-    "src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs": "460383a8d4eb5b70bdca61502c8fe38433810d11884516648668dd9c4b7c93f1",
+    "src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs": "328e101bae37d6cf831f2ef53ba1d39c02f0bc29f2cde9d2157e4b5bd812ff30",
     "src/frontend/project-time-web/src/App.jsx": "4aa1e84c5e660ccab14a6aed3726d579a33ff4d30bae959bb0389b429b94368a",
-    "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs": "3fd52a049d9663f04383ee3581049a1c1cd873f43fcfbb3191f9a3128ad3019b",
+    "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs": "f76cc92031677f586b050318787dcc1c47142669bcf996e246d90ad25732b7b3",
     "tests/flowhive-psa-admission.test.mjs": "c821a07847e7ef5072187f65441d956e243bd98374cb49919863191656c200f4",
     "tests/security-installed-read-boundaries.test.py": "d2dc92cd05bfaf7473237851686e2d4a62f735d395663574bad049ce6b7984c3",
     "tests/security-invoice-role-scope.py": "869d3b4d96c50b27bcdbe72dc3c603a2ed6a170082276baeb8b38f9907477d9d"

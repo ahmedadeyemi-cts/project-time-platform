@@ -868,7 +868,8 @@ public static class SecurityHardeningModule
             SecurityPolicy.Executive => access.IsAdministrator || access.Roles.Overlaps(new[] { "PROJECT_TEAM_COORDINATOR", "EXECUTIVE" })
                 || access.Permissions.Overlaps(new[] { "VIEW_EXECUTIVE_REPORTING", "SYSTEM_ADMINISTRATION", "MANAGE_ALL" }),
             SecurityPolicy.Finance => access.IsAdministrator || access.Roles.Overlaps(new[] { "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE" }),
-            SecurityPolicy.ExpenseSummary => access.IsAdministrator || access.Roles.Overlaps(new[] { "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE", "PROJECT_TEAM_COORDINATOR" }),
+            SecurityPolicy.ExpenseSummary => access.IsAdministrator || access.Roles.Overlaps(new[] { "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE" })
+                || access.Permissions.Contains("VIEW_EXPENSES"),
             SecurityPolicy.TimeCompliance => access.CanViewTimeCompliance,
             SecurityPolicy.HolidayAdministration => access.CanManageHolidays,
             SecurityPolicy.ProjectIntake => access.CanUseProjectIntake,
