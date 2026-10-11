@@ -65,7 +65,7 @@ internal static class SecurityRouteTests
                     permissions }, null)!;
             var allowed = (bool)policyAllows.Invoke(null, new[] { policy, access })!;
             var expected = role is "ACCOUNTING" or "FINANCE" or "BILLING" or "EXECUTIVE" or "ADMINISTRATOR" or "SUPER_ADMINISTRATOR"
-                || (permissions.Contains("VIEW_EXPENSES") && route == "/api/expenses/summary");
+                || (role == "PROJECT_TEAM_COORDINATOR" && permissions.Contains("VIEW_EXPENSES") && route == "/api/expenses/summary");
             Check(allowed == expected, "Summary role scope: " + role + " " + path);
         }
         var id = Guid.NewGuid();
