@@ -122,6 +122,7 @@ jobs:
         env:
           STALE_SOW_MODE: ${{ inputs.stale_sow_cleanup_mode || 'none' }}
           STALE_SOW_CONFIRMATION: ${{ inputs.stale_sow_cleanup_confirmation }}
+          QUALIFICATION_PROVIDER: ${{ inputs.qualification_provider || 'none' }}
         run: |
           set -Eeuo pipefail
           case "$STALE_SOW_MODE" in
@@ -129,7 +130,7 @@ jobs:
             *) echo 'Unsupported stale SOW maintenance mode.' >&2; exit 1 ;;
           esac
           if [[ "$STALE_SOW_MODE" != none ]]; then
-            [[ "${{ inputs.qualification_provider || 'none' }}" == none ]]
+            [[ "$QUALIFICATION_PROVIDER" == none ]]
             [[ "$TARGET_RELEASE_BRANCH" == main ]]
             [[ "$ACCEPTANCE_SCOPE" == full ]]
           fi
@@ -165,9 +166,13 @@ jobs:
         env:
           EXPECTED_CONTROLLER_SHA: ${{ inputs.admission_controller_sha }}
           RELEASE_BRANCH_INPUT: ${{ inputs.release_branch }}
+          QUALIFICATION_PROVIDER: ${{ inputs.qualification_provider || 'none' }}
+          RECOVER_PRIVATE_RUNTIME: ${{ inputs.recover_private_runtime }}
         run: |
           set -Eeuo pipefail
           fail() { echo "ERROR: $*" >&2; exit 1; }
+          case "$QUALIFICATION_PROVIDER" in none|claude|openai) ;; *) fail 'Unsupported qualification provider.' ;; esac
+          case "$RECOVER_PRIVATE_RUNTIME" in true|false) ;; *) fail 'Unsupported runtime recovery selection.' ;; esac
           [[ "$GITHUB_REF" == 'refs/heads/main' ]] || fail 'Protected Test controller must execute from main.'
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'The executing controller SHA is not complete.'
           if [[ -d control/.git ]]; then
@@ -181,7 +186,7 @@ jobs:
             *) fail 'Unsupported deployment acceptance scope.' ;;
           esac
           if [[ "$ACCEPTANCE_SCOPE" == sow_exports ]]; then
-            [[ '${{ inputs.recover_private_runtime }}' != true && '${{ inputs.qualification_provider }}' != claude && '${{ inputs.qualification_provider }}' != openai ]] \
+            [[ "$RECOVER_PRIVATE_RUNTIME" != true && "$QUALIFICATION_PROVIDER" != claude && "$QUALIFICATION_PROVIDER" != openai ]] \
               || fail 'Export acceptance cannot perform runtime recovery or provider qualification.'
           fi
           case "$GITHUB_EVENT_NAME:$RELEASE_BRANCH_INPUT" in
