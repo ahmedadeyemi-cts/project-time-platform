@@ -1,0 +1,38 @@
+{
+  "base": "6995f4978fe14fa925382a84f0a2b55f5864d1c1",
+  "files": [
+    ".github/workflows/flowhive-psa-release-control-ci.yml",
+    ".github/workflows/laya-processed-source-ci.yml",
+    ".github/workflows/pr1140-uat-recovery-ci.yml",
+    ".github/workflows/pr1151-uat-supersession-ci.yml",
+    ".github/workflows/pulse-document-integration-ci.yml",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml",
+    "scripts/release-test/validate-module025-governed-release.sh",
+    "scripts/release-test/validate-protected-test-controller-branches.sh",
+    "scripts/security/verify-installed-read-boundaries.py",
+    "src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs",
+    "src/frontend/project-time-web/src/App.jsx",
+    "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs",
+    "tests/flowhive-psa-admission.test.mjs",
+    "tests/security-installed-read-boundaries.test.py",
+    "tests/security-invoice-role-manifest.json",
+    "tests/security-invoice-role-scope.py"
+  ],
+  "sha256": {
+    ".github/workflows/flowhive-psa-release-control-ci.yml": "19493661562f0606f64e9189058100621622069f1aa8424b07b357c9d0b76cc2",
+    ".github/workflows/laya-processed-source-ci.yml": "410325f3484488496d98f35e07ac822fa2fb51a854e9fe264e40994ac302e477",
+    ".github/workflows/pr1140-uat-recovery-ci.yml": "d4fd2afc11380bb7f14c8bc58d3172a7eab3cd8f3f084a84bd4b0dc956cec6d7",
+    ".github/workflows/pr1151-uat-supersession-ci.yml": "80bba50b81069039ad82ea4d69e52710e145ed553d4bdfa3f78a5d6aca29a9ed",
+    ".github/workflows/pulse-document-integration-ci.yml": "009920a4bc86ec223d09dad0ae978e22be9b0293cd61487318b29eb87e72499a",
+    ".github/workflows/uat-migration-throttle-recovery-ci.yml": "7702fd1730c6f1d833f7df5fccc8872e725b0b1fed682a644c549ea7bfc86cbc",
+    "scripts/release-test/validate-module025-governed-release.sh": "7c56a6a7ce4d824e73e855a4ade90151ae35fc4ab8234505f0d633a62a77b0c2",
+    "scripts/release-test/validate-protected-test-controller-branches.sh": "f44dd1f6a505164c1ed8f66e0c836028f8527622b9b39a98fb5d895564af93b7",
+    "scripts/security/verify-installed-read-boundaries.py": "46c6aa246f31097f8d8c0688a344a442149ac19708ff9543739b63309d1ca38e",
+    "src/backend/ProjectTime.Api/Modules/SecurityHardeningModule.cs": "44366480c959f4c6c762f98eabf0c17d603350936285cf86ae0fde3e7ffa905a",
+    "src/frontend/project-time-web/src/App.jsx": "4aa1e84c5e660ccab14a6aed3726d579a33ff4d30bae959bb0389b429b94368a",
+    "tests/ProjectTime.Api.AuthorizationTests/SecurityRouteTests.cs": "faa6a0fec452c56dbada97639b419feed8f748da98772adadd46a80db8e8d6e8",
+    "tests/flowhive-psa-admission.test.mjs": "c821a07847e7ef5072187f65441d956e243bd98374cb49919863191656c200f4",
+    "tests/security-installed-read-boundaries.test.py": "d2dc92cd05bfaf7473237851686e2d4a62f735d395663574bad049ce6b7984c3",
+    "tests/security-invoice-role-scope.py": "869d3b4d96c50b27bcdbe72dc3c603a2ed6a170082276baeb8b38f9907477d9d"
+  }
+}

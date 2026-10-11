@@ -45,7 +45,10 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Verify incremental boundary
         run: |
-          if [[ "$GITHUB_HEAD_REF" == 'fix/security-core-recovery-defaults-20261010' ]]; then
+          if [[ "$GITHUB_HEAD_REF" == 'fix/security-invoice-role-boundary-20261010' ]]; then
+            python3 tests/security-invoice-role-scope.py --base "$(git merge-base origin/main HEAD)"
+            python3 tests/security-invoice-role-scope.py --self-test
+          elif [[ "$GITHUB_HEAD_REF" == 'fix/security-core-recovery-defaults-20261010' ]]; then
             python3 tests/security-core-recovery-scope.py --base "$(git merge-base origin/main HEAD)"
             python3 tests/security-core-recovery-scope.py --self-test
           elif [[ "$GITHUB_HEAD_REF" == 'fix/security-release-manifest-binding-20261010' ]]; then

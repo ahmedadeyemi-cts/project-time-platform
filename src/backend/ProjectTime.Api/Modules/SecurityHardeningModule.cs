@@ -74,7 +74,7 @@ public static class SecurityHardeningModule
         }
 
 
-        if (RequiredPolicy(path, method) == SecurityPolicy.Finance
+        if ((RequiredPolicy(path, method) is SecurityPolicy.Finance or SecurityPolicy.ExpenseSummary)
             && ProjectPulseActualSessionAuthority.IsViewAs(context))
         {
             await WriteErrorAsync(context, StatusCodes.Status403Forbidden, "finance_own_session_required",
@@ -794,8 +794,8 @@ public static class SecurityHardeningModule
     {
         if (path.Equals("/api/customers/overview", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Customers;
         if (path.Equals("/api/reporting/executive-dashboard", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Executive;
-        if (path.Equals("/api/expenses/summary", StringComparison.OrdinalIgnoreCase)
-            || path.Equals("/api/invoicing/summary", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Finance;
+        if (path.Equals("/api/expenses/summary", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.ExpenseSummary;
+        if (path.Equals("/api/invoicing/summary", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.Finance;
         if (path.StartsWith("/api/reminders/", StringComparison.OrdinalIgnoreCase)) return SecurityPolicy.HolidayAdministration;
         if (path.StartsWith("/api/role-policy/", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/runtime/role-policy/", StringComparison.OrdinalIgnoreCase)
@@ -867,7 +867,9 @@ public static class SecurityHardeningModule
                 || access.Permissions.Overlaps(new[] { "VIEW_CUSTOMERS", "MANAGE_CUSTOMERS", "SYSTEM_ADMINISTRATION", "MANAGE_ALL" }),
             SecurityPolicy.Executive => access.IsAdministrator || access.Roles.Overlaps(new[] { "PROJECT_TEAM_COORDINATOR", "EXECUTIVE" })
                 || access.Permissions.Overlaps(new[] { "VIEW_EXECUTIVE_REPORTING", "SYSTEM_ADMINISTRATION", "MANAGE_ALL" }),
-            SecurityPolicy.Finance => access.IsAdministrator || access.Roles.Overlaps(new[] { "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE", "PROJECT_TEAM_COORDINATOR" }),
+            SecurityPolicy.Finance => access.IsAdministrator || access.Roles.Overlaps(new[] { "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE" }),
+            SecurityPolicy.ExpenseSummary => access.IsAdministrator || access.Roles.Overlaps(new[] { "ACCOUNTING", "FINANCE", "BILLING", "EXECUTIVE" })
+                || (access.Roles.Contains("PROJECT_TEAM_COORDINATOR") && access.Permissions.Contains("VIEW_EXPENSES")),
             SecurityPolicy.TimeCompliance => access.CanViewTimeCompliance,
             SecurityPolicy.HolidayAdministration => access.CanManageHolidays,
             SecurityPolicy.ProjectIntake => access.CanUseProjectIntake,
@@ -1538,6 +1540,7 @@ public static class SecurityHardeningModule
         Customers,
         Executive,
         Finance,
+        ExpenseSummary,
         Administrator,
         Reporting,
         TimeCompliance,
